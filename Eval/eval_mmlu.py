@@ -20,25 +20,24 @@ class ModelConfig:
     # Default dtype, can be overridden per model if needed
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
-# !!! 실제 사용 가능한 모델 ID로 업데이트해야 합니다 !!!
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="Llama-3.2-3B",
-        model_id="meta-llama/Llama-3.2-3B", # Placeholder - 실제 ID 확인 필요
-        output_dir="placeholder_delete", # main 함수에서 재지정됨
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.2-3B-Instruct",
-        model_id="meta-llama/Llama-3.2-3B-Instruct", # Placeholder - 실제 ID 확인 필요
-        output_dir="placeholder_delete",
-        use_quantization=False # 3B 모델은 VRAM 충분하면 False 가능
-    ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B",
+    #     model_id="meta-llama/Llama-3.2-3B", # Placeholder - 실제 ID 확인 필요
+    #     output_dir="placeholder_delete", # main 함수에서 재지정됨
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B-Instruct",
+    #     model_id="meta-llama/Llama-3.2-3B-Instruct", # Placeholder - 실제 ID 확인 필요
+    #     output_dir="placeholder_delete",
+    #     use_quantization=False # 3B 모델은 VRAM 충분하면 False 가능
+    # ),
     ModelConfig(
         name="Llama-3.1-8B-Instruct",
         model_id="meta-llama/Meta-Llama-3.1-8B-Instruct", # 확인된 ID
         output_dir="placeholder_delete",
-        use_quantization=True # 8B 모델은 양자화 권장
+        use_quantization=False # 8B 모델은 양자화 권장
     ),
 ]
 

@@ -1,0 +1,16 @@
+2025-04-29 00:21:20,734 - INFO - [__main__] - --- Starting Evaluation for Model: Llama-3.2-3B (meta-llama/Llama-3.2-3B) ---
+2025-04-29 00:21:20,735 - INFO - [__main__] - Results will be saved to: evaluation_results_mmlu_origin/Llama-3.2-3B/results_Llama-3.2-3B.json
+2025-04-29 00:21:20,735 - INFO - [__main__] - Logs will be saved to: evaluation_results_mmlu_origin/Llama-3.2-3B/eval_Llama-3.2-3B.log
+2025-04-29 00:21:20,735 - INFO - [__main__] - Using Device: cuda, DType: torch.bfloat16
+2025-04-29 00:21:20,735 - INFO - [__main__] - Quantization: Disabled
+2025-04-29 00:21:20,735 - INFO - [__main__] - Loading tokenizer for meta-llama/Llama-3.2-3B...
+2025-04-29 00:21:22,819 - INFO - [__main__] - Set pad_token to eos_token
+2025-04-29 00:21:22,820 - INFO - [__main__] - Loading model meta-llama/Llama-3.2-3B...
+2025-04-29 00:22:03,424 - INFO - [__main__] - Model and tokenizer loaded successfully.
+2025-04-29 00:22:03,424 - INFO - [__main__] - Starting inference loop...
+2025-04-29 00:22:16,610 - INFO - [__main__] - Progress (Llama-3.2-3B): 200/14042, Acc: 42.00% (84/200), Errors/Skipped: 0
+2025-04-29 00:22:28,499 - INFO - [__main__] - Progress (Llama-3.2-3B): 400/14042, Acc: 51.75% (207/400), Errors/Skipped: 0
+2025-04-29 00:22:40,227 - INFO - [__main__] - Progress (Llama-3.2-3B): 600/14042, Acc: 54.67% (328/600), Errors/Skipped: 0
+2025-04-29 00:22:52,136 - INFO - [__main__] - Progress (Llama-3.2-3B): 800/14042, Acc: 58.38% (467/800), Errors/Skipped: 0
+2025-04-29 00:23:03,718 - INFO - [__main__] - Progress (Llama-3.2-3B): 1000/14042, Acc: 58.00% (580/1000), Errors/Skipped: 0
+2025-04-29 00:23:16,528 - INFO - [__main__] - Progress (Llama-3.2-3B): 1200/14042, Acc: 55.67% (668/1200), Errors/Skipped: 0

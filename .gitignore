@@ -1,4 +1,10 @@
+# Environment
 venv/
 .env
 .env.local
+
+# DB
 DB/
+
+# Model
+Llama3:1_8B_Instruct/

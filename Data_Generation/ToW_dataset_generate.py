@@ -2,7 +2,7 @@ import ollama
 import requests # requests.exceptions.ConnectionError 를 잡기 위함
 
 # Ollama 서버 설정
-ollama_host = "http://sg039:11434"
+ollama_host = "http://sg044:11434"
 client = ollama.Client(host=ollama_host)  # 클라이언트 인스턴스 생성
 
 try:

@@ -11,8 +11,6 @@ print(f"모델 및 토크나이저 파일을 다음 경로에 다운로드합니
 os.makedirs(download_path, exist_ok=True)
 
 # 다운로드할 파일 목록 (meta-llama/Llama-3.1-8B-Instruct 기준)
-# 실제 파일 목록은 Hugging Face Hub에서 확인하는 것이 가장 정확합니다.
-# https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/tree/main
 files_to_download = [
     "config.json",
     "generation_config.json",

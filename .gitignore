@@ -4,7 +4,7 @@ venv/
 .env.local
 
 # DB
-DB/
+*.json
 
 # Model
 Llama3:1_8B_Instruct/

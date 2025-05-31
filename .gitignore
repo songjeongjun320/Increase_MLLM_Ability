@@ -8,3 +8,4 @@ venv/
 
 # Model
 Llama3:1_8B_Instruct/
+DeepSeek_R1_Distill_Llama_70B/

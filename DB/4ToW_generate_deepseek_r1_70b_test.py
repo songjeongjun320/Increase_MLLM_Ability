@@ -238,7 +238,7 @@ def interactive_chat():
     # 기본 생성 설정 (더 긴 답변을 위해 토큰 수 증가)
     settings = {
         'max_new_tokens': 2048,  # 더 긴 답변 허용
-        'temperature': 0.7,
+        'temperature': 0.9,
         'top_p': 0.9
     }
     

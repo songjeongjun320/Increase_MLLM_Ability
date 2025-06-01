@@ -18,15 +18,20 @@ def clear_memory():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-def ask_deepseek(question, model, tokenizer, device, max_new_tokens=512, temperature=0.7, top_p=0.9):
+def ask_deepseek(question, model, tokenizer, device, max_new_tokens=2048, temperature=0.7, top_p=0.9):
     """DeepSeek 모델에게 질문하고 답변 받기"""
     # 메모리 정리
     clear_memory()
     
-    # 간단한 Q&A 형식 프롬프트
-    prompt = f"Question: {question}\nAnswer:"
+    # DeepSeek-R1에 최적화된 프롬프트 템플릿 사용
+    # 추론 과정을 숨기고 최종 답변만 출력하도록 설정
+    prompt = f"""<｜begin▁of▁sentence｜><｜start▁header▁id｜>user<｜end▁header▁id｜>
 
-    print(f"\n--- 입력 프롬프트 ---\n{prompt}\n--------------------")
+{question}<｜eot▁id｜><｜start▁header▁id｜>assistant<｜end▁header▁id｜>
+
+<｜thinking｜>"""
+
+    print(f"\n--- 질문 처리 중 ---\n{question}\n--------------------")
 
     inputs = tokenizer(prompt, return_tensors="pt", return_attention_mask=True)
     input_ids = inputs.input_ids.to(device)
@@ -63,26 +68,52 @@ def ask_deepseek(question, model, tokenizer, device, max_new_tokens=512, tempera
 
     # 입력 부분을 제외하고 생성된 텍스트만 디코딩
     answer_ids = generated_ids[0][input_ids.shape[-1]:]
-    answer_text = tokenizer.decode(answer_ids, skip_special_tokens=True)
+    full_response = tokenizer.decode(answer_ids, skip_special_tokens=True)
+
+    # DeepSeek-R1의 추론 과정과 최종 답변 분리
+    final_answer = extract_final_answer(full_response)
 
     # 메모리 정리
     del input_ids, attention_mask, generated_ids
     clear_memory()
 
-    return answer_text.strip()
+    return final_answer
+
+def extract_final_answer(response):
+    """DeepSeek-R1 응답에서 최종 답변만 추출"""
+    # thinking 태그 사이의 추론 과정 제거
+    if "<｜thinking｜>" in response and "<｜/thinking｜>" in response:
+        # thinking 부분 이후의 최종 답변만 추출
+        parts = response.split("<｜/thinking｜>")
+        if len(parts) > 1:
+            final_answer = parts[1].strip()
+        else:
+            final_answer = response.strip()
+    else:
+        # thinking 태그가 없는 경우, 전체 응답에서 정리
+        final_answer = response.strip()
+    
+    # 불필요한 토큰들 제거
+    unwanted_tokens = ["<｜thinking｜>", "<｜/thinking｜>", "<｜eot▁id｜>", "<｜end▁of▁text｜>"]
+    for token in unwanted_tokens:
+        final_answer = final_answer.replace(token, "")
+    
+    return final_answer.strip()
 
 def load_model():
     """모델과 토크나이저 로딩"""
     global BITSANDBYTES_AVAILABLE
     
-    model_name = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    # 로컬 모델 경로 설정
+    model_path = "/scratch/jsong132/Increase_MLLM_Ability/DeepSeek_R1_Distill_Llama_70B"
     
-    print(f"'{model_name}' 모델 로딩 중...")
+    print(f"로컬 경로 '{model_path}'에서 모델 로딩 중...")
     print("A100 1개에 최적화된 설정으로 로딩합니다.")
 
     try:
         # 토크나이저 로딩
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        print("토크나이저 로딩 중...")
+        tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True, local_files_only=True)
         
         # GPU 사용 가능 여부 확인
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -113,6 +144,7 @@ def load_model():
                     "torch_dtype": torch.bfloat16,
                     "trust_remote_code": True,
                     "low_cpu_mem_usage": True,
+                    "local_files_only": True,
                     "offload_folder": "./offload",
                 }
                 print("4-bit 양자화 설정 완료")
@@ -128,11 +160,12 @@ def load_model():
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
+                "local_files_only": True,
                 "offload_folder": "./offload",
             }
 
         print("모델 로딩 시작... (수 분 소요될 수 있습니다)")
-        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
         
         # 추론 모드로 설정
         model.eval()
@@ -140,7 +173,7 @@ def load_model():
         # 메모리 정리
         clear_memory()
 
-        print(f"'{model_name}' 모델 로딩 완료.")
+        print(f"로컬 모델 '{model_path}' 로딩 완료.")
         
         # GPU 메모리 사용량 확인
         if torch.cuda.is_available():
@@ -150,6 +183,13 @@ def load_model():
 
         return model, tokenizer, device
 
+    except FileNotFoundError as e:
+        print(f"\n❌ 로컬 모델 파일을 찾을 수 없습니다: {e}")
+        print(f"다음을 확인해주세요:")
+        print(f"1. 경로가 정확한지: {model_path}")
+        print(f"2. 모델 파일들이 해당 경로에 존재하는지")
+        print(f"3. 파일 접근 권한이 있는지")
+        return None, None, None
     except RuntimeError as e:
         if "out of memory" in str(e).lower():
             print("\nCUDA out of memory 오류 발생!")
@@ -176,7 +216,7 @@ def load_model():
 def interactive_chat():
     """대화형 채팅 시스템"""
     print("=" * 60)
-    print("🤖 DeepSeek 대화형 채팅 시스템")
+    print("🤖 DeepSeek 대화형 채팅 시스템 (로컬 모델)")
     print("=" * 60)
     
     # 모델 로딩
@@ -194,9 +234,9 @@ def interactive_chat():
     print("  - 'settings', '설정' : 생성 설정 변경")
     print("-" * 60)
     
-    # 기본 생성 설정
+    # 기본 생성 설정 (더 긴 답변을 위해 토큰 수 증가)
     settings = {
-        'max_new_tokens': 512,
+        'max_new_tokens': 2048,  # 더 긴 답변 허용
         'temperature': 0.7,
         'top_p': 0.9
     }
@@ -265,7 +305,7 @@ def interactive_chat():
                 continue
             
             # DeepSeek에게 질문
-            print(f"\n🤖 DeepSeek: ", end="", flush=True)
+            print(f"\n🤖 DeepSeek 답변 생성 중...")
             
             answer = ask_deepseek(
                 user_input, 
@@ -277,7 +317,7 @@ def interactive_chat():
                 top_p=settings['top_p']
             )
             
-            print(answer)
+            print(f"\n🤖 DeepSeek: {answer}")
             conversation_count += 1
             
             # 주기적으로 메모리 정리 (10번 대화마다)

@@ -25,7 +25,8 @@ def ask_deepseek(question, model, tokenizer, device, max_new_tokens=2048, temper
     
     # DeepSeek-R1에 최적화된 프롬프트 템플릿 사용
     # 추론 과정을 숨기고 최종 답변만 출력하도록 설정
-    prompt = f"""<｜begin▁of▁sentence｜><｜start▁header▁id｜>user<｜end▁header▁id｜>
+    prompt = f"""
+<｜start▁header▁id｜>user<｜end▁header▁id｜>
 
 {question}<｜eot▁id｜><｜start▁header▁id｜>assistant<｜end▁header▁id｜>
 
@@ -241,6 +242,21 @@ def interactive_chat():
         'top_p': 0.9
     }
     
+    # 고정된 프롬프트 템플릿
+    prompt_template = (
+        "Task Instruction: Given certain text, you need to predict the next word of it. Moreover, before your output, you could first give short thoughts about how you infer the next word based on the provided context.\\n"
+        "Here are five examples for the task:\\n"
+        "Example 0: {\"우리는 가끔 온라인 쿠폰과 기타 특별 혜택을 제공합니다. <hCoT> Customers can explore additional ways to find deals beyond online coupons, like subscribing. </hCoT> 또는 제품 연구에 참여하고 싶다면 '홈 제품 배치'를 체크하고 몇 가지 질문에 답해주세요. 무엇을 기다리고 있나요?\"}\\n\\n"
+        "Example 1: {\"방정식 2x + 5 = 17을 풀어보세요. 먼저 양변에서 5를 <hCoT> The context presents an equation 2x + 5 = 17 and mentions subtracting 5 from both sides, so the next word should be '빼면' to describe the subtraction operation. </hCoT> 빼면 2x = 12가 됩니다. 그 다음 양변을 2로 <hCoT> The context shows 2x = 12 and mentions dividing both sides by 2, so the next word should be '나누면' to complete the division step. </hCoT> 나누면 x = 6이 답입니다.\"}\\n\\n"
+        "Example 2: {\"Unity에서 2D 객체를 드래그할 때 다른 객체와의 최소 거리는 1.5f입니다. 두 객체가 <hCoT> The context describes distance constraints for 2D objects in Unity, so the next word should be '연결되면' to describe what happens when objects connect. </hCoT> 연결되면 드래그가 더 제한됩니다.\"}\\n\\n"
+        "Example 3: {\"대수학에서 대체는 문자를 숫자로 바꾸는 것입니다. 숫자와 <hCoT> The context explains algebraic substitution involving numbers, so the next word should be '문자' as algebra deals with both numbers and variables. </hCoT> 문자 사이에는 곱셈 기호가 숨겨져 있습니다.\"}\\n\\n"
+        "Example 4: {\"랜달즈빌 이사 회사 Movers MAX 디렉토리는 <hCoT> The context introduces a moving company directory called Movers MAX, so the next word should be '이사' to specify what kind of resources this directory provides. </hCoT> 이사 자원을 위한 원스톱 소스입니다.\"}\\n\\n"
+        "Now please give me your prediction for the thought and next word based on the following context:\\n\\n"
+        "{<user_input_context>}\\n\\n"
+        "Thought:\\n"
+        "Next Word:"
+    )
+    
     conversation_count = 0
     
     while True:
@@ -304,11 +320,14 @@ def interactive_chat():
                 print("질문을 입력해주세요.")
                 continue
             
+            # 사용자 입력을 프롬프트 템플릿에 치환
+            formatted_prompt = prompt_template.replace("<user_input_context>", user_input)
+            
             # DeepSeek에게 질문
             print(f"\n🤖 DeepSeek 답변 생성 중...")
             
             answer = ask_deepseek(
-                user_input, 
+                formatted_prompt, 
                 model, 
                 tokenizer, 
                 device,

@@ -9,3 +9,19 @@ venv/
 # Model
 Llama3:1_8B_Instruct/
 DeepSeek_R1_Distill_Llama_70B/
+DeepSeek_R1_0528_Qwen3_8B/
+
+# KLUE Datas
+klue_all_tasks_json/
+
+# KLUE Models
+Evaluation/
+klue_dp_results/
+klue_dst_results/
+klue_mrc_results/
+klue_ner_results/
+klue_nli_results/
+klue_re_results/
+klue_sts_results/
+klue_tc_results/
+ 

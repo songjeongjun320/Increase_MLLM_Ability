@@ -12,10 +12,12 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"  # 오프라인 모드 강제
 
+# 멀티 GPU 설정
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"  # GPU 0, 1 사용
+
 # bitsandbytes 가져오기 시도
 try:
     from transformers import BitsAndBytesConfig
-    
     BITSANDBYTES_AVAILABLE = True
     print("✅ BitsAndBytesConfig를 성공적으로 import했습니다.")
 except ImportError:
@@ -33,19 +35,46 @@ def setup_torch_optimizations():
     # CUDA 캐시 최적화
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-        # 메모리 프래그멘테이션 방지
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512,expandable_segments:True"
+        # 메모리 프래그멘테이션 방지 - 멀티 GPU용 설정
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1024,expandable_segments:True"
 
 def clear_memory():
-    """효율적인 메모리 정리 함수"""
+    """효율적인 메모리 정리 함수 (멀티 GPU)"""
     gc.collect()
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
+        for i in range(torch.cuda.device_count()):
+            with torch.cuda.device(i):
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
+def get_multi_gpu_device_map(num_gpus: int = 2):
+    """멀티 GPU 디바이스 맵 생성"""
+    if num_gpus == 2:
+        # A100 x2 최적 분배
+        device_map = {
+            "model.embed_tokens": 0,
+            "model.norm": 1,
+            "lm_head": 1,
+        }
+        
+        # 레이어를 두 GPU에 균등 분배 (70B 모델 기준)
+        num_layers = 80  # DeepSeek-R1 Distill Llama 70B 레이어 수
+        layers_per_gpu = num_layers // 2
+        
+        for i in range(num_layers):
+            if i < layers_per_gpu:
+                device_map[f"model.layers.{i}"] = 0
+            else:
+                device_map[f"model.layers.{i}"] = 1
+        
+        return device_map
+    else:
+        return "auto"
 
 class OptimizedDeepSeekChat:
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, num_gpus: int = 2):
         self.model_path = model_path
+        self.num_gpus = num_gpus
         self.model = None
         self.tokenizer = None
         self.device = None
@@ -69,7 +98,7 @@ Example 3: 대수학에서 대체는 문자를 숫자로 바꾸는 것입니다.
 
 Example 4: 랜달즈빌 이사 회사 Movers MAX 디렉토리는 <hCoT> The context introduces a moving company directory called Movers MAX, so the next word should be '이사' to specify what kind of resources this directory provides. </hCoT> 이사 자원을 위한 원스톱 소스입니다.
 
-Now please give me your prediction for the thought and next word based on the following context:
+Now please give me a pair of your prediction for the thought and next word based on the following context:
 
 {user_input_context}
 
@@ -80,9 +109,20 @@ Next Word:"""
         setup_torch_optimizations()
         
     def load_model(self) -> bool:
-        """최적화된 모델 로딩"""
+        """멀티 GPU 최적화된 모델 로딩"""
         print(f"🚀 로컬 경로 '{self.model_path}'에서 모델 로딩 중...")
-        print("🔧 A100 최적화 설정 적용... (안정적인 eager attention)")
+        print(f"🔧 A100 x{self.num_gpus} 멀티 GPU 최적화 설정 적용...")
+
+        # GPU 정보 출력
+        if torch.cuda.is_available():
+            print(f"🎯 사용 가능한 GPU: {torch.cuda.device_count()}개")
+            for i in range(min(self.num_gpus, torch.cuda.device_count())):
+                gpu_name = torch.cuda.get_device_name(i)
+                gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1024**3
+                print(f"  GPU {i}: {gpu_name} ({gpu_memory:.1f} GB)")
+        else:
+            print("❌ CUDA를 사용할 수 없습니다.")
+            return False
 
         try:
             # 모델 설정 파일 확인
@@ -110,24 +150,19 @@ Next Word:"""
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
-            # 디바이스 설정
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            print(f"🎯 사용 장치: {self.device}")
+            # 멀티 GPU 디바이스 맵 생성
+            device_map = get_multi_gpu_device_map(self.num_gpus)
+            print(f"🗺️ 멀티 GPU 디바이스 맵 생성 완료")
             
-            # GPU 메모리 정보
-            if torch.cuda.is_available():
-                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                print(f"💾 GPU 메모리: {gpu_memory:.1f} GB")
-
             # 모델 로딩
             try:
-                model_kwargs = self._get_optimized_model_config()
-                print("🔥 AutoModelForCausalLM으로 모델 로딩 시작...")
+                model_kwargs = self._get_optimized_model_config(device_map)
+                print("🔥 AutoModelForCausalLM으로 멀티 GPU 모델 로딩 시작...")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_path, 
                     **model_kwargs
                 )
-                print("✅ AutoModelForCausalLM으로 로딩 성공")
+                print("✅ 멀티 GPU 모델 로딩 성공")
             except Exception as e:
                 print(f"⚠️ 양자화 모델 로딩 실패, 기본 설정으로 재시도: {e}")
                 # 양자화 없이 기본 설정으로 재시도
@@ -136,7 +171,7 @@ Next Word:"""
                         "trust_remote_code": True,
                         "local_files_only": True,
                         "low_cpu_mem_usage": True,
-                        "device_map": "auto",
+                        "device_map": device_map,
                         "torch_dtype": torch.float16,
                         "attn_implementation": "eager",
                     }
@@ -144,7 +179,7 @@ Next Word:"""
                         self.model_path,
                         **basic_kwargs
                     )
-                    print("✅ 기본 설정으로 로딩 성공")
+                    print("✅ 기본 설정으로 멀티 GPU 로딩 성공")
                 except Exception as e2:
                     print(f"❌ 모델 로딩 완전 실패: {e2}")
                     return False
@@ -152,14 +187,8 @@ Next Word:"""
             # 추론 최적화
             self.model.eval()
             
-            # Torch compile 사용 (PyTorch 2.0+) - 선택적 적용
-            if hasattr(torch, 'compile') and torch.cuda.is_available():
-                print("⚡ Torch compile 적용 시도 중...")
-                try:
-                    self.model = torch.compile(self.model, mode="reduce-overhead")
-                    print("✅ Torch compile 적용 완료")
-                except Exception as e:
-                    print(f"⚠️ Torch compile 실패 (무시하고 계속): {e}")
+            # 메인 디바이스 설정 (첫 번째 GPU)
+            self.device = torch.device("cuda:0")
             
             # 생성 설정 최적화
             self._setup_generation_config()
@@ -167,13 +196,19 @@ Next Word:"""
             # 메모리 정리
             clear_memory()
             
-            # 메모리 사용량 확인
-            if torch.cuda.is_available():
-                allocated = torch.cuda.memory_allocated() / 1024**3
-                cached = torch.cuda.memory_reserved() / 1024**3
-                print(f"📊 GPU 메모리 사용량: {allocated:.1f} GB allocated, {cached:.1f} GB cached")
+            # 멀티 GPU 메모리 사용량 확인
+            print("📊 멀티 GPU 메모리 사용량:")
+            total_allocated = 0
+            total_cached = 0
+            for i in range(min(self.num_gpus, torch.cuda.device_count())):
+                allocated = torch.cuda.memory_allocated(i) / 1024**3
+                cached = torch.cuda.memory_reserved(i) / 1024**3
+                total_allocated += allocated
+                total_cached += cached
+                print(f"  GPU {i}: {allocated:.1f} GB allocated, {cached:.1f} GB cached")
+            print(f"  총합: {total_allocated:.1f} GB allocated, {total_cached:.1f} GB cached")
             
-            print("✅ 모델 로딩 완료!")
+            print("✅ 멀티 GPU 모델 로딩 완료!")
             return True
             
         except Exception as e:
@@ -182,35 +217,34 @@ Next Word:"""
             traceback.print_exc()
             return False
     
-    def _get_optimized_model_config(self) -> Dict[str, Any]:
-        """최적화된 모델 설정 반환 (호환성 개선)"""
+    def _get_optimized_model_config(self, device_map) -> Dict[str, Any]:
+        """멀티 GPU 최적화된 모델 설정 반환"""
         base_config = {
             "trust_remote_code": True,
             "local_files_only": True,
             "low_cpu_mem_usage": True,
-            "device_map": "auto",
+            "device_map": device_map,
             "attn_implementation": "eager",  # FlashAttention 대신 안정적인 eager 사용
+            "max_memory": {0: "35GB", 1: "35GB"},  # 각 GPU별 최대 메모리 제한
         }
         
-        # 양자화 설정
+        # 양자화 설정 (멀티 GPU에서는 더 보수적으로)
         if BITSANDBYTES_AVAILABLE and torch.cuda.is_available():
-            print("🔧 4-bit 양자화 설정 (BitsAndBytes)")
+            print("🔧 멀티 GPU 8-bit 양자화 설정 (안정성 우선)")
             try:
                 bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    load_in_8bit=True,  # 4bit 대신 8bit로 안정성 확보
+                    llm_int8_enable_fp32_cpu_offload=True,
                 )
                 base_config.update({
                     "quantization_config": bnb_config,
-                    "torch_dtype": torch.bfloat16,
+                    "torch_dtype": torch.float16,
                 })
             except Exception as e:
                 print(f"⚠️ 양자화 설정 실패, FP16 사용: {e}")
                 base_config["torch_dtype"] = torch.float16
         else:
-            print("🔧 FP16 설정")
+            print("🔧 멀티 GPU FP16 설정")
             base_config["torch_dtype"] = torch.float16
         
         return base_config
@@ -254,7 +288,7 @@ Next Word:"""
         return full_prompt
     
     def ask_deepseek(self, user_input_context: str, max_new_tokens: int = 1024, **kwargs) -> str:
-        """커스텀 프롬프트를 사용한 DeepSeek 추론"""
+        """멀티 GPU를 사용한 DeepSeek 추론"""
         if self.model is None or self.tokenizer is None:
             return "❌ 모델이 로딩되지 않았습니다."
         
@@ -280,15 +314,16 @@ Next Word:"""
             print(f"❌ 토크나이징 실패: {e}")
             return "토크나이징 중 오류가 발생했습니다."
         
+        # 메인 GPU로 입력 전송
         input_ids = inputs.input_ids.to(self.device)
         attention_mask = inputs.attention_mask.to(self.device)
         
-        print(f"🤔 컨텍스트 처리 중: {user_input_context[:50]}{'...' if len(user_input_context) > 50 else ''}")
+        print(f"🤔 멀티 GPU에서 컨텍스트 처리 중: {user_input_context[:50]}{'...' if len(user_input_context) > 50 else ''}")
         
         try:
             # 최적화된 추론
             with torch.no_grad():
-                with torch.cuda.amp.autocast(enabled=torch.cuda.is_available()):  # Mixed precision
+                with torch.cuda.amp.autocast(enabled=True):  # Mixed precision
                     generated_ids = self.model.generate(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
@@ -329,20 +364,39 @@ Next Word:"""
         
         return final_answer.strip()
     
-    def get_memory_stats(self) -> Dict[str, float]:
-        """메모리 상태 반환"""
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """멀티 GPU 메모리 상태 반환"""
         if not torch.cuda.is_available():
             return {"error": "CUDA 사용 불가"}
         
-        allocated = torch.cuda.memory_allocated() / 1024**3
-        cached = torch.cuda.memory_reserved() / 1024**3
-        total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        gpu_stats = []
+        total_allocated = 0
+        total_cached = 0
+        total_memory = 0
+        
+        for i in range(min(self.num_gpus, torch.cuda.device_count())):
+            allocated = torch.cuda.memory_allocated(i) / 1024**3
+            cached = torch.cuda.memory_reserved(i) / 1024**3
+            gpu_total = torch.cuda.get_device_properties(i).total_memory / 1024**3
+            
+            gpu_stats.append({
+                "gpu_id": i,
+                "allocated_gb": allocated,
+                "cached_gb": cached,
+                "total_gb": gpu_total,
+                "usage_percent": (allocated / gpu_total) * 100
+            })
+            
+            total_allocated += allocated
+            total_cached += cached
+            total_memory += gpu_total
         
         return {
-            "allocated_gb": allocated,
-            "cached_gb": cached,
-            "total_gb": total,
-            "usage_percent": (allocated / total) * 100
+            "gpu_stats": gpu_stats,
+            "total_allocated_gb": total_allocated,
+            "total_cached_gb": total_cached,
+            "total_memory_gb": total_memory,
+            "total_usage_percent": (total_allocated / total_memory) * 100
         }
 
 def check_model_files(model_path: str):
@@ -382,9 +436,9 @@ def check_model_files(model_path: str):
         print(f"  ... 및 {len(weight_files) - 5}개 더")
 
 def interactive_chat():
-    """커스텀 프롬프트를 사용한 대화형 채팅 시스템"""
+    """멀티 GPU를 사용한 대화형 채팅 시스템"""
     print("=" * 70)
-    print("🚀 DeepSeek 다음 단어 예측 시스템 (커스텀 프롬프트)")
+    print("🚀 DeepSeek 다음 단어 예측 시스템 (Multi-GPU A100 x2)")
     print("=" * 70)
     
     # 모델 경로
@@ -393,34 +447,34 @@ def interactive_chat():
     # 모델 파일 구조 확인
     check_model_files(model_path)
     
-    # 최적화된 채팅 인스턴스 생성
-    chat_system = OptimizedDeepSeekChat(model_path)
+    # 멀티 GPU 채팅 인스턴스 생성 (A100 x2)
+    chat_system = OptimizedDeepSeekChat(model_path, num_gpus=2)
     
     # 모델 로딩
     if not chat_system.load_model():
         print("❌ 모델 로딩에 실패했습니다. 프로그램을 종료합니다.")
         return
     
-    print("\n✅ 모델 로딩 완료! (다음 단어 예측 모드)")
+    print("\n✅ 멀티 GPU 모델 로딩 완료! (다음 단어 예측 모드)")
     print("💡 사용법: 문맥을 입력하면 다음에 올 단어를 예측합니다.")
     print("💡 명령어:")
     print("  - 'quit', 'exit', '종료' : 프로그램 종료")
     print("  - 'clear', '클리어' : 화면 정리")
-    print("  - 'memory', '메모리' : GPU 메모리 상태 확인")
+    print("  - 'memory', '메모리' : 멀티 GPU 메모리 상태 확인")
     print("  - 'example', '예시' : 사용 예시 보기")
     print("-" * 70)
     
     # 성능 설정
     settings = {
-        'max_new_tokens': 512,  # 다음 단어 예측이므로 짧게
-        'temperature': 0.3,     # 더 확정적인 예측을 위해 낮게
+        'max_new_tokens': 2024,  # 다음 단어 예측이므로 짧게
+        'temperature': 1.0,     # 더 확정적인 예측을 위해 낮게
         'top_p': 0.9,
     }
     
     conversation_count = 0
     
     # 첫 번째 추론 워밍업
-    print("🔥 모델 워밍업 중...")
+    print("🔥 멀티 GPU 모델 워밍업 중...")
     try:
         warmup_response = chat_system.ask_deepseek("안녕하세요. 오늘", max_new_tokens=50)
         print(f"🔥 워밍업 완료")
@@ -433,7 +487,7 @@ def interactive_chat():
             
             # 명령어 처리
             if user_input.lower() in ['quit', 'exit', '종료', 'q']:
-                print("\n👋 다음 단어 예측 시스템을 종료합니다. 감사합니다!")
+                print("\n👋 멀티 GPU 다음 단어 예측 시스템을 종료합니다. 감사합니다!")
                 break
             elif user_input.lower() in ['clear', '클리어']:
                 os.system('clear' if os.name == 'posix' else 'cls')
@@ -441,11 +495,14 @@ def interactive_chat():
             elif user_input.lower() in ['memory', '메모리']:
                 stats = chat_system.get_memory_stats()
                 if "error" not in stats:
-                    print(f"📊 GPU 메모리 상태:")
-                    print(f"  - 할당됨: {stats['allocated_gb']:.1f} GB")
-                    print(f"  - 캐시됨: {stats['cached_gb']:.1f} GB")
-                    print(f"  - 전체: {stats['total_gb']:.1f} GB")
-                    print(f"  - 사용률: {stats['usage_percent']:.1f}%")
+                    print(f"📊 멀티 GPU 메모리 상태:")
+                    for gpu_stat in stats['gpu_stats']:
+                        print(f"  GPU {gpu_stat['gpu_id']}:")
+                        print(f"    - 할당됨: {gpu_stat['allocated_gb']:.1f} GB")
+                        print(f"    - 캐시됨: {gpu_stat['cached_gb']:.1f} GB")
+                        print(f"    - 전체: {gpu_stat['total_gb']:.1f} GB")
+                        print(f"    - 사용률: {gpu_stat['usage_percent']:.1f}%")
+                    print(f"  전체 사용률: {stats['total_usage_percent']:.1f}%")
                 else:
                     print("CUDA가 사용 불가능합니다.")
                 continue
@@ -475,12 +532,12 @@ def interactive_chat():
             end_time = time.time()
             response_time = end_time - start_time
             
-            print(f"\n🤖 DeepSeek 예측 결과 ({response_time:.1f}초):")
+            print(f"\n🤖 DeepSeek 멀티 GPU 예측 결과 ({response_time:.1f}초):")
             print(f"{answer}")
             conversation_count += 1
             
             # 주기적 메모리 정리
-            if conversation_count % 5 == 0:
+            if conversation_count % 3 == 0:  # 멀티 GPU에서는 더 자주 정리
                 clear_memory()
             
         except KeyboardInterrupt:

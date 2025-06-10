@@ -7,6 +7,7 @@ venv/
 *.json
 
 # Model
+Base_Models/
 Llama3:1_8B_Instruct/
 DeepSeek_R1_Distill_Llama_70B/
 DeepSeek_R1_0528_Qwen3_8B/

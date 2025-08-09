@@ -11,7 +11,6 @@ This model is used ONLY for generating English ToW tokens, not for training.
 - Korean language support included
 """
 
-import os
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
@@ -55,9 +54,7 @@ def download_gpt_oss_20b():
             repo_id=model_name,
             local_dir=local_dir,
             local_dir_use_symlinks=False,
-            resume_download=True,
-            # Only download essential files
-            ignore_patterns=["*.safetensors.index.json", "*.bin.index.json"]
+            resume_download=True
         )
         
         print(f"[SUCCESS] GPT-OSS-20B downloaded successfully to {local_dir}")

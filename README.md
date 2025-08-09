@@ -61,14 +61,6 @@ output = """브루스 리는 쿵푸 영화의 전설적인 인물이다. 그는 
 │   ├── tow_training/            # ToW training results  
 │   └── comparison/              # Before/after comparison analysis
 │
-├── tow_architecture/            # Core TOW architecture
-│   ├── core/
-│   │   ├── cross_lingual_tow.py # Cross-lingual ToW implementation
-│   │   └── tow_engine.py        # Main ToW engine
-│   ├── models/
-│   │   └── model_factory.py     # Model loading and management
-│   └── utils/
-│       └── __init__.py          # Utility functions
 │
 ├── config_option2.yaml          # Unified configuration for Option 2
 ├── run_full_workflow.py         # Complete workflow execution script

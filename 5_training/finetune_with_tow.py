@@ -40,6 +40,9 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
+# Import from 4_tow_generation utils (direct path)
+tow_utils_path = project_root / "4_tow_generation"
+sys.path.insert(0, str(tow_utils_path))
 from utils.text_processing import validate_tow_token_format, count_tow_tokens
 
 @dataclass

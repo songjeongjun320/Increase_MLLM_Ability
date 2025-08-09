@@ -11,10 +11,8 @@ Korean: "브루스 리는 쿵푸 영화 감독을 만났다"
 Enhanced: "브루스 리는 쿵푸 영화 감독을 만났다 <ToW>The context suggests a professional meeting between martial artist and filmmaker</ToW> 점심을 함께 했다"
 """
 
-import os
 import sys
 import json
-import asyncio
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import re

@@ -12,7 +12,6 @@ This is the larger model alternative to 20B - requires H100 GPU or similar.
 - Best ToW generation quality but high resource requirements
 """
 
-import os
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
@@ -126,9 +125,7 @@ def download_gpt_oss_120b():
             repo_id=model_name,
             local_dir=local_dir,
             local_dir_use_symlinks=False,
-            resume_download=True,  # Allow resuming interrupted downloads
-            # Download in chunks to handle large files
-            ignore_patterns=["*.safetensors.index.json", "*.bin.index.json"]
+            resume_download=True  # Allow resuming interrupted downloads
         )
         
         print(f"[SUCCESS] GPT-OSS-120B downloaded successfully to {local_dir}")

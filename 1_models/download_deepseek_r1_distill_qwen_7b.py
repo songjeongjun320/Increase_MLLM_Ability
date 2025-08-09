@@ -7,7 +7,6 @@ Downloads DeepSeek-R1-Distill-Qwen-7B model for Option 2 TOW training.
 This is a 7B parameter instruction model with strong multilingual capabilities.
 """
 
-import os
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
@@ -40,7 +39,7 @@ def download_deepseek_r1_distill_qwen_7b():
         print(f"✅ Model downloaded successfully to {local_dir}")
         
         # Verify download
-        required_files = ["config.json", "pytorch_model.bin", "tokenizer.json"]
+        required_files = ["config.json", "model.safetensors.index.json", "tokenizer.json"]
         missing_files = []
         
         for file in required_files:

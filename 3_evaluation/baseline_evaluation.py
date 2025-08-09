@@ -88,7 +88,6 @@ class BaselineEvaluator:
         models = []
         model_names = [
             "deepseek-r1-distill-qwen-7b",
-            "deepseek-r1-distill-llama-8b", 
             "qwen2.5-7b-instruct"
         ]
         

@@ -19,11 +19,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from ..models.base_adapter import BaseModelAdapter
-from ..utils.logger import get_logger
-from ..utils.text_utils import enforce_english_text, sanitize_tow_token
+from .utils.text_processing import enforce_english_text, sanitize_tow_token
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class LanguageCode(Enum):

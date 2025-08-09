@@ -10,14 +10,9 @@ Downloads Korean evaluation datasets for TOW Option 2 project:
 - KoCoNovel - Korean story corpus for ToW augmentation
 """
 
-import os
-import sys
 import json
-import requests
 from pathlib import Path
 from huggingface_hub import snapshot_download
-import zipfile
-import tarfile
 
 class KoreanDatasetDownloader:
     """Download and setup Korean evaluation datasets"""
@@ -146,12 +141,11 @@ class KoreanDatasetDownloader:
         print("[DOWNLOAD] Korean story corpus...")
         
         try:
-            # Try to download KoCoNovel or similar Korean story dataset
+            # Download KoCoNovel dataset (Korean story corpus)
             snapshot_download(
-                repo_id="EleutherAI/polyglot-ko-1.3b",  # Has Korean text
-                local_dir=self.stories_dir / "polyglot-ko",
-                repo_type="model",
-                allow_patterns=["*.txt", "*.json"]  # Only text files
+                repo_id="beomi/KoCoNovel",
+                local_dir=self.stories_dir / "KoCoNovel",
+                repo_type="dataset"
             )
             print("[SUCCESS] Korean stories downloaded")
             return True

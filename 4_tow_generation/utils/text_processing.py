@@ -12,9 +12,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Union, Any
 from collections import Counter
 
-from .logger import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def clean_text(
@@ -631,3 +629,54 @@ def sanitize_tow_token(token: str, fallback: str = "Contextual reasoning applied
 
     inner_clean = enforce_english_text(inner, allow_punctuation=True, collapse_whitespace=True, fallback=fallback)
     return f"<ToW>{inner_clean}</ToW>"
+
+
+def count_tow_tokens(text: str) -> int:
+    """Count the number of ToW tokens in text."""
+    if not text:
+        return 0
+    return len(re.findall(r"<ToW>.*?</ToW>", text, flags=re.DOTALL))
+
+
+def extract_tow_tokens(text: str) -> List[str]:
+    """Extract all ToW tokens from text."""
+    if not text:
+        return []
+    return re.findall(r"<ToW>.*?</ToW>", text, flags=re.DOTALL)
+
+
+def remove_tow_tokens(text: str) -> str:
+    """Remove all ToW tokens from text."""
+    if not text:
+        return text
+    return re.sub(r"<ToW>.*?</ToW>", "", text, flags=re.DOTALL)
+
+
+def get_tow_inner_content(token: str) -> str:
+    """Extract inner content from ToW token."""
+    if not token:
+        return ""
+    match = re.search(r"<ToW>(.*?)</ToW>", token, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def validate_english_only_tow(text: str) -> Dict[str, Union[bool, List[str]]]:
+    """Validate that all ToW tokens contain English-only content."""
+    tokens = extract_tow_tokens(text)
+    
+    result = {
+        "valid": True,
+        "total_tokens": len(tokens),
+        "valid_tokens": 0,
+        "invalid_tokens": []
+    }
+    
+    for token in tokens:
+        inner = get_tow_inner_content(token)
+        if is_english_text(inner):
+            result["valid_tokens"] += 1
+        else:
+            result["invalid_tokens"].append(token)
+            result["valid"] = False
+    
+    return result

@@ -55,10 +55,23 @@ data:
 
 # Model Configuration
 models:
-  primary: "deepseek-r1-70b"
-  fallback: "qwen2.5-7b-instruct"
+  # ToW Generation Models (separate from training models)
+  tow_generation:
+    primary: "gpt-oss-120b"      # Best quality, requires 80GB+ GPU
+    fallback: "gpt-oss-20b"     # Good quality, requires 16GB+ GPU
+    
+  # Training Target Models (models that will be trained with ToW data)  
+  training_targets:
+    - "deepseek-r1-distill-qwen-7b"   # Primary training model
+    - "qwen2.5-7b-instruct"           # Secondary training model
   
-  # Model-specific settings
+  # Model-specific settings for GPT-OSS (ToW generation)
+  gpt_oss:
+    max_tokens: 2048
+    temperature: 0.7
+    top_p: 0.9
+    
+  # Training target model settings
   deepseek:
     max_tokens: 2048
     temperature: 0.7

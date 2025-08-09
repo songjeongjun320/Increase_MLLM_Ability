@@ -1,51 +1,333 @@
-# Research Overview: Enhancing Non-English Accuracy in LLMs through Thoughts of Words (ToW)
+# Increase MLLM Ability - TOW (Thoughts of Words) Implementation
 
-## 1. Introduction
-This research addresses the challenges posed by **English-centric bias** in large language models (LLMs). The core idea is to improve the **accuracy of non-English language models** through a novel approach called **Thoughts of Words (ToW)**. This method uses English as an intermediary to enhance reasoning and improve the quality of output in languages other than English.
+## Overview
 
-## 2. Current Challenges in LLMs
+This repository implements **Option 2: Pure Original TOW Implementation** for enhancing Korean multilingual large language models through cross-lingual reasoning.
 
-### English-Centric Bias
-- LLMs are predominantly trained on English datasets, creating an **English language bias** that impacts the performance in other languages. This leads to significant gaps in understanding and generating text in non-English languages.
-- Users interacting with LLMs in languages other than English often receive **less accurate and relevant outputs**.
+### Key Features
 
-### Accuracy Disparities
-- There is a notable **performance gap** between English and non-English outputs, which exacerbates the existing **AI divide**. The difference in language capabilities leads to inequities, especially for linguistically diverse communities. 
-- Addressing this issue is critical for ensuring **equitable access to AI benefits** globally.
+- **Cross-lingual TOW Approach**: Korean stories processed with English-only reasoning in `<ToW>...</ToW>` tokens
+- **Data Augmentation Pipeline**: Converts Korean story corpus into TOW-enhanced training data  
+- **Token Classification System**: Categorizes words as trivial/exact/soft/unpredictable
+- **Comprehensive Evaluation**: KMMLU, KLUE (8 tasks), and EN→KR translation benchmarks
+- **Before/After Comparison**: Proves TOW effectiveness through quantitative analysis
+- **Zhikun et al. (2024) Methodology**: Official ToW paper implementation with 5-shot prompting
 
-## 3. The ToW Approach: Leveraging English for Multilingual Accuracy
+## Implementation Workflow
 
-### Using English as a Cognitive Intermediary
-- The approach proposes using **English-based cognitive processing** during the reasoning phase, referred to as **Thoughts of Words (ToW)**.
-- This intermediary step allows the model to harness its **strong English capabilities** to **enhance output generation in non-English languages**.
+```
+Korean Story Input → GPT-OSS Model → English ToW Generation → Enhanced Korean Output
+```
 
-### How ToW Works
-- **ToW mechanism**: During reasoning, the model generates intermediate "thought tokens" in English that simplify complex reasoning processes. These tokens serve as a **cognitive bridge**, refining the processing of information before generating output in the target language.
-- This mechanism aims to clarify and improve **comprehension and generation in non-English languages** by creating a clearer cognitive pathway.
+### Example TOW Flow
 
-## 4. Data Collection and Model Training Strategy
+```python
+# Input Korean text
+korean_input = "브루스 리는 쿵푸 영화의 전설적인 인물이다. 그는 홍콩에서 태어나 무술을"
 
-### Data Augmentation with ToW
-- **Data collection** involves leveraging existing parallel corpora (e.g., English ↔ Korean) and augmenting them with **ToW**. This ensures that language models can effectively bridge English reasoning to other languages.
-- **ToW generation** will involve creating new datasets through **self-generated tokens**, ensuring efficient learning and language transition.
+# Generated output with English TOW
+output = """브루스 리는 쿵푸 영화의 전설적인 인물이다. 그는 홍콩에서 태어나 무술을 <ToW>Given the context about Bruce Lee being a legendary figure in kung fu movies and being born in Hong Kong, the next word should logically be about learning martial arts, which is '배웠다' (learned).</ToW> 배웠다."""
+```
 
-### Using Open-Source Models
-- Open-source models like **DeepSeek, Llama, and Qwen (70B)** will be leveraged for **cost-efficient training**. This eliminates the need for expensive API integrations, making it accessible for widespread use.
-- These models will be trained and fine-tuned using **large-scale parallel datasets** and ToW-enhanced data.
+## Project Structure
 
-## 5. Implementation and Fine-Tuning
+```
+├── 1_models/                    # Model downloads and storage
+│   ├── download_gpt_oss_20b.py     # GPT-OSS-20B for ToW generation (16GB GPU)
+│   ├── download_gpt_oss_120b.py    # GPT-OSS-120B for ToW generation (80GB GPU)
+│   ├── download_deepseek_r1_distill_qwen_7b.py  # Base model for training
+│   └── download_qwen25_7b_instruct.py           # Base model for training
+│
+├── 2_datasets/                  # Evaluation and training datasets
+│   ├── download_korean_datasets.py # Korean benchmarks downloader
+│   ├── benchmarks/              # KMMLU, KLUE, translation data
+│   └── korean_stories/          # Korean story corpus for ToW augmentation
+│
+├── 3_evaluation/                # Evaluation and comparison
+│   ├── baseline_evaluation.py   # Zero-shot baseline evaluation
+│   └── compare_baseline_vs_tow.py # Before/after comparison with statistical analysis
+│
+├── 4_tow_generation/            # ToW data generation
+│   ├── korean_tow_generator.py  # Main ToW generation pipeline using GPT-OSS
+│   ├── tow_prompt_generator.py  # Zhikun et al. (2024) 5-shot methodology
+│   └── utils/
+│       └── text_processing.py   # English enforcement utilities
+│
+├── 5_training/                  # Model training with ToW
+│   └── finetune_with_tow.py     # Fine-tune base models with ToW-augmented data
+│
+├── 6_results/                   # Results and analysis
+│   ├── baseline/                # Baseline evaluation results
+│   ├── tow_training/            # ToW training results  
+│   └── comparison/              # Before/after comparison analysis
+│
+├── tow_architecture/            # Core TOW architecture
+│   ├── core/
+│   │   ├── cross_lingual_tow.py # Cross-lingual ToW implementation
+│   │   └── tow_engine.py        # Main ToW engine
+│   ├── models/
+│   │   └── model_factory.py     # Model loading and management
+│   └── utils/
+│       └── __init__.py          # Utility functions
+│
+├── config_option2.yaml          # Unified configuration for Option 2
+├── run_full_workflow.py         # Complete workflow execution script
+└── README.md                    # This file
+```
 
-- The **training methodology** will focus on **fine-tuning** large-scale models using augmented datasets generated with ToW.
-- By implementing **continuous learning** and **active data augmentation**, the goal is to reduce the performance gap between languages without incurring significant costs.
+## Quick Start
 
-## 6. Benchmarks for Evaluation
+### 1. Full Automated Workflow
 
-### Zero-Shot Testing
-- The models will undergo **zero-shot testing** on multiple **multilingual tasks**, focusing on Korean, Chinese, and other target languages.
-- Evaluation metrics will include **BLEU scores** for translation and **BERT Scores** for linguistic accuracy.
+```bash
+# Check GPU compatibility first
+python run_full_workflow.py --gpu-check
 
-### Human Evaluation
-- To ensure real-world effectiveness, **human evaluation** will be conducted to assess the contextual accuracy and relevance of the generated outputs.
+# Run complete TOW Option 2 workflow
+python run_full_workflow.py --all
 
-## 7. Conclusion and Hypothesis
-By applying **ToW** for multilingual AI tasks, this research aims to **enhance the inclusivity and accuracy** of LLMs in non-English languages. This model can **bridge the AI divide**, ensuring more **equitable access** to high-quality AI-powered services worldwide.
+# Or run individual phases
+python run_full_workflow.py --setup         # Download models and data
+python run_full_workflow.py --baseline      # Run baseline evaluation  
+python run_full_workflow.py --generate-tow  # Generate ToW data
+python run_full_workflow.py --train         # Train with ToW
+python run_full_workflow.py --evaluate      # Final comparison
+```
+
+### 2. Manual Step-by-Step Execution
+
+#### Phase 1: Model and Data Setup
+```bash
+# Download GPT-OSS for ToW generation (choose based on your GPU)
+cd 1_models/
+
+# For 16GB+ GPU (GTX 4090, RTX 3090, A100 40GB)
+python download_gpt_oss_20b.py    
+
+# For 80GB+ GPU (H100, A100 80GB) - best quality
+python download_gpt_oss_120b.py   
+
+# Download base models for training (separate from ToW generation models)
+python download_deepseek_r1_distill_qwen_7b.py
+python download_qwen25_7b_instruct.py
+
+# Download Korean evaluation datasets
+cd ../2_datasets/
+python download_korean_datasets.py
+```
+
+#### Phase 2: Baseline Evaluation
+```bash
+cd ../3_evaluation/
+python baseline_evaluation.py --all-models
+# Saves results to: ../6_results/baseline/
+```
+
+#### Phase 3: ToW Data Generation  
+```bash
+cd ../4_tow_generation/
+
+# Test ToW prompt generation
+python tow_prompt_generator.py
+
+# Generate ToW-augmented training data using GPT-OSS
+python korean_tow_generator.py --batch --output ../2_datasets/tow_training_data.jsonl
+```
+
+#### Phase 4: Model Training with ToW
+```bash
+cd ../5_training/
+python finetune_with_tow.py --all-models
+# Trains: DeepSeek-R1-Distill-Qwen-7B, Qwen2.5-7B-Instruct
+```
+
+#### Phase 5: Evaluation and Comparison
+```bash
+cd ../3_evaluation/
+python compare_baseline_vs_tow.py --generate-report
+# Generates comprehensive comparison in ../6_results/comparison/
+```
+
+## Technical Implementation
+
+### ToW Generation Process (Following Zhikun et al. 2024)
+
+1. **5-Shot Prompting**: Uses 5 Korean→English ToW examples for context
+2. **English-Only Constraint**: All reasoning in `<ToW>` tokens must be English
+3. **Word Categorization**: Categorizes predicted words as:
+   - **Trivial**: Common function words (은, 는, 이, 가, the, and)
+   - **Exact**: Proper nouns, numbers, quoted text
+   - **Soft**: Semantically consistent words requiring context
+   - **Unpredictable**: Words requiring complex reasoning
+4. **Quality Validation**: Checks English compliance and reasoning quality
+5. **Cohen's Kappa**: Quality assessment following paper methodology
+
+### Model Separation Strategy
+
+- **ToW Generation Models**: GPT-OSS-20B/120B (OpenAI's open-source models)
+- **Training Target Models**: DeepSeek-R1-Distill-Qwen-7B, Qwen2.5-7B-Instruct
+- **Workflow**: GPT-OSS generates ToW data → Base models trained with ToW data → Compare performance
+
+### Key Configuration (config_option2.yaml)
+
+```yaml
+tow_settings:
+  enforce_english_only: true
+  cross_lingual_target: "en"
+  generation_model_preference: ["gpt-oss-120b", "gpt-oss-20b"]
+  training_models: ["deepseek-r1-qwen-7b", "qwen25-7b-instruct"]
+  word_categories: ["trivial", "exact", "soft", "unpredictable"]
+
+methodology:
+  paper_reference: "Zhikun et al. (2024) Thoughts of Words"
+  prompt_shots: 5
+  validation_metrics: ["english_compliance", "reasoning_quality", "cohen_kappa"]
+
+evaluation:
+  benchmarks: ["KMMLU", "KLUE", "translation"]
+  klue_tasks: ["TC", "STS", "NLI", "NER", "RE", "DP", "MRC", "DST"]
+  baseline_comparison: true
+  
+training:
+  batch_size: 4
+  learning_rate: 2e-5
+  epochs: 3
+  tow_data_ratio: 0.3
+```
+
+## System Requirements
+
+### For GPT-OSS-20B (Recommended)
+- **GPU**: 16GB+ VRAM (RTX 4090, RTX 3090, A100 40GB)
+- **RAM**: 32GB+ system memory
+- **Storage**: 100GB+ free disk space
+- **CUDA**: Compatible GPU with CUDA support
+
+### For GPT-OSS-120B (High-end, Best Quality)
+- **GPU**: 80GB+ VRAM (H100, A100 80GB, or multi-GPU setup)
+- **RAM**: 128GB+ system memory recommended
+- **Storage**: 300GB+ free disk space  
+- **Network**: High-speed internet for 240GB model download
+
+### Check Compatibility
+```bash
+# Check system compatibility for both models
+python run_full_workflow.py --gpu-check
+
+# Individual model checks
+cd 1_models/
+python download_gpt_oss_20b.py --info
+python download_gpt_oss_120b.py --check
+```
+
+## Results and Analysis
+
+Results are automatically saved in `6_results/` with structured directories:
+
+### Baseline Results (`6_results/baseline/`)
+- Zero-shot performance on KMMLU, KLUE (8 tasks), translation
+- Model-specific performance metrics
+- Detailed evaluation logs
+
+### ToW Training Results (`6_results/tow_training/`)  
+- ToW data generation statistics
+- Training loss curves and metrics
+- Model checkpoint information
+
+### Comparison Analysis (`6_results/comparison/`)
+- **Statistical Analysis**: T-tests, effect sizes, confidence intervals
+- **Performance Improvements**: Task-specific and overall improvements
+- **Visualizations**: Performance comparison charts
+- **Detailed Report**: Comprehensive analysis with recommendations
+
+### Example Results Structure
+```
+6_results/
+├── baseline/
+│   ├── deepseek_r1_qwen_7b_results.json
+│   ├── qwen25_7b_results.json
+│   └── baseline_summary.json
+├── tow_training/
+│   ├── tow_generation_stats.json
+│   ├── training_metrics.json  
+│   └── model_checkpoints/
+└── comparison/
+    ├── performance_comparison.json
+    ├── statistical_analysis.json
+    ├── improvement_visualization.png
+    └── final_report.html
+```
+
+## Research Foundation and Methodology
+
+This implementation strictly follows:
+
+- **Zhikun et al. (2024)**: "Thoughts of Words: Exploring the Realm of Next-Word Prediction"
+- **5-Shot Methodology**: Official prompt structure from the paper
+- **Validation Framework**: Cohen's Kappa, quality scoring, categorization system
+- **Option 2 Approach**: Cross-lingual reasoning (Korean context → English reasoning → Korean output)
+- **Korean Language Focus**: Comprehensive evaluation on Korean language understanding tasks
+
+### Key Papers and References
+
+1. **Primary**: Zhikun et al. (2024) - Thoughts of Words methodology
+2. **KMMLU**: Korean Massive Multitask Language Understanding
+3. **KLUE**: Korean Language Understanding Evaluation benchmark
+4. **Cross-lingual Transfer**: Multilingual reasoning and transfer learning
+
+## Troubleshooting
+
+### Common Issues
+
+1. **GPU Memory Error**: Use GPT-OSS-20B instead of 120B, or enable CPU offloading
+2. **Download Timeout**: Resume interrupted downloads (scripts support resuming)
+3. **CUDA Not Found**: Install CUDA toolkit compatible with PyTorch
+4. **Korean Text Encoding**: Ensure UTF-8 encoding in all text processing
+
+### Debug Mode
+```bash
+# Run with detailed logging
+python run_full_workflow.py --all 2>&1 | tee workflow_debug.log
+
+# Test individual components
+cd 4_tow_generation/
+python tow_prompt_generator.py  # Test prompt generation
+python korean_tow_generator.py --test  # Test ToW generation
+```
+
+## Citation
+
+```bibtex
+@misc{tow-option2-korean-2024,
+  title={TOW Option 2: Cross-lingual Thoughts of Words Implementation for Korean Language Models},
+  author={TOW Research Team},
+  year={2024},
+  note={Implementation of Zhikun et al. ToW methodology with Korean language focus},
+  url={https://github.com/your-repo/tow-korean}
+}
+
+@article{zhikun2024thoughts,
+  title={Thoughts of Words: Exploring the Realm of Next-Word Prediction},
+  author={Zhikun et al.},
+  journal={arXiv preprint arXiv:2410.16235},
+  year={2024}
+}
+```
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+**Last Updated**: January 2025  
+**Project Status**: Complete implementation ready for execution  
+**Methodology**: Zhikun et al. (2024) ToW with Korean language specialization

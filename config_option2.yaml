@@ -1,0 +1,109 @@
+# Option 2: Pure Original TOW Implementation Configuration
+# Cross-lingual approach with English-only TOW tokens
+
+# Core TOW Settings
+tow:
+  format_version: "Option2"
+  enforce_english_only: true
+  max_token_length: 200
+  sanitize_non_ascii: true
+  default_fallback: "Contextual reasoning applied."
+  
+  # Token Classification Categories
+  classification:
+    trivial:
+      enabled: true
+      frequency_threshold: 0.01
+      function_words: ["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"]
+    
+    exact_match:
+      enabled: true
+      confidence_threshold: 0.9
+      
+    soft_consistent:
+      enabled: true
+      similarity_threshold: 0.7
+      
+    unpredictable:
+      enabled: true
+      context_window: 10
+
+# Cross-Lingual Settings
+cross_lingual:
+  source_languages: ["ko", "zh", "ja", "en"]
+  target_language: "en"  # TOW tokens always in English
+  auto_detect: true
+  
+  # Language-specific reasoning templates
+  reasoning_templates:
+    cultural_context: true
+    linguistic_patterns: true
+    domain_adaptation: true
+
+# Data Processing
+data:
+  batch_size: 1000
+  num_workers: 4
+  max_sentence_length: 512
+  validation_split: 0.1
+  
+  # Output formats
+  output:
+    format: "jsonl"
+    include_metadata: true
+    include_statistics: true
+
+# Model Configuration
+models:
+  primary: "deepseek-r1-70b"
+  fallback: "qwen2.5-7b-instruct"
+  
+  # Model-specific settings
+  deepseek:
+    max_tokens: 2048
+    temperature: 0.7
+    top_p: 0.9
+    
+  qwen:
+    max_tokens: 2048
+    temperature: 0.7
+    top_p: 0.9
+
+# Training Dataset Settings
+dataset:
+  # Core datasets for Option 2
+  sources:
+    - "c4_openwebmath"
+    - "mmlu_multilingual"
+    - "korean_parallel_corpus"
+    
+  augmentation:
+    enabled: true
+    tow_insertion_rate: 0.3
+    quality_filter: true
+    deduplication: true
+
+# Evaluation Settings  
+evaluation:
+  benchmarks:
+    - "klue"
+    - "mmlu"
+    - "translation_quality"
+    
+  metrics:
+    - "bleu_score"
+    - "bert_score"
+    - "tow_compliance_rate"
+    - "english_enforcement_rate"
+
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  log_tow_violations: true
+  track_performance: true
+  
+# Performance Settings
+performance:
+  cache_enabled: true
+  parallel_processing: true
+  memory_optimization: true

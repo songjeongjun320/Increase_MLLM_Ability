@@ -6,15 +6,22 @@ venv/
 
 # DB
 *.json
+*.txt
 
 # Model
 Base_Models/
+base_models/
+gpt_oss/
 Llama3:1_8B_Instruct/
 DeepSeek_R1_Distill_Llama_70B/
 DeepSeek_R1_0528_Qwen3_8B/
+deepseek-r1-distill-qwen-7b/
+Qwen2.5-7B-Instruct_downloaded/
 
 # KLUE Datas
 klue_all_tasks_json/
+benchmarks/
+korean_stories/
 
 # KLUE Models
 Evaluation/

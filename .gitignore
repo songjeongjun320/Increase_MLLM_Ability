@@ -22,6 +22,7 @@ Qwen2.5-7B-Instruct_downloaded/
 klue_all_tasks_json/
 benchmarks/
 korean_stories/
+koconovel/
 
 # KLUE Models
 Evaluation/

@@ -1,0 +1,122 @@
+# Core dependencies for Thoughts of Words (ToW) Architecture
+# Python 3.8+ required
+
+# Deep Learning Framework
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Transformers and NLP
+transformers>=4.30.0
+accelerate>=0.20.0
+tokenizers>=0.13.0
+datasets>=2.10.0
+evaluate>=0.4.0
+
+# Model Optimization
+bitsandbytes>=0.39.0
+peft>=0.4.0
+flash-attn>=2.0.0  # Optional, for performance
+
+# Scientific Computing
+numpy>=1.21.0
+scipy>=1.7.0
+scikit-learn>=1.0.0
+pandas>=1.3.0
+
+# Text Processing and NLP
+nltk>=3.7
+spacy>=3.4.0
+langdetect>=1.0.9
+regex>=2022.7.9
+
+# Evaluation Metrics
+sacrebleu>=2.0.0
+rouge-score>=0.1.0
+bert-score>=0.3.10
+
+# Configuration and Utilities
+PyYAML>=6.0
+toml>=0.10.2
+omegaconf>=2.2.0
+hydra-core>=1.2.0
+
+# Logging and Monitoring
+wandb>=0.13.0  # Optional, for experiment tracking
+tensorboard>=2.9.0
+rich>=12.0.0  # For better console output
+
+# Data Processing
+pillow>=9.0.0
+librosa>=0.9.0  # For audio processing if needed
+opencv-python>=4.6.0  # For image processing if needed
+
+# Web and API
+requests>=2.28.0
+httpx>=0.23.0
+fastapi>=0.85.0  # For serving APIs
+uvicorn>=0.18.0  # ASGI server
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=3.0.0
+pytest-mock>=3.8.0
+
+# Code Quality
+black>=22.0.0
+isort>=5.10.0
+flake8>=5.0.0
+mypy>=0.961
+
+# Jupyter and Development
+jupyter>=1.0.0
+notebook>=6.4.0
+ipywidgets>=8.0.0
+
+# MLOps and Experiment Tracking
+mlflow>=2.0.0
+optuna>=3.0.0
+prometheus-client>=0.14.0
+
+# Optional dependencies for specific models
+# deepspeed>=0.9.0  # For distributed training
+# apex  # For mixed precision (NVIDIA)
+
+# Language-specific dependencies
+# For Chinese text processing
+jieba>=0.42.1
+pypinyin>=0.47.0
+
+# For Korean text processing  
+konlpy>=0.6.0
+kss>=4.0.0
+
+# For Japanese text processing
+mecab-python3>=1.0.4
+fugashi>=1.2.0
+
+# Production deployment
+gunicorn>=20.1.0
+docker>=6.0.0
+kubernetes>=24.2.0
+
+# Database (optional)
+sqlalchemy>=1.4.0
+# psycopg2-binary>=2.9.0
+# pymongo>=4.0.0
+
+# Progress bars and visualization
+tqdm>=4.64.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.10.0
+
+# Additional utilities
+click>=8.0.0  # For CLI tools
+pathlib2>=2.3.0  # Python 3.4+ backport
+typing-extensions>=4.0.0
+
+# Cloud providers (optional)
+# boto3>=1.24.0  # AWS
+# google-cloud-storage>=2.5.0  # GCP
+# azure-storage-blob>=12.13.0  # Azure

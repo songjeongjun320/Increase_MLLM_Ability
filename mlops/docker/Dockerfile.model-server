@@ -1,0 +1,112 @@
+# ToW Model Server Dockerfile
+# Multi-stage build for optimized production image
+
+# Stage 1: Build environment
+FROM nvidia/cuda:12.1-devel-ubuntu22.04 as builder
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    python3.10-venv \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python3.10 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install PyTorch with CUDA support
+RUN pip install --no-cache-dir torch==2.1.0+cu121 torchvision==0.16.0+cu121 torchaudio==2.1.0+cu121 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# Copy requirements and install Python dependencies
+COPY requirements-mlops.txt /tmp/requirements-mlops.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-mlops.txt
+
+# Install additional ML packages
+RUN pip install --no-cache-dir \
+    flash-attn==2.3.3 \
+    bitsandbytes==0.41.3 \
+    peft==0.6.2 \
+    accelerate==0.24.1
+
+# Stage 2: Production runtime
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3.10-distutils \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create application directory
+WORKDIR /app
+
+# Create non-root user for security
+RUN groupadd -r tow && useradd -r -g tow tow
+
+# Copy application code
+COPY mlops/ /app/mlops/
+COPY tow_architecture/ /app/tow_architecture/
+COPY requirements.txt /app/
+COPY examples/ /app/examples/
+
+# Install the ToW package
+RUN pip install -e .
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/models /app/data /app/monitoring_charts && \
+    chown -R tow:tow /app
+
+# Copy startup script
+COPY mlops/docker/scripts/start-model-server.sh /app/start-model-server.sh
+RUN chmod +x /app/start-model-server.sh && chown tow:tow /app/start-model-server.sh
+
+# Switch to non-root user
+USER tow
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Set default environment variables
+ENV MLOPS_ENV=production
+ENV MODEL_SERVER_PORT=8000
+ENV MODEL_SERVER_HOST=0.0.0.0
+ENV MODEL_SERVER_WORKERS=4
+
+# Start command
+CMD ["/app/start-model-server.sh"]

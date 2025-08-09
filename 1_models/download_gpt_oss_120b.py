@@ -33,8 +33,8 @@ def check_system_requirements():
     
     # Check GPU memory
     gpu_sufficient = False
+    total_gpu_memory = 0  # Initialize before conditional to avoid NameError
     if torch.cuda.is_available():
-        total_gpu_memory = 0
         gpu_count = torch.cuda.device_count()
         
         for i in range(gpu_count):
@@ -277,7 +277,13 @@ if __name__ == "__main__":
         print(f"   GPU: {'✓' if requirements['gpu_sufficient'] else '✗'}")
         print(f"   Disk: {'✓' if requirements['disk_sufficient'] else '✗'}")
         
-        if all(requirements.values()):
+        # Check only boolean requirements (exclude total_gpu_memory which is numeric)
+        boolean_requirements = [
+            requirements['ram_sufficient'],
+            requirements['gpu_sufficient'], 
+            requirements['disk_sufficient']
+        ]
+        if all(boolean_requirements):
             print("[RESULT] ✓ System ready for GPT-OSS-120B")
         else:
             print("[RESULT] ✗ System may struggle with GPT-OSS-120B")

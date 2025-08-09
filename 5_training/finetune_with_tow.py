@@ -40,10 +40,19 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-# Import from 4_tow_generation utils (direct path)
-tow_utils_path = project_root / "4_tow_generation"
-sys.path.insert(0, str(tow_utils_path))
-from utils.text_processing import validate_tow_token_format, count_tow_tokens
+# Import from 4_tow_generation utils (using project root path)
+sys.path.insert(0, str(project_root / "4_tow_generation"))
+try:
+    from utils.text_processing import validate_tow_token_format, count_tow_tokens
+except ImportError:
+    # Fallback: create minimal functions if import fails
+    def validate_tow_token_format(text: str) -> bool:
+        import re
+        return bool(re.search(r'<ToW>.*?</ToW>', text))
+    
+    def count_tow_tokens(text: str) -> int:
+        import re
+        return len(re.findall(r'<ToW>.*?</ToW>', text))
 
 @dataclass
 class ModelTrainingConfig:

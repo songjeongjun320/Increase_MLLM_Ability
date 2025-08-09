@@ -65,7 +65,7 @@ class CrossLingualTOWSystem:
     
     def __init__(
         self,
-        model_adapter: BaseModelAdapter,
+        model_adapter: Any = None,  # Generic model adapter interface
         default_language: str = "ko"
     ):
         """

@@ -24,7 +24,7 @@ import torch
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from .utils.text_processing import enforce_english_text, sanitize_tow_token
+from utils.text_processing import enforce_english_text, sanitize_tow_token
 
 @dataclass
 class KoreanStoryEntry:

@@ -11,6 +11,9 @@ Downloads Korean evaluation datasets for TOW Option 2 project:
 """
 
 import json
+import requests
+import zipfile
+import os
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
@@ -136,24 +139,112 @@ class KoreanDatasetDownloader:
         
         print(f"[SUCCESS] Sample translation data created: {translation_dir}")
     
+    def _download_koconovel_from_github(self):
+        """Download complete KoCoNovel dataset from GitHub repository"""
+        print("[DOWNLOAD] Downloading full KoCoNovel dataset from GitHub...")
+        
+        try:
+            # GitHub repository URL
+            github_url = "https://github.com/storidient/KoCoNovel"
+            github_api_url = "https://api.github.com/repos/storidient/KoCoNovel/contents/data"
+            
+            koconovel_dir = self.stories_dir / "KoCoNovel_GitHub"
+            koconovel_dir.mkdir(exist_ok=True)
+            
+            # Get list of files in the data directory
+            print("[INFO] Fetching file list from GitHub API...")
+            response = requests.get(github_api_url, timeout=30)
+            
+            if response.status_code != 200:
+                print(f"[ERROR] GitHub API request failed: {response.status_code}")
+                return False
+            
+            files_info = response.json()
+            
+            # Download each data file
+            downloaded_count = 0
+            total_files = len(files_info)
+            
+            print(f"[INFO] Found {total_files} files in the data directory")
+            
+            for file_info in files_info:
+                if file_info['type'] == 'file':
+                    file_name = file_info['name']
+                    download_url = file_info['download_url']
+                    
+                    print(f"[DOWNLOAD] {file_name}...")
+                    
+                    try:
+                        file_response = requests.get(download_url, timeout=60)
+                        if file_response.status_code == 200:
+                            file_path = koconovel_dir / file_name
+                            
+                            # Handle different file types
+                            if file_name.endswith('.json'):
+                                with open(file_path, 'w', encoding='utf-8') as f:
+                                    f.write(file_response.text)
+                            else:
+                                with open(file_path, 'wb') as f:
+                                    f.write(file_response.content)
+                            
+                            downloaded_count += 1
+                            print(f"[SUCCESS] {file_name} downloaded ({file_response.headers.get('content-length', 'unknown')} bytes)")
+                        else:
+                            print(f"[ERROR] Failed to download {file_name}: HTTP {file_response.status_code}")
+                    
+                    except Exception as e:
+                        print(f"[ERROR] Failed to download {file_name}: {e}")
+            
+            print(f"[SUMMARY] Downloaded {downloaded_count}/{total_files} files from GitHub")
+            
+            if downloaded_count > 0:
+                # Create metadata file
+                metadata = {
+                    "source": "https://github.com/storidient/KoCoNovel",
+                    "download_date": str(Path().cwd()),
+                    "files_downloaded": downloaded_count,
+                    "total_files": total_files,
+                    "description": "Complete KoCoNovel dataset from GitHub repository"
+                }
+                
+                with open(koconovel_dir / "metadata.json", 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, ensure_ascii=False, indent=2)
+                
+                print(f"[SUCCESS] Complete KoCoNovel dataset downloaded to: {koconovel_dir}")
+                return True
+            else:
+                print("[ERROR] No files were successfully downloaded")
+                return False
+                
+        except Exception as e:
+            print(f"[ERROR] Failed to download KoCoNovel from GitHub: {e}")
+            return False
+    
     def download_korean_stories(self):
         """Download Korean story corpus for ToW augmentation"""
         print("[DOWNLOAD] Korean story corpus...")
         
+        # Try to download full KoCoNovel dataset from GitHub
+        github_success = self._download_koconovel_from_github()
+        
+        if github_success:
+            return True
+        
+        # Fallback to Hugging Face
         try:
-            # Download KoCoNovel dataset (Korean story corpus)
+            print("[FALLBACK] Trying Hugging Face download...")
             snapshot_download(
                 repo_id="beomi/KoCoNovel",
                 local_dir=self.stories_dir / "KoCoNovel",
                 repo_type="dataset"
             )
-            print("[SUCCESS] Korean stories downloaded")
+            print("[SUCCESS] Korean stories downloaded from Hugging Face")
             return True
             
         except Exception as e:
-            print(f"[ERROR] Failed to download Korean stories: {e}")
+            print(f"[ERROR] Failed to download Korean stories from Hugging Face: {e}")
             
-            # Fallback: create sample Korean stories
+            # Final fallback: create sample Korean stories
             self._create_sample_korean_stories()
             return True
     

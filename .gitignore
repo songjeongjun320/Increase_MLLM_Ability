@@ -34,4 +34,6 @@ klue_nli_results/
 klue_re_results/
 klue_sts_results/
 klue_tc_results/
- 
+
+
+__pycache__

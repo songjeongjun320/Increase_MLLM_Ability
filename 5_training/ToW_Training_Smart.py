@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-ToW Training with Smart Text Handling
+ToW Training with Smart Text Handling - Fixed Version
+- Fixed batch_size mismatch error
 - Adaptive max length based on data analysis
 - ToW token preservation
 - Smart chunking for long texts
@@ -9,6 +10,7 @@ ToW Training with Smart Text Handling
 import os
 import json
 import torch
+from torch.utils.data import DataLoader
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple
@@ -18,7 +20,7 @@ from datetime import datetime
 
 import transformers
 from transformers import (
-    AutoTokenizer, AutoModelForCausalLM,
+    AutoTokenizer, AutoModelForCausalLM, DataCollatorWithPadding,
     TrainingArguments, Trainer, DataCollatorForLanguageModeling,
     EarlyStoppingCallback
 )
@@ -30,6 +32,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+
+class CustomDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
+    """Custom data collator that ensures input_ids and labels have the same size"""
+    
+    def __call__(self, features, return_tensors=None):
+        # 먼저 부모 클래스의 __call__ 메서드를 호출
+        batch = super().__call__(features, return_tensors=return_tensors)
+        
+        # input_ids와 labels의 크기를 동일하게 맞춤
+        if 'labels' in batch and 'input_ids' in batch:
+            # labels를 input_ids와 동일한 크기로 만듦
+            batch['labels'] = batch['input_ids'].clone()
+        
+        return batch
+
+
+class ToWTrainerWithPinMemory(Trainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get_train_dataloader(self) -> DataLoader:
+        """Override to set pin_memory=True for the train dataloader"""
+        train_dataloader = super().get_train_dataloader()
+        
+        if hasattr(train_dataloader, 'pin_memory'):
+            train_dataloader.pin_memory = True
+            
+        return train_dataloader
+
+    def get_eval_dataloader(self, eval_dataset=None) -> DataLoader:
+        """Override to set pin_memory=True for the eval dataloader"""
+        eval_dataloader = super().get_eval_dataloader(eval_dataset)
+        
+        if hasattr(eval_dataloader, 'pin_memory'):
+            eval_dataloader.pin_memory = True
+            
+        return eval_dataloader
+
+
 @dataclass
 class ModelConfig:
     name: str
@@ -37,50 +78,52 @@ class ModelConfig:
     use_quantization: bool = False
     torch_dtype: torch.dtype = field(default=torch.float16)
 
+
 @dataclass
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
-    tow_data_path: str = "ToW_koconovel_complete.json"
+    tow_data_path: str = "ToW_koconovel_enhanced_final.json"
     output_base_dir: str = "ToW_Models"
     
     # Training hyperparameters
-    learning_rate: float = 2e-5
-    num_train_epochs: int = 3
-    per_device_train_batch_size: int = 2
-    per_device_eval_batch_size: int = 4
-    gradient_accumulation_steps: int = 8
+    learning_rate: float = 1e-5
+    num_train_epochs: int = 10
+    per_device_train_batch_size: int = 1
+    per_device_eval_batch_size: int = 2
+    gradient_accumulation_steps: int = 16
     
     # Smart text handling
-    adaptive_max_length: bool = True  # 데이터에 맞춰 최대 길이 조정
-    preserve_tow_tokens: bool = True  # ToW 토큰 보존 우선
-    enable_chunking: bool = True      # 긴 텍스트 청킹 활성화
-    min_chunk_overlap: int = 50       # 청크간 겹치는 토큰 수
+    adaptive_max_length: bool = True
+    preserve_tow_tokens: bool = True
+    enable_chunking: bool = True
+    min_chunk_overlap: int = 50
     
     # Default settings
-    max_sequence_length: int = 1024   # 기본값, 적응형으로 조정됨
+    max_sequence_length: int = 1024
     warmup_ratio: float = 0.1
-    weight_decay: float = 0.01
+    weight_decay: float = 0.1
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 200
+    eval_steps: int = 50
     save_strategy: str = "steps"
-    save_steps: int = 200
+    save_steps: int = 50
     logging_steps: int = 50
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.001
     dataloader_num_workers: int = 0
-    remove_unused_columns: bool = False
+    remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True
     gradient_checkpointing: bool = True
 
+
 MODEL_CONFIGS = [
-    # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-7B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        use_quantization=False
+    ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
@@ -98,6 +141,7 @@ MODEL_CONFIGS = [
     # ),
 ]
 
+
 class SmartToWDataProcessor:
     """Smart data processor with adaptive length and ToW preservation"""
     
@@ -111,8 +155,7 @@ class SmartToWDataProcessor:
         """Analyze data to determine optimal max length"""
         logger.info("Analyzing dataset lengths...")
         
-        # Sample data for analysis (use first 200 entries)
-        sample_data = [entry for entry in data[:200] if entry['tow_count'] > 0]
+        sample_data = [entry for entry in data[:-1] if entry['tow_count'] > 0]
         lengths = []
         
         for entry in tqdm(sample_data, desc="Analyzing lengths"):
@@ -122,17 +165,13 @@ class SmartToWDataProcessor:
         
         lengths = np.array(lengths)
         
-        # Statistics
         logger.info(f"Length statistics:")
         logger.info(f"  Mean: {lengths.mean():.1f} tokens")
         logger.info(f"  Median: {np.median(lengths):.1f} tokens")
         logger.info(f"  95th percentile: {np.percentile(lengths, 95):.1f} tokens")
         logger.info(f"  Max: {lengths.max()} tokens")
         
-        # Choose length that covers 95% of data
         optimal_length = int(np.percentile(lengths, 95))
-        
-        # Ensure it's reasonable (between 256 and 2048)
         optimal_length = max(256, min(optimal_length, 2048))
         
         logger.info(f"Setting adaptive max length to: {optimal_length} tokens")
@@ -152,7 +191,6 @@ class SmartToWDataProcessor:
             if tow_end == -1:
                 break
                 
-            # Convert character positions to token positions
             before_tow = text[:tow_start]
             before_tokens = len(self.tokenizer.tokenize(before_tow))
             
@@ -169,31 +207,25 @@ class SmartToWDataProcessor:
         tokens = self.tokenizer.tokenize(text)
         
         if len(tokens) <= max_length:
-            return [text]  # No truncation needed
+            return [text]
         
         if not self.config.preserve_tow_tokens:
-            # Simple truncation
             truncated_tokens = tokens[:max_length]
             return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
         
-        # Find ToW positions
         tow_positions = self.find_tow_positions(text)
         
         if not tow_positions:
-            # No ToW tokens, simple truncation
             truncated_tokens = tokens[:max_length]
             return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
         
         chunks = []
         
         if self.config.enable_chunking:
-            # Create chunks that preserve ToW tokens
             for tow_start, tow_end in tow_positions:
-                # Calculate chunk boundaries to include ToW token
                 chunk_start = max(0, tow_start - max_length // 2)
                 chunk_end = min(len(tokens), tow_end + max_length // 2)
                 
-                # Adjust if chunk is too long
                 if chunk_end - chunk_start > max_length:
                     chunk_end = chunk_start + max_length
                 
@@ -201,7 +233,6 @@ class SmartToWDataProcessor:
                 chunk_text = self.tokenizer.convert_tokens_to_string(chunk_tokens)
                 chunks.append(chunk_text)
         else:
-            # Single chunk preserving first ToW token
             tow_start, tow_end = tow_positions[0]
             chunk_start = max(0, tow_start - max_length // 2)
             chunk_end = min(len(tokens), chunk_start + max_length)
@@ -226,38 +257,51 @@ class SmartToWDataProcessor:
         """Create dataset with smart text handling"""
         logger.info("Creating training dataset with smart processing...")
         
-        # Analyze data and set adaptive max length
         if self.config.adaptive_max_length:
             optimal_length = self.analyze_data_lengths(data)
             self.config.max_sequence_length = optimal_length
         
-        # Process all entries
         formatted_texts = []
         
         for entry in tqdm(data, desc="Smart processing ToW examples"):
             if entry['tow_count'] > 0:
                 text = entry['augmented_text']
-                
-                # Smart truncation with ToW preservation
                 text_chunks = self.smart_truncate(text, self.config.max_sequence_length)
                 formatted_texts.extend(text_chunks)
         
-        # Limit dataset size for initial testing
-        formatted_texts = formatted_texts[:1000]
+        # Filter out empty strings
+        original_count = len(formatted_texts)
+        formatted_texts = [text for text in formatted_texts if text and text.strip()]
+        new_count = len(formatted_texts)
+        
+        if original_count != new_count:
+            logger.warning(f"Removed {original_count - new_count} empty strings from the dataset.")
+
         logger.info(f"Created {len(formatted_texts)} training examples (after smart processing)")
         
-        # Create and tokenize dataset
         dataset = Dataset.from_dict({'text': formatted_texts})
         
         def tokenize_function(examples):
+            # 토크나이징 시 padding을 추가하고 attention_mask도 생성
             tokenized = self.tokenizer(
                 examples['text'],
                 truncation=True,
-                padding=True,
                 max_length=self.config.max_sequence_length,
-                return_tensors=None
+                padding='max_length',  # 패딩 추가
+                return_attention_mask=True  # attention_mask 생성
             )
-            tokenized['labels'] = tokenized['input_ids'].copy()
+            
+            # labels는 input_ids의 복사본으로 설정
+            # 패딩 토큰은 -100으로 설정하여 loss 계산에서 제외
+            tokenized['labels'] = []
+            for input_ids, attention_mask in zip(tokenized['input_ids'], tokenized['attention_mask']):
+                labels = input_ids.copy()
+                # 패딩 토큰 위치를 -100으로 설정
+                for i in range(len(labels)):
+                    if attention_mask[i] == 0:
+                        labels[i] = -100
+                tokenized['labels'].append(labels)
+            
             return tokenized
         
         tokenized_dataset = dataset.map(
@@ -266,10 +310,15 @@ class SmartToWDataProcessor:
             remove_columns=['text'],
             desc="Tokenizing"
         )
-        
+
+        logger.info("Checking tokenized sample lengths...")
+        for i in range(min(5, len(tokenized_dataset))):
+            logger.info(f"Sample {i} - input_ids length: {len(tokenized_dataset[i]['input_ids'])}, "
+                       f"labels length: {len(tokenized_dataset[i]['labels'])}")
+
         return tokenized_dataset
 
-# 나머지 클래스들은 동일 (ToWTrainer, main 등)
+
 class ToWTrainer:
     """Custom trainer for ToW fine-tuning"""
     
@@ -291,8 +340,9 @@ class ToWTrainer:
 
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token_id = tokenizer.eos_token_id
 
-        # [추가] 특수 토큰을 정의하고 토크나이저에 추가
+        # Add special tokens
         special_tokens = ["<ToW>", "</ToW>"]
         new_tokens = [token for token in special_tokens if token not in tokenizer.get_vocab()]
         if new_tokens:
@@ -306,10 +356,9 @@ class ToWTrainer:
             device_map="auto" if torch.cuda.is_available() else None,
         )
 
-        # [수정] 새로운 토큰이 추가된 후의 토크나이저 길이에 맞춰 모델 임베딩 크기 조정
+        # Resize model embeddings
         model.resize_token_embeddings(len(tokenizer))
         
-        # [추가] 크기 일치 여부 확인 (디버깅 목적)
         logger.info(f"Final tokenizer vocab size: {len(tokenizer)}")
         logger.info(f"Model embedding size: {model.get_input_embeddings().weight.shape[0]}")
         assert len(tokenizer) == model.get_input_embeddings().weight.shape[0]
@@ -354,7 +403,6 @@ class ToWTrainer:
         
         model, tokenizer = self.load_model_and_tokenizer()
         
-        # Use smart data processor
         data_processor = SmartToWDataProcessor(tokenizer, self.training_config)
         tow_data = data_processor.load_tow_data(self.training_config.tow_data_path)
         
@@ -368,23 +416,24 @@ class ToWTrainer:
         logger.info(f"Eval dataset size: {len(eval_dataset)}")
         logger.info(f"Using max sequence length: {self.training_config.max_sequence_length}")
         
-        data_collator = DataCollatorForLanguageModeling(
+        # Use custom data collator
+        data_collator = CustomDataCollatorForLanguageModeling(
             tokenizer=tokenizer,
             mlm=False,
-            pad_to_multiple_of=8,
+            pad_to_multiple_of=None,  # 패딩은 이미 tokenize_function에서 처리
             return_tensors="pt"
         )
         
         training_args = self.create_training_arguments()
         
-        trainer = Trainer(
+        trainer = ToWTrainerWithPinMemory(
             model=model,
             args=training_args,
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            processing_class=tokenizer,
-            callbacks=[
+            tokenizer=tokenizer,
+            callbacks=[ 
                 EarlyStoppingCallback(
                     early_stopping_patience=self.training_config.early_stopping_patience,
                     early_stopping_threshold=self.training_config.early_stopping_threshold
@@ -407,6 +456,7 @@ class ToWTrainer:
         
         return train_result
 
+
 def main():
     """Main function with smart processing"""
     logger.info("ToW Training with Smart Text Handling")
@@ -420,21 +470,24 @@ def main():
         logger.error(f"ToW data not found: {training_config.tow_data_path}")
         return
     
-    model_config = MODEL_CONFIGS[0]
-    
-    try:
-        logger.info(f"Training model with smart processing: {model_config.name}")
-        
-        trainer = ToWTrainer(model_config, training_config)
-        result = trainer.train()
-        
-        logger.info("✅ Smart training completed successfully!")
-        logger.info(f"Model saved to: {trainer.output_dir}")
-        
-    except Exception as e:
-        logger.error(f"❌ Training failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
+    for model_config in MODEL_CONFIGS:
+        try:
+            logger.info("=================================================================")
+            logger.info(f"Starting training for model: {model_config.name}")
+            logger.info("=================================================================")
+            
+            trainer = ToWTrainer(model_config, training_config)
+            result = trainer.train()
+            
+            logger.info("✅ Training completed successfully!")
+            logger.info(f"Model saved to: {trainer.output_dir}")
+            
+        except Exception as e:
+            logger.error(f"❌ Training failed for model {model_config.name}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            continue 
+
 
 if __name__ == "__main__":
     main()

@@ -82,12 +82,12 @@ class ModelConfig:
 @dataclass
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
-    tow_data_path: str = "./4_tow_generation/tow/koconovel_tow_gemini_2.0-flash-lite.json"
-    output_base_dir: str = "ToW_Models_Context"
+    tow_data_path: str = "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
+    output_base_dir: str = "ToW_Models"
     
     # Training hyperparameters
     learning_rate: float = 2e-5
-    num_train_epochs: int = 10
+    num_train_epochs: int = 3
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 2
     gradient_accumulation_steps: int = 16

@@ -82,11 +82,11 @@ class ModelConfig:
 @dataclass
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
-    tow_data_path: str = "ToW_koconovel_enhanced_final.json"
-    output_base_dir: str = "ToW_Models"
+    tow_data_path: str = "./4_tow_generation/tow/koconovel_tow_gemini_2.0-flash-lite.json"
+    output_base_dir: str = "ToW_Models_Context"
     
     # Training hyperparameters
-    learning_rate: float = 1e-5
+    learning_rate: float = 2e-5
     num_train_epochs: int = 10
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 2
@@ -155,94 +155,49 @@ class SmartToWDataProcessor:
         """Analyze data to determine optimal max length"""
         logger.info("Analyzing dataset lengths...")
         
-        sample_data = [entry for entry in data[:-1] if entry['tow_count'] > 0]
         lengths = []
         
-        for entry in tqdm(sample_data, desc="Analyzing lengths"):
-            text = entry['augmented_text']
+        for entry in tqdm(data, desc="Analyzing lengths"):
+            context = entry.get('context', '')
+            tow = entry.get('tow', '')
+            gold_label = entry.get('gold_label', '')
+            text = f"{context}{tow}{gold_label}{self.tokenizer.eos_token}"
             tokens = self.tokenizer.tokenize(text)
             lengths.append(len(tokens))
         
         lengths = np.array(lengths)
         
+        if len(lengths) == 0:
+            logger.warning("No data to analyze for lengths. Using default max_sequence_length.")
+            return self.config.max_sequence_length
+
         logger.info(f"Length statistics:")
         logger.info(f"  Mean: {lengths.mean():.1f} tokens")
         logger.info(f"  Median: {np.median(lengths):.1f} tokens")
         logger.info(f"  95th percentile: {np.percentile(lengths, 95):.1f} tokens")
         logger.info(f"  Max: {lengths.max()} tokens")
         
-        optimal_length = int(np.percentile(lengths, 95))
-        optimal_length = max(256, min(optimal_length, 2048))
+        optimal_length = int(np.percentile(lengths, 98)) # Use 98th percentile for better coverage
+        optimal_length = max(256, min(optimal_length, self.tokenizer.model_max_length or 4096))
         
         logger.info(f"Setting adaptive max length to: {optimal_length} tokens")
         return optimal_length
     
     def find_tow_positions(self, text: str) -> List[Tuple[int, int]]:
-        """Find all ToW token positions in text"""
-        positions = []
-        start_idx = 0
-        
-        while True:
-            tow_start = text.find(self.tow_start_token, start_idx)
-            if tow_start == -1:
-                break
-                
-            tow_end = text.find(self.tow_end_token, tow_start)
-            if tow_end == -1:
-                break
-                
-            before_tow = text[:tow_start]
-            before_tokens = len(self.tokenizer.tokenize(before_tow))
-            
-            after_tow = text[:tow_end + len(self.tow_end_token)]
-            after_tokens = len(self.tokenizer.tokenize(after_tow))
-            
-            positions.append((before_tokens, after_tokens))
-            start_idx = tow_end + len(self.tow_end_token)
-        
-        return positions
+        """This method is no longer needed in the new format but kept for compatibility."""
+        return []
     
     def smart_truncate(self, text: str, max_length: int) -> List[str]:
-        """Smart truncation that preserves ToW tokens"""
+        """Simplified truncation for context + tow + gold_label format"""
         tokens = self.tokenizer.tokenize(text)
         
         if len(tokens) <= max_length:
             return [text]
         
-        if not self.config.preserve_tow_tokens:
-            truncated_tokens = tokens[:max_length]
-            return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
-        
-        tow_positions = self.find_tow_positions(text)
-        
-        if not tow_positions:
-            truncated_tokens = tokens[:max_length]
-            return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
-        
-        chunks = []
-        
-        if self.config.enable_chunking:
-            for tow_start, tow_end in tow_positions:
-                chunk_start = max(0, tow_start - max_length // 2)
-                chunk_end = min(len(tokens), tow_end + max_length // 2)
-                
-                if chunk_end - chunk_start > max_length:
-                    chunk_end = chunk_start + max_length
-                
-                chunk_tokens = tokens[chunk_start:chunk_end]
-                chunk_text = self.tokenizer.convert_tokens_to_string(chunk_tokens)
-                chunks.append(chunk_text)
-        else:
-            tow_start, tow_end = tow_positions[0]
-            chunk_start = max(0, tow_start - max_length // 2)
-            chunk_end = min(len(tokens), chunk_start + max_length)
-            
-            chunk_tokens = tokens[chunk_start:chunk_end]
-            chunk_text = self.tokenizer.convert_tokens_to_string(chunk_tokens)
-            chunks.append(chunk_text)
-        
-        return chunks
-    
+        # Simple truncation from the beginning if text is too long
+        truncated_tokens = tokens[-max_length:]
+        return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
+
     def load_tow_data(self, data_path: str) -> List[Dict]:
         """Load ToW-augmented Korean dataset"""
         logger.info(f"Loading ToW data from {data_path}")
@@ -254,67 +209,74 @@ class SmartToWDataProcessor:
         return data
     
     def create_training_dataset(self, data: List[Dict]) -> Dataset:
-        """Create dataset with smart text handling"""
-        logger.info("Creating training dataset with smart processing...")
+        """Create dataset for context -> tow + gold_label training"""
+        logger.info("Creating training dataset for context-based ToW training...")
         
         if self.config.adaptive_max_length:
             optimal_length = self.analyze_data_lengths(data)
             self.config.max_sequence_length = optimal_length
         
-        formatted_texts = []
-        
-        for entry in tqdm(data, desc="Smart processing ToW examples"):
-            if entry['tow_count'] > 0:
-                text = entry['augmented_text']
-                text_chunks = self.smart_truncate(text, self.config.max_sequence_length)
-                formatted_texts.extend(text_chunks)
-        
-        # Filter out empty strings
-        original_count = len(formatted_texts)
-        formatted_texts = [text for text in formatted_texts if text and text.strip()]
-        new_count = len(formatted_texts)
-        
-        if original_count != new_count:
-            logger.warning(f"Removed {original_count - new_count} empty strings from the dataset.")
+        processed_data = []
+        for entry in tqdm(data, desc="Processing context/ToW examples"):
+            context = entry.get('context', '')
+            tow = entry.get('tow', '')
+            gold_label = entry.get('gold_label', '')
 
-        logger.info(f"Created {len(formatted_texts)} training examples (after smart processing)")
+            if not context or not tow or not gold_label:
+                continue
+
+            # Format: context -> tow -> gold_label -> eos
+            full_text = f"{context}{tow}{gold_label}{self.tokenizer.eos_token}"
+            
+            processed_data.append({
+                "context": context,
+                "full_text": full_text
+            })
+
+        logger.info(f"Created {len(processed_data)} training examples.")
         
-        dataset = Dataset.from_dict({'text': formatted_texts})
+        dataset = Dataset.from_list(processed_data)
         
         def tokenize_function(examples):
-            # 토크나이징 시 padding을 추가하고 attention_mask도 생성
-            tokenized = self.tokenizer(
-                examples['text'],
+            context_tokens = self.tokenizer(
+                examples['context'],
+                add_special_tokens=False
+            )
+            full_tokens = self.tokenizer(
+                examples['full_text'],
                 truncation=True,
                 max_length=self.config.max_sequence_length,
-                padding='max_length',  # 패딩 추가
-                return_attention_mask=True  # attention_mask 생성
+                padding='max_length',
+                return_attention_mask=True
             )
+
+            labels = full_tokens['input_ids'].copy()
             
-            # labels는 input_ids의 복사본으로 설정
-            # 패딩 토큰은 -100으로 설정하여 loss 계산에서 제외
-            tokenized['labels'] = []
-            for input_ids, attention_mask in zip(tokenized['input_ids'], tokenized['attention_mask']):
-                labels = input_ids.copy()
-                # 패딩 토큰 위치를 -100으로 설정
-                for i in range(len(labels)):
-                    if attention_mask[i] == 0:
-                        labels[i] = -100
-                tokenized['labels'].append(labels)
+            # Mask context tokens by setting them to -100
+            context_len = len(context_tokens['input_ids'])
+            labels[:context_len] = [-100] * context_len
             
-            return tokenized
+            # Also mask padding tokens
+            for i in range(len(labels)):
+                if full_tokens['attention_mask'][i] == 0:
+                    labels[i] = -100
+            
+            full_tokens['labels'] = labels
+            return full_tokens
         
         tokenized_dataset = dataset.map(
             tokenize_function,
-            batched=True,
-            remove_columns=['text'],
-            desc="Tokenizing"
+            remove_columns=['context', 'full_text'],
+            desc="Tokenizing and creating labels"
         )
 
         logger.info("Checking tokenized sample lengths...")
         for i in range(min(5, len(tokenized_dataset))):
-            logger.info(f"Sample {i} - input_ids length: {len(tokenized_dataset[i]['input_ids'])}, "
-                       f"labels length: {len(tokenized_dataset[i]['labels'])}")
+            input_ids_len = len(tokenized_dataset[i]['input_ids'])
+            labels_len = len(tokenized_dataset[i]['labels'])
+            # Count non-masked labels
+            actual_labels = sum(1 for label in tokenized_dataset[i]['labels'] if label != -100)
+            logger.info(f"Sample {i} - input_ids: {input_ids_len}, labels: {labels_len}, actual_labels: {actual_labels}")
 
         return tokenized_dataset
 

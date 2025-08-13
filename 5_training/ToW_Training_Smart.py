@@ -240,6 +240,11 @@ class SmartToWDataProcessor:
         def tokenize_function(examples):
             # The function now correctly handles batches of examples
             
+            # Temporarily set truncation side to 'left' if supported
+            original_truncation_side = getattr(self.tokenizer, 'truncation_side', None)
+            if hasattr(self.tokenizer, 'truncation_side'):
+                self.tokenizer.truncation_side = 'left'
+            
             context_tokens = self.tokenizer(
                 examples['context'],
                 add_special_tokens=False
@@ -249,9 +254,12 @@ class SmartToWDataProcessor:
                 truncation=True,
                 max_length=self.config.max_sequence_length,
                 padding='max_length',
-                return_attention_mask=True,
-                truncation_side='left'  # Ensure truncation happens from the start (context)
+                return_attention_mask=True
             )
+            
+            # Restore original truncation side
+            if original_truncation_side is not None:
+                self.tokenizer.truncation_side = original_truncation_side
 
             all_labels = []
             # Iterate over each example in the batch

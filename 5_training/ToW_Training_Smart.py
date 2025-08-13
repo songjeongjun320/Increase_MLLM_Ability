@@ -238,6 +238,8 @@ class SmartToWDataProcessor:
         dataset = Dataset.from_list(processed_data)
         
         def tokenize_function(examples):
+            # The function now correctly handles batches of examples
+            
             context_tokens = self.tokenizer(
                 examples['context'],
                 add_special_tokens=False
@@ -250,22 +252,33 @@ class SmartToWDataProcessor:
                 return_attention_mask=True
             )
 
-            labels = full_tokens['input_ids'].copy()
+            all_labels = []
+            # Iterate over each example in the batch
+            for i in range(len(full_tokens['input_ids'])):
+                input_ids = full_tokens['input_ids'][i]
+                attention_mask = full_tokens['attention_mask'][i]
+                
+                # Get the length of the context for this specific example
+                context_len = len(context_tokens['input_ids'][i])
+                
+                labels = input_ids.copy()
+                
+                # Mask context tokens by setting them to -100
+                labels[:context_len] = [-100] * context_len
+                
+                # Also mask padding tokens
+                for j in range(len(labels)):
+                    if attention_mask[j] == 0:
+                        labels[j] = -100
+                
+                all_labels.append(labels)
             
-            # Mask context tokens by setting them to -100
-            context_len = len(context_tokens['input_ids'])
-            labels[:context_len] = [-100] * context_len
-            
-            # Also mask padding tokens
-            for i in range(len(labels)):
-                if full_tokens['attention_mask'][i] == 0:
-                    labels[i] = -100
-            
-            full_tokens['labels'] = labels
+            full_tokens['labels'] = all_labels
             return full_tokens
         
         tokenized_dataset = dataset.map(
             tokenize_function,
+            batched=True,  # Explicitly set batched=True
             remove_columns=['context', 'full_text'],
             desc="Tokenizing and creating labels"
         )

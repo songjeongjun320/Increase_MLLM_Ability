@@ -5,17 +5,19 @@ generate_gold_word_with_gemini.py
 GCP Vertex AI (Gemini 1.5 Pro)를 사용하여
 문장에서 가장 예측하기 어려운 단어를 JSON 형식으로 생성하고,
 그 결과를 파싱하여 최종 데이터셋을 구축합니다.
+
+(수정) 배치(Batch) 처리와 주기적 저장을 통해 속도와 안정성을 개선합니다.
 """
 import json
 import os
 import re
-import time  # API 요청 간 딜레이를 위해 추가
+import time
+import asyncio  # 비동기 처리를 위해 추가
 from tqdm import tqdm
 
 # =================================================================
 # 수정 1: Vertex AI SDK 임포트
 # =================================================================
-# (주의) 라이브러리가 설치되어 있어야 합니다: pip install google-cloud-aiplatform
 import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 
@@ -23,17 +25,19 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # =================================================================
 # 수정 2: GCP 및 Gemini 모델 설정으로 변경
 # =================================================================
-# TODO: 본인의 Google Cloud 프로젝트 ID와 리전을 입력하세요.
-# 터미널에서 `gcloud config get-value project` 명령으로 프로젝트 ID를 확인할 수 있습니다.
-PROJECT_ID = "your-gcp-project-id"  # <<< 자신의 GCP 프로젝트 ID로 수정
-LOCATION = "us-central1"           # <<< 모델을 사용할 리전으로 수정
+PROJECT_ID = "apt-summer-468801-i9"
+LOCATION = "us-central1"
 
-# 사용할 Gemini 모델 설정
-GEMINI_MODEL_ID = "gemini-1.5-pro-001" # Gemini 1.5 Pro 최신 모델 (Vertex AI Model Garden 참고)
+GEMINI_MODEL_ID = "gemini-2.0-flash-lite"
 
-# 입/출력 파일 경로는 그대로 사용
-INPUT_JSON_PATH = "./klue_all.json"
-OUTPUT_JSON_PATH = "/scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/klue_next_word_prediction_gemini_1.5_pro.json"
+INPUT_JSON_PATH = "./koconovel.json"
+OUTPUT_JSON_PATH = "koconovel_next_word_prediction_gemini_2.0-flash-lite.json"
+
+# =================================================================
+# 수정 3: 배치 크기 및 저장 주기 설정 추가
+# =================================================================
+BATCH_SIZE = 3  # 한 번에 처리할 문장의 수 (병렬 요청 개수)
+SAVE_INTERVAL = 100 # 몇 개의 문장을 처리할 때마다 저장할지 결정
 
 # =================================================================
 # 프롬프트는 기존 형식을 그대로 유지합니다.
@@ -43,17 +47,17 @@ def create_prompt(sentence: str) -> str:
     모델이 예측하기 가장 어려운 단어를 JSON 형식으로 출력하도록 유도하는
     상세한 Few-shot 프롬프트를 생성합니다.
     """
-    # (기존 프롬프트 내용과 동일하므로 생략)
+    # (프롬프트 내용은 질문과 동일하므로 생략)
     return f"""You are a language prediction expert. Your task is to find the single most unpredictable or surprising word in a given Korean sentence. This word is often a proper noun, a specific number, or a key piece of information that cannot be easily guessed.
 
-Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word".
+Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number.
 
 ---
 Example 1:
 Sentence: "심청효행대상은 가천문화재단 설립자인 이길여 가천길재단 회장이 지난 1999년에 고전소설 ‘심청전’의 배경인 인천광역시 옹진군 백령면에 심청동상을 제작, 기증한 것을 계기로 제정되었다."
 JSON Output:
 {{
-"unpredictable_word": "회장이"
+"unpredictable_word": "배경인"
 }}
 
 ---
@@ -98,10 +102,10 @@ Sentence: "{sentence}"
 JSON Output:"""
 
 # =================================================================
-# 수정 3: 함수 이름을 명확하게 바꾸고, 로직을 Gemini API 호출 방식으로 전면 수정
+# 수정 4: 비동기 배치 처리 및 주기적 저장을 위한 함수로 전면 수정
 # =================================================================
-def generate_prediction_dataset_with_gemini():
-    """Gemini API를 사용하여 데이터셋을 생성합니다."""
+async def generate_prediction_dataset_async():
+    """Gemini API를 비동기 배치로 호출하고 주기적으로 저장하여 데이터셋을 생성합니다."""
 
     # Vertex AI 초기화
     print(f"[INFO] Vertex AI를 초기화합니다. (Project: {PROJECT_ID}, Location: {LOCATION})")
@@ -111,10 +115,9 @@ def generate_prediction_dataset_with_gemini():
     print(f"[INFO] Gemini 모델 '{GEMINI_MODEL_ID}'을(를) 로드합니다.")
     model = GenerativeModel(GEMINI_MODEL_ID)
     
-    # 모델 생성 옵션 (JSON 출력을 안정적으로 받기 위함)
     generation_config = GenerationConfig(
-        temperature=0.0,  # 항상 동일한 결과를 얻기 위해 0으로 설정
-        max_output_tokens=50 # JSON 객체를 받기에 충분한 토큰
+        temperature=0.0,
+        max_output_tokens=50
     )
 
     # 입력 데이터 로드
@@ -125,80 +128,99 @@ def generate_prediction_dataset_with_gemini():
     except FileNotFoundError:
         print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
         return
-
-    data = data[:5]  # 테스트를 위해 100개만 사용
+    
+    # 데이터를 BATCH_SIZE 크기의 묶음(배치)으로 나눔
+    batches = [data[i:i + BATCH_SIZE] for i in range(0, len(data), BATCH_SIZE)]
+    
     results = []
     error_count = 0
-    print(f"[INFO] 총 {len(data)}개의 문장 처리를 시작합니다...")
+    processed_count = 0
+    last_save_count = 0
 
-    # 데이터를 순회하며 API 호출 (tqdm으로 진행률 표시)
-    for item in tqdm(data, desc="Generating with Gemini"):
-        original_sentence = item['sentence']
-        prompt = create_prompt(original_sentence)
+    print(f"[INFO] 총 {len(data)}개의 문장을 {len(batches)}개의 배치로 나누어 처리를 시작합니다. (배치 크기: {BATCH_SIZE})")
 
+    for batch in tqdm(batches, desc="Generating with Gemini (Batch)"):
+        tasks = []
+        for item in batch:
+            prompt = create_prompt(item['sentence'])
+            # model.generate_content_async를 사용하여 비동기 태스크 생성
+            task = model.generate_content_async(prompt, generation_config=generation_config)
+            tasks.append(task)
+        
+        # asyncio.gather를 사용해 현재 배치의 모든 API 요청을 병렬로 실행
+        # return_exceptions=True: 하나의 요청이 실패해도 전체가 멈추지 않음
         try:
-            # Gemini API 호출
-            response = model.generate_content(
-                prompt,
-                generation_config=generation_config
-            )
-            raw_output = response.text
-            
-            predicted_word = None
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception as e:
+            print(f"\n[ERROR] 배치 처리 중 심각한 오류 발생: {e}")
+            error_count += len(batch)
+            continue # 다음 배치로 넘어감
 
-            # 모델이 생성한 텍스트에서 JSON 부분만 추출
-            json_match = re.search(r'{\s*"unpredictable_word":\s*".*?"\s*}', raw_output, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
-                parsed_json = json.loads(json_str)
-                predicted_word = parsed_json.get("unpredictable_word")
-            
-            if not predicted_word:
-                # print(f"\n[Warning] JSON에서 단어를 추출하지 못했습니다. Raw output: '{raw_output}'")
+        # 응답 처리
+        for item, response in zip(batch, responses):
+            processed_count += 1
+            if isinstance(response, Exception):
+                # API 호출 중 예외가 발생한 경우
+                print(f"\n[Warning] API 요청 실패. Error: {response}")
                 error_count += 1
                 continue
 
-            # 원본 문장에서 단어 위치 찾기
-            if predicted_word in original_sentence:
-                index = original_sentence.index(predicted_word)
-                context = original_sentence[:index].strip()
-                gold_label = predicted_word
+            try:
+                raw_output = response.text
+                predicted_word = None
+                
+                json_match = re.search(r'{\s*"unpredictable_word":\s*".*?"\s*}', raw_output, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    parsed_json = json.loads(json_str)
+                    predicted_word = parsed_json.get("unpredictable_word")
 
-                if not context:
+                if not predicted_word:
                     error_count += 1
                     continue
 
-                new_item = {
-                    'id': item['id'],
-                    'original_sentence': original_sentence,
-                    'context': context,
-                    'gold_label': gold_label
-                }
-                results.append(new_item)
-            else:
-                # print(f"\n[Warning] 예측된 단어 '{predicted_word}'가 원본 문장에 없습니다.")
+                original_sentence = item['sentence']
+                if predicted_word in original_sentence:
+                    index = original_sentence.find(predicted_word) # find가 더 안전
+                    context = original_sentence[:index].strip()
+                    gold_label = predicted_word
+
+                    if not context:
+                        error_count += 1
+                        continue
+
+                    new_item = {
+                        'id': item['id'],
+                        'original_sentence': original_sentence,
+                        'context': context,
+                        'gold_label': gold_label
+                    }
+                    results.append(new_item)
+                else:
+                    error_count += 1
+                    continue
+
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
                 error_count += 1
                 continue
+            except Exception as e:
+                print(f"\n[ERROR] 응답 처리 중 에러 발생: {e}")
+                error_count += 1
+                continue
+        
+        # 주기적 저장 로직
+        if len(results) - last_save_count >= SAVE_INTERVAL:
+            print(f"\n[INFO] 중간 저장: {len(results)}개의 결과를 파일에 저장합니다. (총 {processed_count}개 처리)")
+            with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
+                json.dump(results, f, ensure_ascii=False, indent=2)
+            last_save_count = len(results)
 
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
-            # JSON 파싱 실패 또는 단어를 찾지 못한 경우
-            # print(f"\n[Warning] 처리 실패. Error: {e}\nRaw output: '{raw_output}'")
-            error_count += 1
-            continue
-        except Exception as e:
-            # Vertex AI API 관련 에러 등
-            print(f"\n[ERROR] API 요청 중 에러 발생: {e}")
-            error_count += 1
-            # API 할당량 초과 등의 문제일 수 있으므로 잠시 대기
-            time.sleep(1)
-            continue
-            
+    # 모든 배치가 끝난 후 최종 저장
     print(f"\n[SUCCESS] 데이터셋 생성이 완료되었습니다.")
     print(f"  - 성공적으로 처리된 문장: {len(results)}")
     print(f"  - 오류 또는 건너뛴 문장: {error_count}")
     
-    # 결과 저장
-    print(f"  - '{OUTPUT_JSON_PATH}' 파일에 결과를 저장합니다.")
+    print(f"  - '{OUTPUT_JSON_PATH}' 파일에 최종 결과를 저장합니다.")
     with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
@@ -206,4 +228,6 @@ def generate_prediction_dataset_with_gemini():
 if __name__ == "__main__":
     # 스크립트 실행 전, 터미널에서 GCP 인증이 필요합니다:
     # gcloud auth application-default login
-    generate_prediction_dataset_with_gemini()
+    
+    # asyncio.run()을 사용하여 비동기 함수 실행
+    asyncio.run(generate_prediction_dataset_async())

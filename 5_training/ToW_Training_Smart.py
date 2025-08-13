@@ -249,7 +249,8 @@ class SmartToWDataProcessor:
                 truncation=True,
                 max_length=self.config.max_sequence_length,
                 padding='max_length',
-                return_attention_mask=True
+                return_attention_mask=True,
+                truncation_side='left'  # Ensure truncation happens from the start (context)
             )
 
             all_labels = []
@@ -263,8 +264,12 @@ class SmartToWDataProcessor:
                 
                 labels = input_ids.copy()
                 
+                # Determine the actual number of context tokens to mask.
+                # This prevents index errors if the context itself was truncated.
+                mask_len = min(context_len, len(labels))
+
                 # Mask context tokens by setting them to -100
-                labels[:context_len] = [-100] * context_len
+                labels[:mask_len] = [-100] * mask_len
                 
                 # Also mask padding tokens
                 for j in range(len(labels)):

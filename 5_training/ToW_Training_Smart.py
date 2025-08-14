@@ -84,7 +84,10 @@ class ModelConfig:
 @dataclass
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
-    tow_data_path: str = "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite copy.json"
+    tow_data_paths: List[str] = field(default_factory=lambda: [
+        "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite copy.json",
+        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite copy.json"
+    ])
     output_base_dir: str = "ToW_Models"
     
     # Training hyperparameters
@@ -200,15 +203,30 @@ class SmartToWDataProcessor:
         truncated_tokens = tokens[-max_length:]
         return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
 
-    def load_tow_data(self, data_path: str) -> List[Dict]:
-        """Load ToW-augmented Korean dataset"""
-        logger.info(f"Loading ToW data from {data_path}")
+    def load_tow_data(self, data_paths: List[str]) -> List[Dict]:
+        """Load ToW-augmented Korean dataset from multiple files"""
+        logger.info(f"Loading ToW data from {len(data_paths)} files...")
         
-        with open(data_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        all_data = []
+        for data_path in data_paths:
+            path = Path(data_path)
+            if not path.exists():
+                logger.warning(f"Data file not found, skipping: {data_path}")
+                continue
+            
+            logger.info(f"  - Loading from {data_path}")
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        all_data.extend(data)
+                    else:
+                        logger.warning(f"Data in {data_path} is not a list, skipping.")
+            except json.JSONDecodeError:
+                logger.warning(f"Could not decode JSON from {data_path}. Skipping.")
         
-        logger.info(f"Loaded {len(data)} ToW-augmented entries")
-        return data
+        logger.info(f"Loaded a total of {len(all_data)} ToW-augmented entries")
+        return all_data
     
     def create_training_dataset(self, data: List[Dict]) -> Dataset:
         """Create dataset for context -> tow + gold_label training"""
@@ -422,7 +440,7 @@ class ToWTrainer:
         model, tokenizer = self.load_model_and_tokenizer()
         
         data_processor = SmartToWDataProcessor(tokenizer, self.training_config)
-        tow_data = data_processor.load_tow_data(self.training_config.tow_data_path)
+        tow_data = data_processor.load_tow_data(self.training_config.tow_data_paths)
         
         train_dataset = data_processor.create_training_dataset(tow_data)
         
@@ -490,8 +508,15 @@ def main():
     
     training_config = ToWTrainingConfig()
     
-    if not Path(training_config.tow_data_path).exists():
-        logger.error(f"ToW data not found: {training_config.tow_data_path}")
+    if not training_config.tow_data_paths:
+        logger.error("No ToW data paths specified in the configuration.")
+        return
+
+    # Check if at least one data file exists
+    if not any(Path(p).exists() for p in training_config.tow_data_paths):
+        logger.error("None of the specified ToW data files were found.")
+        for p in training_config.tow_data_paths:
+            logger.error(f"  - Checked path: {p}")
         return
     
     for model_config in MODEL_CONFIGS:

@@ -22,7 +22,7 @@ import transformers
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, DataCollatorWithPadding,
     TrainingArguments, Trainer, DataCollatorForLanguageModeling,
-    EarlyStoppingCallback, BitsAndBytesConfig
+    EarlyStoppingCallback
 )
 from transformers.trainer_utils import get_last_checkpoint
 from datasets import Dataset
@@ -120,26 +120,26 @@ class ToWTrainingConfig:
 
 
 MODEL_CONFIGS = [
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
+    # ),
     ModelConfig(
-        name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=True
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        name="Llama-3.1-8B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
         use_quantization=False
     ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        use_quantization=False
+    ),
 ]
 
 
@@ -338,22 +338,11 @@ class ToWTrainer:
             tokenizer.add_tokens(new_tokens)
             logger.info(f"Added {len(new_tokens)} new ToW tokens to tokenizer")
 
-        quantization_config = None
-        if self.model_config.use_quantization:
-            logger.info("Using 4-bit quantization (NF4) to reduce memory usage.")
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=self.model_config.torch_dtype,
-                bnb_4bit_use_double_quant=True,
-            )
-
         model = AutoModelForCausalLM.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
             device_map="auto" if torch.cuda.is_available() else None,
-            quantization_config=quantization_config,
         )
 
         # Resize model embeddings

@@ -24,6 +24,7 @@ from transformers import (
     TrainingArguments, Trainer, DataCollatorForLanguageModeling,
     EarlyStoppingCallback
 )
+from transformers.trainer_utils import get_last_checkpoint
 from datasets import Dataset
 from tqdm import tqdm
 
@@ -357,7 +358,7 @@ class ToWTrainer:
         """Create training arguments"""
         return TrainingArguments(
             output_dir=str(self.output_dir),
-            overwrite_output_dir=True,
+            overwrite_output_dir=False,
             learning_rate=self.training_config.learning_rate,
             num_train_epochs=self.training_config.num_train_epochs,
             per_device_train_batch_size=self.training_config.per_device_train_batch_size,
@@ -414,6 +415,12 @@ class ToWTrainer:
         
         training_args = self.create_training_arguments()
         
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if last_checkpoint:
+            logger.info(f"Resuming from checkpoint: {last_checkpoint}")
+        else:
+            logger.info("No checkpoint found. Starting a new training.")
+
         trainer = ToWTrainerWithPinMemory(
             model=model,
             args=training_args,
@@ -430,7 +437,7 @@ class ToWTrainer:
         )
         
         logger.info("Starting smart training...")
-        train_result = trainer.train()
+        train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
         
         logger.info("Saving final model...")
         trainer.save_model()

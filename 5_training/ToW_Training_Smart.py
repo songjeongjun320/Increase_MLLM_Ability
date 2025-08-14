@@ -22,7 +22,7 @@ import transformers
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, DataCollatorWithPadding,
     TrainingArguments, Trainer, DataCollatorForLanguageModeling,
-    EarlyStoppingCallback
+    EarlyStoppingCallback, BitsAndBytesConfig
 )
 from transformers.trainer_utils import get_last_checkpoint
 from datasets import Dataset
@@ -123,7 +123,7 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
+        use_quantization=True
     ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
@@ -338,11 +338,22 @@ class ToWTrainer:
             tokenizer.add_tokens(new_tokens)
             logger.info(f"Added {len(new_tokens)} new ToW tokens to tokenizer")
 
+        quantization_config = None
+        if self.model_config.use_quantization:
+            logger.info("Using 4-bit quantization (NF4) to reduce memory usage.")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=self.model_config.torch_dtype,
+                bnb_4bit_use_double_quant=True,
+            )
+
         model = AutoModelForCausalLM.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
             device_map="auto" if torch.cuda.is_available() else None,
+            quantization_config=quantization_config,
         )
 
         # Resize model embeddings

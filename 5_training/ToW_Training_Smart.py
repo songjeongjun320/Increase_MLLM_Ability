@@ -27,6 +27,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from datasets import Dataset
 from tqdm import tqdm
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 # Setup logging and environment
 logging.basicConfig(level=logging.INFO)
@@ -358,6 +359,23 @@ class ToWTrainer:
 
         # Resize model embeddings
         model.resize_token_embeddings(len(tokenizer))
+        
+        if self.model_config.use_quantization:
+            logger.info("Preparing quantized model for k-bit training with LoRA.")
+            model = prepare_model_for_kbit_training(model)
+            
+            lora_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM"
+            )
+            
+            model = get_peft_model(model, lora_config)
+            logger.info("LoRA setup complete. Trainable parameters:")
+            model.print_trainable_parameters()
         
         logger.info(f"Final tokenizer vocab size: {len(tokenizer)}")
         logger.info(f"Model embedding size: {model.get_input_embeddings().weight.shape[0]}")

@@ -224,13 +224,14 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
 
         # === START: LoRA Adapter Loading Logic ===
         if config.adapter_path:
-            logger.info(f"LoRA adapter specified. Loading adapter from: {config.adapter_path}")
-            if not os.path.isdir(config.adapter_path):
-                logger.error(f"Adapter path does not exist or is not a directory: {config.adapter_path}")
-                raise FileNotFoundError(f"Adapter path not found: {config.adapter_path}")
+            absolute_adapter_path = os.path.abspath(config.adapter_path)
+            logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
+            if not os.path.isdir(absolute_adapter_path):
+                logger.error(f"Adapter path does not exist or is not a directory: {absolute_adapter_path}")
+                raise FileNotFoundError(f"Adapter path not found: {absolute_adapter_path}")
             
             try:
-                model = PeftModel.from_pretrained(model, config.adapter_path)
+                model = PeftModel.from_pretrained(model, absolute_adapter_path)
                 logger.info("Successfully loaded LoRA adapter.")
                 # Optional: Merge the adapter for faster inference
                 # model = model.merge_and_unload()

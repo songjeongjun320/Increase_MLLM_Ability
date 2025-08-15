@@ -20,52 +20,46 @@ class ModelConfig:
     # Default dtype, can be overridden per model if needed
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
-# !!! REPLACE PLACEHOLDER MODEL IDS WITH ACTUAL IDS WHEN AVAILABLE !!!
 MODEL_CONFIGS = [
     # ModelConfig(
     #     name="Qwen2.5-7B-Instruct",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     use_quantization=False # Smaller models might not *strictly* need it, but adjust based on your GPU VRAM
+    #     use_quantization=False
     # ),
     # ModelConfig(
     #     name="Mistral-8B-Instruct-2410",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410", # Existing model
-    #     use_quantization=False # 8B Instruct likely needs quantization on most systems
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
     # ),
     # ModelConfig(
     #     name="Llama-3.1-8B-Instruct",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
-    #     use_quantization=False # Adjust based on VRAM
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     use_quantization=False # Adjust based on VRAM
+    #     use_quantization=False
     # ),
 
     # TOW Trained Model
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        adapter_path="../5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        adapter_path="../5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
-        adapter_path="../5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        adapter_path="../5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
         use_quantization=False
     ),
 ]

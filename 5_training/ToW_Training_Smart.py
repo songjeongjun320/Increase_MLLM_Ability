@@ -153,7 +153,7 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=True
+        use_quantization=False
     ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",

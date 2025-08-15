@@ -4,6 +4,7 @@ import logging
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datasets import load_dataset
+from peft import PeftModel
 from tqdm import tqdm
 import re
 from dataclasses import dataclass, field # Use dataclass for config
@@ -14,6 +15,7 @@ import gc # For garbage collection
 class ModelConfig:
     name: str                             # Unique name for this run (used for filenames)
     model_id: str                         # Hugging Face model identifier
+    adapter_path: str = None              # Path to the LoRA adapter
     use_quantization: bool = True         # Default to quantization, especially for larger models
     # Default dtype, can be overridden per model if needed
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
@@ -45,21 +47,25 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        adapter_path="../5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        adapter_path="../5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="Llama-3.1-8B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
+        adapter_path="../5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-0528-Qwen3-8B-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        adapter_path="../5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
         use_quantization=False
     ),
 ]
@@ -215,6 +221,26 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             device_map=DEVICE, # Assumes single device mapping
             trust_remote_code=True # Necessary for some models
         )
+
+        # === START: LoRA Adapter Loading Logic ===
+        if config.adapter_path:
+            logger.info(f"LoRA adapter specified. Loading adapter from: {config.adapter_path}")
+            if not os.path.isdir(config.adapter_path):
+                logger.error(f"Adapter path does not exist or is not a directory: {config.adapter_path}")
+                raise FileNotFoundError(f"Adapter path not found: {config.adapter_path}")
+            
+            try:
+                model = PeftModel.from_pretrained(model, config.adapter_path)
+                logger.info("Successfully loaded LoRA adapter.")
+                # Optional: Merge the adapter for faster inference
+                # model = model.merge_and_unload()
+                # logger.info("LoRA adapter merged into the base model.")
+            except Exception as e:
+                logger.error(f"Failed to load LoRA adapter from {config.adapter_path}: {e}")
+                raise e
+        else:
+            logger.info("No LoRA adapter path specified. Using the base model directly.")
+        # === END: LoRA Adapter Loading Logic ===
 
         # Handle tokenizer pad token ID config *after* model load
         if tokenizer.pad_token == tokenizer.eos_token and hasattr(model.config, "pad_token_id"):

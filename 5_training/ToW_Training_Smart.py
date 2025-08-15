@@ -28,11 +28,37 @@ from transformers.trainer_utils import get_last_checkpoint
 from datasets import Dataset
 from tqdm import tqdm
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from transformers import TrainerCallback
 
 # Setup logging and environment
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+class JsonLoggingCallback(TrainerCallback):
+    """Callback to log metrics to a JSON file."""
+
+    def __init__(self, log_file):
+        self.log_file = log_file
+        # Clear the log file at the beginning of training
+        with open(self.log_file, 'w') as f:
+            f.write("[\n")
+        self.first_log = True
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is not None:
+            # Append logs to the JSON file
+            with open(self.log_file, 'a') as f:
+                if not self.first_log:
+                    f.write(",\n")
+                json.dump(logs, f, indent=2)
+                self.first_log = False
+    
+    def on_train_end(self, args, state, control, **kwargs):
+        # Close the JSON array
+        with open(self.log_file, 'a') as f:
+            f.write("\n]\n")
 
 
 class CustomDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
@@ -91,7 +117,7 @@ class ToWTrainingConfig:
     output_base_dir: str = "ToW_Models"
     
     # Training hyperparameters
-    learning_rate: float = 2e-5
+    learning_rate: float = 5e-5
     num_train_epochs: int = 3
     per_device_train_batch_size: int = 4
     per_device_eval_batch_size: int = 4
@@ -115,7 +141,7 @@ class ToWTrainingConfig:
     save_steps: int = 50
     logging_steps: int = 50
     early_stopping_patience: int = 3
-    early_stopping_threshold: float = 0.001
+    early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 0
     remove_unused_columns: bool = True
     fp16: bool = False
@@ -336,6 +362,21 @@ class ToWTrainer:
         self.output_dir = Path(training_config.output_base_dir) / model_config.name
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
+    def setup_logging(self):
+        """Set up file logging for the training process."""
+        log_file_path = self.output_dir / "training_log.log"
+        file_handler = logging.FileHandler(log_file_path, mode='a')
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        # Get the root logger and add the file handler
+        root_logger = logging.getLogger()
+        
+        # Avoid adding duplicate handlers
+        if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(log_file_path) for h in root_logger.handlers):
+            root_logger.addHandler(file_handler)
+            logger.info(f"File-based logging is set up at: {log_file_path}")
+
     def load_model_and_tokenizer(self):
         """Load model and tokenizer, add special tokens, and resize embeddings."""
         logger.info(f"Loading model: {self.model_config.model_id}")
@@ -388,7 +429,8 @@ class ToWTrainer:
                 target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
                 lora_dropout=0.05,
                 bias="none",
-                task_type="CAUSAL_LM"
+                task_type="CAUSAL_LM",
+                modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens
             )
             
             model = get_peft_model(model, lora_config)
@@ -435,6 +477,7 @@ class ToWTrainer:
     
     def train(self):
         """Execute smart ToW fine-tuning"""
+        self.setup_logging() # Setup file logging right at the start
         logger.info(f"Starting smart ToW training for {self.model_config.name}")
         
         model, tokenizer = self.load_model_and_tokenizer()
@@ -468,6 +511,11 @@ class ToWTrainer:
         else:
             logger.info("No checkpoint found. Starting a new training.")
 
+        # Setup custom JSON logging callback
+        json_log_path = self.output_dir / "training_metrics.json"
+        json_logging_callback = JsonLoggingCallback(log_file=json_log_path)
+        logger.info(f"Metrics will be logged to {json_log_path}")
+
         trainer = ToWTrainerWithPinMemory(
             model=model,
             args=training_args,
@@ -479,7 +527,8 @@ class ToWTrainer:
                 EarlyStoppingCallback(
                     early_stopping_patience=self.training_config.early_stopping_patience,
                     early_stopping_threshold=self.training_config.early_stopping_threshold
-                )
+                ),
+                json_logging_callback  # Add our custom callback here
             ]
         )
         

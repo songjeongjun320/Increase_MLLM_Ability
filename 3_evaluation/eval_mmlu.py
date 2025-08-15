@@ -193,8 +193,12 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
     try:
         # --- Load Model and Tokenizer ---
-        logger.info(f"Loading tokenizer for {config.model_id}...")
-        tokenizer = AutoTokenizer.from_pretrained(config.model_id, cache_dir=CACHE_DIR)
+        # 1. Determine the correct path for the tokenizer.
+        # If an adapter is used, the updated tokenizer is saved with it.
+        tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
+        logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
+        
         if tokenizer.pad_token is None:
             if tokenizer.eos_token:
                 tokenizer.pad_token = tokenizer.eos_token
@@ -224,7 +228,12 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             cache_dir=CACHE_DIR
         )
 
-        # === START: LoRA Adapter Loading Logic ===
+        # 3. Resize model embeddings to match the tokenizer's vocabulary size BEFORE loading the adapter.
+        if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+            logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+            model.resize_token_embeddings(len(tokenizer))
+
+        # 4. Load the LoRA adapter onto the correctly-sized base model.
         if config.adapter_path:
             absolute_adapter_path = os.path.abspath(config.adapter_path)
             logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
@@ -240,11 +249,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 # model = model.merge_and_unload()
                 # logger.info("LoRA adapter merged into the base model.")
             except Exception as e:
-                logger.error(f"Failed to load LoRA adapter from {config.adapter_path}: {e}")
+                logger.error(f"Failed to load LoRA adapter from {absolute_adapter_path}: {e}")
                 raise e
         else:
             logger.info("No LoRA adapter path specified. Using the base model directly.")
-        # === END: LoRA Adapter Loading Logic ===
 
         if tokenizer.pad_token == tokenizer.eos_token and hasattr(model.config, "pad_token_id"):
             model.config.pad_token_id = tokenizer.eos_token_id

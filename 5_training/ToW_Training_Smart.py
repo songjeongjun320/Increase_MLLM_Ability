@@ -93,9 +93,9 @@ class ToWTrainingConfig:
     # Training hyperparameters
     learning_rate: float = 2e-5
     num_train_epochs: int = 3
-    per_device_train_batch_size: int = 1
-    per_device_eval_batch_size: int = 2
-    gradient_accumulation_steps: int = 16
+    per_device_train_batch_size: int = 4
+    per_device_eval_batch_size: int = 4
+    gradient_accumulation_steps: int = 8
     
     # Smart text handling
     adaptive_max_length: bool = True

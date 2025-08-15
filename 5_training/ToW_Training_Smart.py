@@ -105,23 +105,24 @@ class ModelConfig:
     model_id: str
     use_quantization: bool = False
     torch_dtype: torch.dtype = field(default=torch.float16)
+    learning_rate: float = 2e-5  # Add learning_rate to ModelConfig
 
 
 @dataclass
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite copy.json",
-        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite copy.json"
+        "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
+        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
     ])
     output_base_dir: str = "ToW_Models"
     
     # Training hyperparameters
-    learning_rate: float = 5e-5
+    learning_rate: float = 2e-5  # This will be a fallback
     num_train_epochs: int = 3
-    per_device_train_batch_size: int = 4
-    per_device_eval_batch_size: int = 4
-    gradient_accumulation_steps: int = 8
+    per_device_train_batch_size: int = 8
+    per_device_eval_batch_size: int = 8
+    gradient_accumulation_steps: int = 4
     
     # Smart text handling
     adaptive_max_length: bool = True
@@ -153,23 +154,27 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
+        use_quantization=True,
+        learning_rate=2e-5  # Stable learning rate for Qwen
+    ),
+    ModelConfig(
+        name="Llama-3.1-8B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        use_quantization=True,
+        learning_rate=5e-6  # Lower learning rate for stability
     ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        use_quantization=False
+        use_quantization=True,
+        learning_rate=5e-6  # Lower learning rate for stability
     ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        use_quantization=True,
+        learning_rate=5e-6  # Lower learning rate for stability
+    ),
 ]
 
 
@@ -448,10 +453,14 @@ class ToWTrainer:
     
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
+        # Use the learning rate from the specific model_config, or fall back to the training_config
+        lr = self.model_config.learning_rate if self.model_config.learning_rate else self.training_config.learning_rate
+        logger.info(f"Using model-specific learning rate: {lr}")
+
         return TrainingArguments(
             output_dir=str(self.output_dir),
             overwrite_output_dir=False,
-            learning_rate=self.training_config.learning_rate,
+            learning_rate=lr,
             num_train_epochs=self.training_config.num_train_epochs,
             per_device_train_batch_size=self.training_config.per_device_train_batch_size,
             per_device_eval_batch_size=self.training_config.per_device_eval_batch_size,

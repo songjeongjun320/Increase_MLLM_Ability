@@ -577,6 +577,31 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         skipped_loop = sum(1 for r in results_details if r['model_raw_output'].startswith("SKIPPED"))
         accuracy_loop = (correct_pred_loop / valid_pred_loop * 100) if valid_pred_loop > 0 else 0
 
+        # --- Calculate Category-wise Accuracy ---
+        subject_stats = {}
+        for i, item in enumerate(test_data):
+            subject = item.get("Subject", "unknown")
+            result = results_details[i]
+            
+            if subject not in subject_stats:
+                subject_stats[subject] = {
+                    "total": 0,
+                    "correct": 0,
+                    "valid_predictions": 0,
+                    "accuracy": 0.0
+                }
+            
+            subject_stats[subject]["total"] += 1
+            if result['predicted_answer'] is not None and result['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed", "ERROR - Inference Failed"]:
+                subject_stats[subject]["valid_predictions"] += 1
+                if result['is_correct']:
+                    subject_stats[subject]["correct"] += 1
+        
+        # Calculate accuracy for each subject
+        for subject in subject_stats:
+            if subject_stats[subject]["valid_predictions"] > 0:
+                subject_stats[subject]["accuracy"] = (subject_stats[subject]["correct"] / subject_stats[subject]["valid_predictions"]) * 100
+
 
         logger.info(f"--- 5-shot Korean MMLU Results for {config.name} ({config.model_id}) ---")
         logger.info(f"Original Dataset Size: {len(mmlu_data)}")
@@ -604,6 +629,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             "items_skipped": skipped_loop,
             "accuracy": accuracy_loop,
             "subjects_with_dev_examples": list(dev_data.keys()),
+            "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
             "details": results_details # Include detailed results
         }
         try:

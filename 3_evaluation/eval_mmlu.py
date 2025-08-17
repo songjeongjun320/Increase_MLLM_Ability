@@ -498,6 +498,31 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         logger.info(f"Inference loop finished for {config.name}.")
         accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
 
+        # --- Calculate Category-wise Accuracy ---
+        subject_stats = {}
+        for i, item in enumerate(test_data):
+            subject = item.get("subject", "unknown")
+            result = results_details[i]
+            
+            if subject not in subject_stats:
+                subject_stats[subject] = {
+                    "total": 0,
+                    "correct": 0,
+                    "valid_predictions": 0,
+                    "accuracy": 0.0
+                }
+            
+            subject_stats[subject]["total"] += 1
+            if result['predicted_answer'] is not None and not result['model_raw_output'].startswith(("SKIPPED", "ERROR")):
+                subject_stats[subject]["valid_predictions"] += 1
+                if result['is_correct']:
+                    subject_stats[subject]["correct"] += 1
+        
+        # Calculate accuracy for each subject
+        for subject in subject_stats:
+            if subject_stats[subject]["valid_predictions"] > 0:
+                subject_stats[subject]["accuracy"] = (subject_stats[subject]["correct"] / subject_stats[subject]["valid_predictions"]) * 100
+
         logger.info(f"--- 5-shot MMLU Results for {config.name} ({config.model_id}) ---")
         logger.info(f"Original Dataset Size: {len(mmlu_data)}")
         logger.info(f"Test Items (after dev/test split): {len(test_data)}")
@@ -521,6 +546,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             "errors_or_skipped": errors_or_skipped,
             "accuracy": accuracy,
             "subjects_with_dev_examples": list(dev_data.keys()),
+            "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
             "details": results_details
         }
         try:

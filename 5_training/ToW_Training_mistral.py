@@ -137,10 +137,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 50
+    eval_steps: int = 100
     save_strategy: str = "steps"
-    save_steps: int = 50
-    logging_steps: int = 50
+    save_steps: int = 100
+    logging_steps: int = 100
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 0
@@ -151,6 +151,7 @@ class ToWTrainingConfig:
 
 
 MODEL_CONFIGS = [
+<<<<<<< HEAD:5_training/ToW_Training_Smart.py
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
@@ -163,11 +164,26 @@ MODEL_CONFIGS = [
         use_quantization=True,
         learning_rate=5e-6  # Lower learning rate for stability
     ),
+=======
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=True,
+    #     learning_rate=2e-5  # Stable learning rate for Qwen
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.1-8B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+    #     use_quantization=True,
+    #     learning_rate=5e-6  # Lower learning rate for stability
+    # ),
+>>>>>>> 01db015 (training for different models):5_training/ToW_Training_mistral.py
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
         use_quantization=True,
         learning_rate=5e-6  # Lower learning rate for stability
+<<<<<<< HEAD:5_training/ToW_Training_Smart.py
     ),
     ModelConfig(
         name="DeepSeek-R1-0528-Qwen3-8B-ToW",
@@ -175,6 +191,15 @@ MODEL_CONFIGS = [
         use_quantization=True,
         learning_rate=5e-6  # Lower learning rate for stability
     ),
+=======
+    ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+    #     use_quantization=True,
+    #     learning_rate=5e-6  # Lower learning rate for stability
+    # ),
+>>>>>>> 01db015 (training for different models):5_training/ToW_Training_mistral.py
 ]
 
 

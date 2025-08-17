@@ -5,6 +5,7 @@ ToW Training with Smart Text Handling - Fixed Version
 - Adaptive max length based on data analysis
 - ToW token preservation
 - Smart chunking for long texts
+- torchrun --nproc_per_node=[사용할 GPU 개수] ToW_Training_mistral.py
 """
 
 import os
@@ -413,11 +414,18 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
+        # device_map 설정 수정
+        local_rank = -1
+        if "LOCAL_RANK" in os.environ:
+            local_rank = int(os.environ["LOCAL_RANK"])
+            
+        device_map = {"": f"cuda:{local_rank}"} if local_rank != -1 else "auto"
+
         model = AutoModelForCausalLM.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
-            device_map="auto" if torch.cuda.is_available() else None,
+            device_map=device_map, # 수정된 device_map 적용
             quantization_config=quantization_config,
         )
 
@@ -474,7 +482,9 @@ class ToWTrainer:
             save_strategy=self.training_config.save_strategy,
             save_steps=self.training_config.save_steps,
             save_total_limit=3,
+            ddp_find_unused_parameters=False, # Mistral 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
             load_best_model_at_end=True,
+            local_rank=int(os.getenv('LOCAL_RANK', -1)),
             metric_for_best_model="eval_loss",
             greater_is_better=False,
             fp16=self.training_config.fp16,
@@ -563,7 +573,16 @@ class ToWTrainer:
 def main():
     """Main function with smart processing"""
     logger.info("ToW Training with Smart Text Handling")
-    
+
+    # 분산 훈련 설정 추가
+    local_rank = -1
+    if "LOCAL_RANK" in os.environ:
+        local_rank = int(os.environ["LOCAL_RANK"])
+
+    if local_rank != -1:
+        torch.cuda.set_device(local_rank)
+        torch.distributed.init_process_group(backend="nccl")
+
     if torch.cuda.is_available():
         logger.info(f"CUDA available: {torch.cuda.device_count()} GPUs")
     

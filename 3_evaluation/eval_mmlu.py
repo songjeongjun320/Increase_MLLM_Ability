@@ -42,7 +42,7 @@ MODEL_CONFIGS = [
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
     #     use_quantization=False # Adjust based on VRAM
     # ),
-    
+
     # TOW Trained Model
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
@@ -71,7 +71,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration ---
-DATASET_PATH = "./2_datasets/HRM8K_TEXT/MMMLU-test.json"  # Updated path for local environment
+DATASET_PATH = "./DB/MMLU/MMMLU_origin.json"  # Updated path for local environment
 BASE_OUTPUT_DIR = "evaluation_results_mmlu_5shot_tow_model" # 5-shot evaluation results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"

@@ -17,7 +17,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt-oss-20b"
+MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/1_models/gpt_oss/gpt-oss-20b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -149,6 +149,8 @@ def load_hrm8k_datasets():
         try:
             with open(json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            
+            data = data[:10]
             
             # Standardize data format (convert question field to sentence)
             dataset_name = os.path.basename(json_file).replace('.json', '')

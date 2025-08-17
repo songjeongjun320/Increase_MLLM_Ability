@@ -2,7 +2,7 @@
 """
 gptoss_generate_gold_word.py
 
-GPT-OSS 20B 모델을 사용하여
+GPT-OSS 120B 모델을 사용하여
 문장에서 가장 예측하기 어려운 단어를 JSON 형식으로 생성하고,
 그 결과를 파싱하여 최종 데이터셋을 구축합니다.
 
@@ -17,13 +17,16 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/1_models/gpt_oss/gpt-oss-20b"
+MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/1_models/gpt_oss/gpt-oss-120b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Multi-GPU 설정
+NUM_GPUS = torch.cuda.device_count()
+DEVICES = [f"cuda:{i}" for i in range(NUM_GPUS)] if NUM_GPUS > 0 else ["cpu"]
 
 # 배치 처리 설정
-BATCH_SIZE = 1  # GPT-OSS 20B는 큰 모델이므로 배치 크기를 작게 설정
+BATCH_SIZE = 1  # GPT-OSS 120B는 큰 모델이므로 배치 크기를 작게 설정
 SAVE_INTERVAL = 50  # 50개 처리할 때마다 저장
 
 # =================================================================
@@ -88,8 +91,9 @@ Sentence: "{sentence}"
 JSON Output:"""
 
 def load_model():
-    """GPT-OSS 20B model and tokenizer loading"""
-    print(f"[INFO] Loading GPT-OSS 20B model: {MODEL_PATH}")
+    """GPT-OSS 120B model and tokenizer loading with multi-GPU support"""
+    print(f"[INFO] Loading GPT-OSS 120B model: {MODEL_PATH}")
+    print(f"[INFO] Available devices: {DEVICES}")
     
     try:
         tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
@@ -98,15 +102,24 @@ def load_model():
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             
+        # Multi-GPU 설정을 위한 device_map 생성
+        if NUM_GPUS > 1:
+            print(f"[INFO] Using {NUM_GPUS} GPUs for model distribution")
+            device_map = "auto"  # Transformers가 자동으로 multi-GPU 배치
+        else:
+            device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
+            
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             torch_dtype=torch.bfloat16,
-            device_map="auto",
-            trust_remote_code=True
+            device_map=device_map,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,  # 메모리 효율성을 위해 추가
+            torch_dtype=torch.float16 if NUM_GPUS > 1 else torch.bfloat16,  # Multi-GPU에서는 float16 사용
         )
         
         model.eval()
-        print(f"[INFO] Model loaded successfully on {DEVICE}")
+        print(f"[INFO] Model loaded successfully across {NUM_GPUS} GPU(s)")
         return model, tokenizer
         
     except Exception as e:
@@ -153,7 +166,8 @@ def load_hrm8k_datasets():
             with open(json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            data = data[:10]
+            # app100개 사용하도록 수정 (전체 데이터 사용)
+            # data = data[:10]  # 테스트용 제한 제거
             
             # Standardize data format (convert question field to sentence)
             dataset_name = os.path.basename(json_file).replace('.json', '')
@@ -171,8 +185,8 @@ def load_hrm8k_datasets():
             continue
     
     print(f"[INFO] Total {len(all_data)} sentences loaded")
-    # Debug: limit to first 3 items for testing
-    return all_data[:3]
+    # app100개 처리를 위해 제한을 최대 100개로 설정 (전체 데이터가 100개 미만이면 모두 사용)
+    return all_data[:100] if len(all_data) > 100 else all_data
 
 def process_datasets():
     """Process HRM8K_TEXT dataset to generate gold labels"""
@@ -261,13 +275,13 @@ def process_datasets():
         
         # Periodic saving
         if len(results) % SAVE_INTERVAL == 0 and len(results) > 0:
-            output_path = os.path.join(OUTPUT_DIR, "hrm8k_gold_labels_gptoss20b.json")
+            output_path = os.path.join(OUTPUT_DIR, "hrm8k_gold_labels_gptoss120b.json")
             print(f"\n[INFO] Intermediate save: saving {len(results)} results")
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, ensure_ascii=False, indent=2)
     
     # Final save
-    output_path = os.path.join(OUTPUT_DIR, "hrm8k_gold_labels_gptoss20b.json")
+    output_path = os.path.join(OUTPUT_DIR, "hrm8k_gold_labels_gptoss120b.json")
     print(f"\n[SUCCESS] Processing complete!")
     print(f"  - Successfully processed sentences: {len(results)}")
     print(f"  - Errors or skipped sentences: {error_count}")

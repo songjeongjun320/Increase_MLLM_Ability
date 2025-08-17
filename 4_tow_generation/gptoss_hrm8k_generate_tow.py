@@ -2,7 +2,7 @@
 """
 gptoss_generate_tow.py
 
-GPT-OSS 20B 모델을 사용하여 'context'와 'gold_label'을 바탕으로
+GPT-OSS 120B 모델을 사용하여 'context'와 'gold_label'을 바탕으로
 ToW(Thought-of-Word) 설명을 생성합니다.
 
 gold_word.py에서 생성된 데이터를 입력으로 받습니다.
@@ -14,13 +14,16 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt-oss-20b"
-INPUT_JSON_PATH = "./gold_labels/hrm8k_gold_labels_gptoss20b.json"
-OUTPUT_JSON_PATH = "./tow_data/hrm8k_tow_gptoss20b.json"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_PATH = "../1_models/gpt-oss-120b"
+INPUT_JSON_PATH = "./gold_labels/hrm8k_gold_labels_gptoss120b.json"
+OUTPUT_JSON_PATH = "./tow_data/hrm8k_tow_gptoss120b.json"
+
+# Multi-GPU 설정
+NUM_GPUS = torch.cuda.device_count()
+DEVICES = [f"cuda:{i}" for i in range(NUM_GPUS)] if NUM_GPUS > 0 else ["cpu"]
 
 # 배치 처리 설정
-BATCH_SIZE = 1  # GPT-OSS 20B는 큰 모델이므로 배치 크기를 작게 설정
+BATCH_SIZE = 1  # GPT-OSS 120B는 큰 모델이므로 배치 크기를 작게 설정
 SAVE_INTERVAL = 50  # 50개 처리할 때마다 저장
 
 # ToW 프롬프트 템플릿
@@ -74,8 +77,9 @@ You are an expert mathematical reasoning AI and Korean language analyst. Your mi
 """
 
 def load_model():
-    """GPT-OSS 20B 모델과 토크나이저를 로드합니다."""
-    print(f"[INFO] GPT-OSS 20B 모델을 로드합니다: {MODEL_PATH}")
+    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (Multi-GPU 지원)."""
+    print(f"[INFO] GPT-OSS 120B 모델을 로드합니다: {MODEL_PATH}")
+    print(f"[INFO] Available devices: {DEVICES}")
     
     try:
         tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
@@ -84,15 +88,24 @@ def load_model():
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             
+        # Multi-GPU 설정을 위한 device_map 생성
+        if NUM_GPUS > 1:
+            print(f"[INFO] Using {NUM_GPUS} GPUs for model distribution")
+            device_map = "auto"  # Transformers가 자동으로 multi-GPU 배치
+        else:
+            device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
+            
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             torch_dtype=torch.bfloat16,
-            device_map="auto",
-            trust_remote_code=True
+            device_map=device_map,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,  # 메모리 효율성을 위해 추가
+            torch_dtype=torch.float16 if NUM_GPUS > 1 else torch.bfloat16,  # Multi-GPU에서는 float16 사용
         )
         
         model.eval()
-        print(f"[INFO] 모델이 {DEVICE}에 성공적으로 로드되었습니다.")
+        print(f"[INFO] 모델이 {NUM_GPUS}개 GPU에 성공적으로 로드되었습니다.")
         return model, tokenizer
         
     except Exception as e:
@@ -129,7 +142,7 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
         return None
 
 def generate_tow_dataset():
-    """GPT-OSS 20B 모델을 사용하여 ToW 데이터셋을 생성합니다."""
+    """GPT-OSS 120B 모델을 사용하여 ToW 데이터셋을 생성합니다."""
     
     # 출력 디렉토리 생성
     os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
@@ -147,7 +160,7 @@ def generate_tow_dataset():
             data = json.load(f)
     except FileNotFoundError:
         print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
-        print("[INFO] 먼저 gptoss_generate_gold_word.py를 실행하여 gold label 데이터를 생성하세요.")
+        print("[INFO] 먼저 gptoss_hrm8k_generate_gold_word.py를 실행하여 gold label 데이터를 생성하세요.")
         return
     
     # 이미 처리된 결과를 불러와서 이어하기

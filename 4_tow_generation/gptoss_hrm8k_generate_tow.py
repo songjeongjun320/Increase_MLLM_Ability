@@ -41,7 +41,7 @@ You are an expert mathematical reasoning AI and Korean language analyst. Your mi
 - **Next Word:** 최솟값은은
 
 **Output:**
-<ToW></ToW>
+<ToW>The word "최솟값은은" follows logically because the problem asks for the minimum sum of 𝑎 and 𝑏 after determining their values for the function's maximum. It is necessary to indicate the minimum value of 𝑎 +𝑏. </ToW>
 
 ---
 
@@ -51,7 +51,7 @@ You are an expert mathematical reasoning AI and Korean language analyst. Your mi
 - **Next Word:** 가속도는
 
 **Output:**
-<ToW></ToW>
+<ToW>"가속도는" is needed because the problem asks for the acceleration, which is the second derivative of the position function, at the point when the movement direction changes. </ToW>
 
 ---
 
@@ -61,8 +61,7 @@ You are an expert mathematical reasoning AI and Korean language analyst. Your mi
 - **Next Word:** 넓이를
 
 **Output:**
-<ToW></ToW>
-
+<ToW>"넓이를" is the logical continuation as the question requires calculating the areas 𝐴 and 𝐵, and their difference 𝐵−𝐴. </ToW>
 ---
 
 **[Actual Work]**

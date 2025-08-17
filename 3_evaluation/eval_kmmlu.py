@@ -70,7 +70,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
-DATASET_PATH = "./DB/MMLU/MMLU_KO_Openai.json"  # Updated path for local Korean MMLU data
+DATASET_PATH = "./DB/MMLU/MMLU_KO_Openai.json"  # Full Korean MMLU dataset with 57 subjects
 BASE_OUTPUT_DIR = "evaluation_results_kmmlu_5shot_tow_model" # Base dir for ALL model results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -94,7 +94,7 @@ def prepare_kmmlu_data_with_dev_split(data, dev_shots_per_subject=5):
     
     # Group by subject
     for item in data:
-        subject = item.get("subject", "unknown")
+        subject = item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field
         if subject not in subjects_data:
             subjects_data[subject] = []
         subjects_data[subject].append(item)
@@ -121,15 +121,67 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     Create standard 5-shot Korean MMLU prompt using development examples.
     Follows Korean format: "다음은 [과목]에 관한 객관식 문제입니다."
     """
-    subject = test_item.get("subject", "unknown")
+    subject = test_item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field
     
-    # Format subject name for Korean display
+    # Format subject name for Korean display (comprehensive mapping for all 57 subjects)
     subject_display_map = {
         "abstract_algebra": "추상대수학",
-        "college_mathematics": "대학수학", 
+        "anatomy": "해부학",
+        "astronomy": "천문학",
+        "business_ethics": "경영 윤리",
+        "clinical_knowledge": "임상 지식",
+        "college_biology": "대학 생물학",
+        "college_chemistry": "대학 화학",
+        "college_computer_science": "대학 컴퓨터 과학",
+        "college_mathematics": "대학 수학",
+        "college_medicine": "대학 의학",
+        "college_physics": "대학 물리학",
+        "computer_security": "컴퓨터 보안",
+        "conceptual_physics": "개념 물리학",
+        "econometrics": "계량경제학",
+        "electrical_engineering": "전기공학",
+        "elementary_mathematics": "초등 수학",
+        "formal_logic": "형식 논리학",
+        "global_facts": "세계 사실",
+        "high_school_biology": "고등학교 생물학",
+        "high_school_chemistry": "고등학교 화학",
+        "high_school_computer_science": "고등학교 컴퓨터 과학",
+        "high_school_european_history": "고등학교 유럽사",
+        "high_school_geography": "고등학교 지리학",
+        "high_school_government_and_politics": "고등학교 정치학",
+        "high_school_macroeconomics": "고등학교 거시경제학",
         "high_school_mathematics": "고등학교 수학",
-        "elementary_mathematics": "초등수학",
-        "middle_school_mathematics": "중학수학"
+        "high_school_microeconomics": "고등학교 미시경제학",
+        "high_school_physics": "고등학교 물리학",
+        "high_school_psychology": "고등학교 심리학",
+        "high_school_statistics": "고등학교 통계학",
+        "high_school_us_history": "고등학교 미국사",
+        "high_school_world_history": "고등학교 세계사",
+        "human_aging": "인간 노화",
+        "human_sexuality": "인간 성학",
+        "international_law": "국제법",
+        "jurisprudence": "법학",
+        "logical_fallacies": "논리적 오류",
+        "machine_learning": "기계학습",
+        "management": "경영학",
+        "marketing": "마케팅",
+        "medical_genetics": "의학 유전학",
+        "miscellaneous": "기타",
+        "moral_disputes": "도덕적 논쟁",
+        "moral_scenarios": "도덕적 시나리오",
+        "nutrition": "영양학",
+        "philosophy": "철학",
+        "prehistory": "선사학",
+        "professional_accounting": "전문 회계학",
+        "professional_law": "전문 법학",
+        "professional_medicine": "전문 의학",
+        "professional_psychology": "전문 심리학",
+        "public_relations": "홍보학",
+        "security_studies": "보안학",
+        "sociology": "사회학",
+        "us_foreign_policy": "미국 외교정책",
+        "virology": "바이러스학",
+        "world_religions": "세계 종교학"
     }
     subject_display = subject_display_map.get(subject, subject.replace("_", " "))
     
@@ -138,34 +190,41 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     
     # Add development examples (few-shot examples)
     for i, example in enumerate(dev_examples):
-        question = example.get("question", "")
+        question = example.get("Question", "")  # Korean MMLU uses 'Question' field
         
-        # Extract answer index and convert to letter
-        answer_idx = example.get("answer", 0)
-        if isinstance(answer_idx, int):
-            if answer_idx >= 1 and answer_idx <= 4:  # 1-based indexing
-                answer_letter = chr(ord('A') + answer_idx - 1)
-            else:  # 0-based indexing
-                answer_letter = chr(ord('A') + answer_idx)
-        else:
-            answer_letter = str(answer_idx).upper()
+        # Extract answer letter directly from Korean MMLU format
+        answer_letter = example.get("Answer", "A")  # Already in letter format
         
         prompt_parts.append(question)
         
-        # Parse choices from Korean question format  
-        choices = parse_korean_choices_from_question(question)
-        prompt_parts.extend(choices)
+        # Get choices from Korean MMLU format (A, B, C, D fields)
+        choice_a = example.get("A", "선택지 A")
+        choice_b = example.get("B", "선택지 B")
+        choice_c = example.get("C", "선택지 C")
+        choice_d = example.get("D", "선택지 D")
+        
+        prompt_parts.append(f"A. {choice_a}")
+        prompt_parts.append(f"B. {choice_b}")
+        prompt_parts.append(f"C. {choice_c}")
+        prompt_parts.append(f"D. {choice_d}")
         
         prompt_parts.append(f"정답: {answer_letter}")
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
-    test_question = test_item.get("question", "")
+    test_question = test_item.get("Question", "")  # Korean MMLU uses 'Question' field
     prompt_parts.append(test_question)
     
-    # Parse choices for test question
-    test_choices = parse_korean_choices_from_question(test_question)
-    prompt_parts.extend(test_choices)
+    # Get choices for test question from Korean MMLU format
+    test_choice_a = test_item.get("A", "선택지 A")
+    test_choice_b = test_item.get("B", "선택지 B")
+    test_choice_c = test_item.get("C", "선택지 C")
+    test_choice_d = test_item.get("D", "선택지 D")
+    
+    prompt_parts.append(f"A. {test_choice_a}")
+    prompt_parts.append(f"B. {test_choice_b}")
+    prompt_parts.append(f"C. {test_choice_c}")
+    prompt_parts.append(f"D. {test_choice_d}")
     
     prompt_parts.append("정답:")
     
@@ -410,13 +469,11 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         logger.info("Starting 5-shot Korean MMLU inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
         for i, item in enumerate(tqdm(test_data, desc=f"Evaluating {config.name} (5-shot Korean)")):
-            # Extract ground truth from Korean MMLU format
-            ground_truth_idx = item.get("answer", -1)
-            if isinstance(ground_truth_idx, int) and 1 <= ground_truth_idx <= 4:
-                ground_truth = chr(ord('A') + ground_truth_idx - 1)  # Convert 1-based to A,B,C,D
-            elif isinstance(ground_truth_idx, int) and 0 <= ground_truth_idx <= 3:
-                ground_truth = chr(ord('A') + ground_truth_idx)  # Convert 0-based to A,B,C,D
-            else:
+            # Extract ground truth from Korean MMLU format (already in letter format)
+            ground_truth = item.get("Answer", None)  # Korean MMLU already has letter format (A, B, C, D)
+            
+            # Validate ground truth
+            if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
                 ground_truth = None
             
             if not ground_truth:
@@ -432,7 +489,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 continue
 
             # Get development examples for this subject
-            subject = item.get("subject", "unknown")
+            subject = item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field
             dev_examples = dev_data.get(subject, [])
             
             if not dev_examples:

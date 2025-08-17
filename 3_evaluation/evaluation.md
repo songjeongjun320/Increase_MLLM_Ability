@@ -124,12 +124,27 @@ outputs = model.generate(
 ### 2. 데이터 처리
 
 #### 입력 데이터 형식
+
+**MMLU_origin.json (영어):**
 ```json
 {
-  "question": "문제 텍스트",
-  "answer": 1,  // 1-4 또는 0-3 (자동 처리)
-  "subject": "과목명",
-  "original": "영어 원문 (한국어 데이터의 경우)"
+  "question": "Find the degree for the given field extension Q(sqrt(2), sqrt(3), sqrt(18)) over Q.",
+  "subject": "abstract_algebra",
+  "choices": ["0", "4", "2", "6"],
+  "answer": 1  // 0-based index
+}
+```
+
+**MMLU_KO_Openai.json (한국어):**
+```json
+{
+  "Question": "Q에 대해 주어진 확대체 Q(sqrt(2), sqrt(3), sqrt(18))의 차수를 구하십시오.",
+  "A": "0",
+  "B": "4", 
+  "C": "2",
+  "D": "6",
+  "Answer": "B",  // Letter format
+  "Subject": "abstract_algebra"
 }
 ```
 
@@ -138,13 +153,13 @@ outputs = model.generate(
 {
   "model_config": {...},
   "evaluation_type": "5-shot MMLU",
-  "total_original_items": 470,
+  "total_original_items": 14042,
   "dev_examples_per_subject": 5,
-  "test_items": 455,
+  "test_items": 13757,
   "valid_predictions": 440,
   "correct_predictions": 380,
   "accuracy": 86.36,
-  "subjects_with_dev_examples": ["abstract_algebra", "college_mathematics", "high_school_mathematics"],
+  "subjects_with_dev_examples": ["abstract_algebra", "anatomy", "astronomy", "business_ethics", "..."],
   "details": [...]
 }
 ```
@@ -218,8 +233,10 @@ python eval_kmmlu.py
 ## 주의사항
 
 ### 1. 데이터 호환성
-- 현재 수학 관련 3개 과목만 지원 (abstract_algebra, college_mathematics, high_school_mathematics)
-- 전체 57개 MMLU 과목 지원을 위해서는 완전한 MMLU 데이터셋 필요
+- **전체 57개 MMLU 과목 지원** ✅ 완료
+- **총 14,042개 문항** (각 과목별로 5개 development examples + 나머지 test items)
+- MMLU_origin.json: 영어 원본 데이터
+- MMLU_KO_Openai.json: 한국어 번역 데이터
 
 ### 2. 모델 호환성
 - **Transformers 라이브러리** 호환 모델만 지원

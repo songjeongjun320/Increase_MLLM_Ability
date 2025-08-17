@@ -71,7 +71,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration ---
-DATASET_PATH = "./DB/MMLU/MMMLU_origin.json"  # Updated path for local environment
+DATASET_PATH = "./DB/MMLU/MMLU_origin.json"  # Full MMLU dataset with 57 subjects
 BASE_OUTPUT_DIR = "evaluation_results_mmlu_5shot_tow_model" # 5-shot evaluation results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -132,12 +132,11 @@ def create_5shot_prompt(test_item, dev_examples):
     # Add development examples (few-shot examples)
     for i, example in enumerate(dev_examples):
         question = example.get("question", "")
-        # Convert choices from list to A, B, C, D format
+        # Get choices from the standard MMLU format
         choices = example.get("choices", [])
-        if not choices and "original" in example:
-            # For Korean MMLU format, we need to parse from the question text
-            # This is a fallback - we'll implement proper choice extraction
-            choices = ["A", "B", "C", "D"]  # Placeholder
+        if not choices:
+            logger.warning(f"No choices found for example in subject {subject}")
+            choices = ["Option A", "Option B", "Option C", "Option D"]
         
         answer_idx = example.get("answer", 0)
         if isinstance(answer_idx, int):
@@ -152,8 +151,8 @@ def create_5shot_prompt(test_item, dev_examples):
             prompt_parts.append(f"C. {choices[2]}")
             prompt_parts.append(f"D. {choices[3]}")
         else:
-            # Parse from question text for Korean format
-            prompt_parts.extend(parse_choices_from_question(question))
+            logger.warning(f"Insufficient choices for example in subject {subject}")
+            prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
         
         prompt_parts.append(f"Answer: {answer_letter}")
         prompt_parts.append("")  # Empty line between examples
@@ -170,8 +169,8 @@ def create_5shot_prompt(test_item, dev_examples):
         prompt_parts.append(f"C. {test_choices[2]}")
         prompt_parts.append(f"D. {test_choices[3]}")
     else:
-        # Parse from question text for Korean format
-        prompt_parts.extend(parse_choices_from_question(test_question))
+        logger.warning(f"Insufficient choices for test question in subject {subject}")
+        prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
     
     prompt_parts.append("Answer:")
     

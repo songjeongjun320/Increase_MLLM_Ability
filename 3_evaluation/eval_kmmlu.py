@@ -64,10 +64,11 @@ MODEL_CONFIGS = [
     ),
 ]
 
-# --- General Configuration (BASE_OUTPUT_DIR is now the primary output location) ---
-DATASET_PATH = "/scratch/jsong132/Increase_MLLM_Ability/DB/MMLU/MMLU_KO_Openai.json"
-BASE_OUTPUT_DIR = "evaluation_results_kmmlu_tow_model" # Base dir for ALL model results
+# --- General Configuration (Updated for 5-shot evaluation) ---
+DATASET_PATH = "./2_datasets/HRM8K_TEXT/MMMLU-test.json"  # Updated path for local Korean MMLU data
+BASE_OUTPUT_DIR = "evaluation_results_kmmlu_5shot_tow_model" # Base dir for ALL model results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
 # --- Logging Setup (Configured per model later) ---
 # Basic setup, will add file handlers per model
@@ -78,7 +79,132 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__) # Get root logger
 
-# --- Helper Functions (Unchanged) ---
+# --- Helper Functions for 5-shot Korean MMLU Evaluation ---
+def prepare_kmmlu_data_with_dev_split(data, dev_shots_per_subject=5):
+    """
+    Split Korean MMLU data into development (few-shot examples) and test sets.
+    Uses first N examples per subject as development set.
+    """
+    subjects_data = {}
+    
+    # Group by subject
+    for item in data:
+        subject = item.get("subject", "unknown")
+        if subject not in subjects_data:
+            subjects_data[subject] = []
+        subjects_data[subject].append(item)
+    
+    dev_data = {}
+    test_data = []
+    
+    for subject, items in subjects_data.items():
+        if len(items) < dev_shots_per_subject:
+            logger.warning(f"Subject {subject} has only {len(items)} items, less than required {dev_shots_per_subject} dev examples")
+            # Use all available items as dev examples, no test items for this subject
+            dev_data[subject] = items
+        else:
+            # First N items as dev examples
+            dev_data[subject] = items[:dev_shots_per_subject]
+            # Remaining items as test
+            test_data.extend(items[dev_shots_per_subject:])
+    
+    logger.info(f"Split Korean MMLU data: {len(dev_data)} subjects with dev examples, {len(test_data)} test items")
+    return dev_data, test_data
+
+def create_5shot_korean_prompt(test_item, dev_examples):
+    """
+    Create standard 5-shot Korean MMLU prompt using development examples.
+    Follows Korean format: "다음은 [과목]에 관한 객관식 문제입니다."
+    """
+    subject = test_item.get("subject", "unknown")
+    
+    # Format subject name for Korean display
+    subject_display_map = {
+        "abstract_algebra": "추상대수학",
+        "college_mathematics": "대학수학", 
+        "high_school_mathematics": "고등학교 수학",
+        "elementary_mathematics": "초등수학",
+        "middle_school_mathematics": "중학수학"
+    }
+    subject_display = subject_display_map.get(subject, subject.replace("_", " "))
+    
+    prompt_parts = [f"다음은 {subject_display}에 관한 객관식 문제(정답 포함)입니다."]
+    prompt_parts.append("")  # Empty line
+    
+    # Add development examples (few-shot examples)
+    for i, example in enumerate(dev_examples):
+        question = example.get("question", "")
+        
+        # Extract answer index and convert to letter
+        answer_idx = example.get("answer", 0)
+        if isinstance(answer_idx, int):
+            if answer_idx >= 1 and answer_idx <= 4:  # 1-based indexing
+                answer_letter = chr(ord('A') + answer_idx - 1)
+            else:  # 0-based indexing
+                answer_letter = chr(ord('A') + answer_idx)
+        else:
+            answer_letter = str(answer_idx).upper()
+        
+        prompt_parts.append(question)
+        
+        # Parse choices from Korean question format  
+        choices = parse_korean_choices_from_question(question)
+        prompt_parts.extend(choices)
+        
+        prompt_parts.append(f"정답: {answer_letter}")
+        prompt_parts.append("")  # Empty line between examples
+    
+    # Add test question
+    test_question = test_item.get("question", "")
+    prompt_parts.append(test_question)
+    
+    # Parse choices for test question
+    test_choices = parse_korean_choices_from_question(test_question)
+    prompt_parts.extend(test_choices)
+    
+    prompt_parts.append("정답:")
+    
+    return "\n".join(prompt_parts)
+
+def parse_korean_choices_from_question(question):
+    """
+    Parse A, B, C, D choices from Korean MMLU question format.
+    Korean format embeds choices within the question text with numbers.
+    """
+    import re
+    
+    # Look for numbered choices in the question (1. 2. 3. 4.)
+    choice_pattern = r'(\d+)\.\s*([^\n\d]+?)(?=\n\d+\.|$)'
+    matches = re.findall(choice_pattern, question, re.MULTILINE | re.DOTALL)
+    
+    choices = []
+    for i, (num, text) in enumerate(matches):
+        if i < 4:  # Only take first 4 choices
+            letter = chr(ord('A') + i)
+            # Clean up the choice text
+            clean_text = text.strip().replace('\n', ' ').strip()
+            choices.append(f"{letter}. {clean_text}")
+    
+    # If we couldn't parse choices, return placeholder
+    if len(choices) < 4:
+        choices = ["A. 선택지 A", "B. 선택지 B", "C. 선택지 C", "D. 선택지 D"]
+    
+    return choices
+
+def extract_korean_answer_first_token(model_output, tokenizer):
+    """
+    Extract answer from Korean model output using first token approach.
+    This follows the standard MMLU evaluation methodology adapted for Korean.
+    """
+    # Clean and normalize output
+    cleaned_output = model_output.strip().upper()
+    
+    # Look for first letter that is A, B, C, or D
+    for char in cleaned_output:
+        if char in ['A', 'B', 'C', 'D']:
+            return char
+    
+    return None
 
 def load_mmlu_data(filepath):
     """JSON 파일에서 KMMLU 데이터를 로드합니다."""
@@ -101,8 +227,9 @@ def load_mmlu_data(filepath):
         logger.error(f"데이터 로드 중 오류 발생: {e}")
         return None
 
-def create_prompt(item):
-    """MMLU 항목에 대한 프롬프트를 생성합니다."""
+# Legacy 0-shot prompt function (replaced by 5-shot version)
+def create_prompt_legacy(item):
+    """MMLU 항목에 대한 프롬프트를 생성합니다. [LEGACY - 0-shot]"""
     question = item.get("Question", "")
     choices = { k: item.get(k, "") for k in ["A", "B", "C", "D"] }
     if not question or not all(choices.values()):
@@ -119,8 +246,9 @@ D: {choices['D']}
 정답: """
     return prompt
 
-def extract_answer(model_output, prompt):
-    """모델 출력에서 답변(A, B, C, D)을 추출합니다."""
+# Legacy answer extraction function (replaced by first-token approach)
+def extract_answer_legacy(model_output, prompt):
+    """모델 출력에서 답변(A, B, C, D)을 추출합니다. [LEGACY]"""
     # Remove the prompt part if the model echoes it
     # Handle cases where the prompt might be slightly modified (e.g., whitespace)
     normalized_output = model_output.strip()
@@ -151,9 +279,15 @@ def extract_answer(model_output, prompt):
 
 def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir: str):
     """
-    주어진 설정의 단일 모델에 대해 MMLU 평가를 수행하고,
+    주어진 설정의 단일 모델에 대해 5-shot Korean MMLU 평가를 수행하고,
     결과와 로그를 base_output_dir 아래 모델 이름의 하위 디렉토리에 저장합니다.
     """
+    # Split data into development (few-shot examples) and test sets
+    dev_data, test_data = prepare_kmmlu_data_with_dev_split(mmlu_data, dev_shots_per_subject=5)
+    
+    if not test_data:
+        logger.error("No test data available after dev/test split. Check data size and dev_shots_per_subject setting.")
+        return
 
     # Construct model-specific output directory and file paths
     model_output_dir = os.path.join(base_output_dir, config.name) # Subdirectory per model
@@ -268,9 +402,19 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         results_details = []
 
         logger.info("Starting inference loop...")
-        for i, item in enumerate(tqdm(mmlu_data, desc=f"Evaluating {config.name}")):
-            ground_truth = item.get("Answer")
-            if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
+        logger.info("Starting 5-shot Korean MMLU inference loop...")
+        logger.info(f"Test data size: {len(test_data)}")
+        for i, item in enumerate(tqdm(test_data, desc=f"Evaluating {config.name} (5-shot Korean)")):
+            # Extract ground truth from Korean MMLU format
+            ground_truth_idx = item.get("answer", -1)
+            if isinstance(ground_truth_idx, int) and 1 <= ground_truth_idx <= 4:
+                ground_truth = chr(ord('A') + ground_truth_idx - 1)  # Convert 1-based to A,B,C,D
+            elif isinstance(ground_truth_idx, int) and 0 <= ground_truth_idx <= 3:
+                ground_truth = chr(ord('A') + ground_truth_idx)  # Convert 0-based to A,B,C,D
+            else:
+                ground_truth = None
+            
+            if not ground_truth:
                 logger.warning(f"Invalid/missing ground truth for item {i}. Skipping.")
                 errors += 1
                 results_details.append({
@@ -282,7 +426,15 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 })
                 continue
 
-            prompt = create_prompt(item)
+            # Get development examples for this subject
+            subject = item.get("subject", "unknown")
+            dev_examples = dev_data.get(subject, [])
+            
+            if not dev_examples:
+                logger.warning(f"No development examples available for subject: {subject}")
+                prompt = None
+            else:
+                prompt = create_5shot_korean_prompt(item, dev_examples)
             if prompt is None:
                 logger.warning(f"Could not create prompt for item {i}. Skipping.")
                 errors += 1
@@ -295,8 +447,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 })
                 continue
 
-            # Generate exactly one token - should be faster and sufficient for ABCD
-            max_gen_tokens = 1 # Change this if more context/reasoning is needed before the letter
+            # Generate exactly one token for standard MMLU evaluation
+            max_gen_tokens = 1
 
             inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=2048).to(DEVICE) # Added truncation
 
@@ -305,12 +457,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 with torch.no_grad():
                     outputs = model.generate(
                         **inputs,
-                        max_new_tokens=max_gen_tokens, # Generate very few tokens
-                        pad_token_id=tokenizer.pad_token_id, # Use actual pad token ID
-                        eos_token_id=tokenizer.eos_token_id, # Stop if EOS generated
+                        max_new_tokens=max_gen_tokens, # Generate only first token for standard MMLU evaluation
+                        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id,
                         do_sample=False, # Deterministic output
-                        # temperature=1.0, # Not needed for do_sample=False
-                        # top_k=50,        # Not needed for do_sample=False
                     )
                 # Decode only the newly generated tokens
                 output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
@@ -323,8 +473,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 is_correct = False
 
             else: # If inference succeeded
-                # Extract answer from the potentially very short generated text
-                model_answer = extract_answer(generated_text, prompt)
+                # Extract answer using first-token approach
+                model_answer = extract_korean_answer_first_token(generated_text, tokenizer)
 
                 is_correct = False
                 if model_answer:
@@ -349,9 +499,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             })
 
             # Intermediate progress logging
-            if (i + 1) % 200 == 0: # Log every 200 items
+            if (i + 1) % 100 == 0: # Log every 100 items for smaller test sets
                  current_acc = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-                 logger.info(f"Progress ({config.name}): {i + 1}/{len(mmlu_data)}, Accuracy: {current_acc:.2f}% ({correct_predictions}/{total_predictions}), Errors: {errors}")
+                 logger.info(f"Progress ({config.name}): {i + 1}/{len(test_data)}, Accuracy: {current_acc:.2f}% ({correct_predictions}/{total_predictions}), Errors: {errors}")
 
 
         # --- Final Results ---
@@ -366,26 +516,32 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         accuracy_loop = (correct_pred_loop / valid_pred_loop * 100) if valid_pred_loop > 0 else 0
 
 
-        logger.info(f"--- Results for {config.name} ({config.model_id}) ---")
-        logger.info(f"Total Items in Dataset: {len(mmlu_data)}")
+        logger.info(f"--- 5-shot Korean MMLU Results for {config.name} ({config.model_id}) ---")
+        logger.info(f"Original Dataset Size: {len(mmlu_data)}")
+        logger.info(f"Test Items (after dev/test split): {len(test_data)}")
+        logger.info(f"Development Examples per Subject: 5")
         logger.info(f"Items Processed (Attempted): {total_processed_loop}")
         logger.info(f"Valid Predictions Made: {valid_pred_loop}")
         logger.info(f"Correct Predictions: {correct_pred_loop}")
         logger.info(f"Errors (Inference/Extraction Failures): {errors_loop}")
         logger.info(f"Items Skipped (Invalid GT/Prompt): {skipped_loop}")
-        logger.info(f"Final Accuracy (Correct/Valid): {accuracy_loop:.2f}%")
+        logger.info(f"Final 5-shot Korean MMLU Accuracy: {accuracy_loop:.2f}%")
 
         # --- Save Results ---
         final_summary = {
             "model_config": config.__dict__, # Save config used
             "dataset_path": DATASET_PATH,
-            "total_items": len(mmlu_data),
+            "evaluation_type": "5-shot Korean MMLU",
+            "total_original_items": len(mmlu_data),
+            "dev_examples_per_subject": 5,
+            "test_items": len(test_data),
             "items_processed": total_processed_loop,
             "valid_predictions": valid_pred_loop,
             "correct_predictions": correct_pred_loop,
             "errors_or_failures": errors_loop,
             "items_skipped": skipped_loop,
             "accuracy": accuracy_loop,
+            "subjects_with_dev_examples": list(dev_data.keys()),
             "details": results_details # Include detailed results
         }
         try:

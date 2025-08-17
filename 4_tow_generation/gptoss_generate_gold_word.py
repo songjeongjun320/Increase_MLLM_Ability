@@ -171,7 +171,8 @@ def load_hrm8k_datasets():
             continue
     
     print(f"[INFO] Total {len(all_data)} sentences loaded")
-    return all_data
+    # Debug: limit to first 3 items for testing
+    return all_data[:3]
 
 def process_datasets():
     """Process HRM8K_TEXT dataset to generate gold labels"""
@@ -209,16 +210,23 @@ def process_datasets():
             
             # JSON parsing
             predicted_word = None
+            print(f"[DEBUG] Raw output for {item['id']}: {raw_output[:200]}...")
+            
             json_match = re.search(r'{\s*"unpredictable_word":\s*".*?"\s*}', raw_output, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
+                print(f"[DEBUG] Found JSON: {json_str}")
                 try:
                     parsed_json = json.loads(json_str)
                     predicted_word = parsed_json.get("unpredictable_word")
-                except json.JSONDecodeError:
-                    pass
+                    print(f"[DEBUG] Parsed word: {predicted_word}")
+                except json.JSONDecodeError as e:
+                    print(f"[DEBUG] JSON decode error: {e}")
+            else:
+                print(f"[DEBUG] No JSON match found in output")
             
             if not predicted_word:
+                print(f"[DEBUG] No predicted word found, skipping item {item['id']}")
                 error_count += 1
                 continue
             

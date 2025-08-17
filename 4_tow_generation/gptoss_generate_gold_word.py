@@ -100,7 +100,7 @@ def load_model():
             
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             device_map="auto",
             trust_remote_code=True
         )
@@ -117,7 +117,10 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
     """Generate text using the model"""
     try:
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        
+        # Ensure all tensors are in the same dtype as the model
+        inputs = {k: v.to(device=model.device, dtype=model.dtype) if v.dtype.is_floating_point else v.to(model.device) 
+                 for k, v in inputs.items()}
         
         with torch.no_grad():
             outputs = model.generate(

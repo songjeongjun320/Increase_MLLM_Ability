@@ -5,6 +5,7 @@ ToW Training with Smart Text Handling - Fixed Version
 - Adaptive max length based on data analysis
 - ToW token preservation
 - Smart chunking for long texts
+- torchrun --nproc_per_node=[사용할 GPU 개수] ToW_Training_qwen.py
 """
 
 import os
@@ -111,42 +112,42 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite copy.json",
-        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite copy.json"
+        "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
+        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
     ])
     output_base_dir: str = "ToW_Models"
-    
+
     # Training hyperparameters
-    learning_rate: float = 5e-5
-    num_train_epochs: int = 3
-    per_device_train_batch_size: int = 4
-    per_device_eval_batch_size: int = 4
-    gradient_accumulation_steps: int = 8
-    
+    learning_rate: float = 5e-5  # Increased learning rate
+    num_train_epochs: int = 10  # Increased epochs for more training time
+    per_device_train_batch_size: int = 16
+    per_device_eval_batch_size: int = 16
+    gradient_accumulation_steps: int = 16  # Increased accumulation steps
+
     # Smart text handling
     adaptive_max_length: bool = True
     preserve_tow_tokens: bool = True
     enable_chunking: bool = True
     min_chunk_overlap: int = 50
-    
+
     # Default settings
     max_sequence_length: int = 1024
-    warmup_ratio: float = 0.1
-    weight_decay: float = 0.1
-    
+    warmup_ratio: float = 0.2  # Increased warmup ratio
+    weight_decay: float = 0.05  # Lower weight decay
+
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 50
+    eval_steps: int = 500  # Decreased evaluation frequency
     save_strategy: str = "steps"
-    save_steps: int = 50
-    logging_steps: int = 50
+    save_steps: int = 500  # Decreased save frequency
+    logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 0
+    dataloader_num_workers: int = 4  # Increased workers for faster data loading
     remove_unused_columns: bool = True
-    fp16: bool = False
-    bf16: bool = True
-    gradient_checkpointing: bool = True
+    fp16: bool = True  # Enable fp16 for faster training
+    bf16: bool = False
+    gradient_checkpointing: bool = False  # Disable gradient checkpointing for speed
 
 
 MODEL_CONFIGS = [
@@ -155,11 +156,11 @@ MODEL_CONFIGS = [
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
         use_quantization=True
     ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
+    # ),
     # ModelConfig(
     #     name="Llama-3.1-8B-Instruct-ToW",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
@@ -408,11 +409,18 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
+        # device_map 설정 수정
+        local_rank = -1
+        if "LOCAL_RANK" in os.environ:
+            local_rank = int(os.environ["LOCAL_RANK"])
+            
+        device_map = {"": f"cuda:{local_rank}"} if local_rank != -1 else "auto"
+
         model = AutoModelForCausalLM.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
-            device_map="auto" if torch.cuda.is_available() else None,
+            device_map=device_map, # 수정된 device_map 적용
             quantization_config=quantization_config,
         )
 
@@ -465,7 +473,9 @@ class ToWTrainer:
             save_strategy=self.training_config.save_strategy,
             save_steps=self.training_config.save_steps,
             save_total_limit=3,
+            ddp_find_unused_parameters=False, # Qwen 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
             load_best_model_at_end=True,
+            local_rank=int(os.getenv('LOCAL_RANK', -1)),
             metric_for_best_model="eval_loss",
             greater_is_better=False,
             fp16=self.training_config.fp16,
@@ -551,10 +561,20 @@ class ToWTrainer:
         return train_result
 
 
+# main 함수 시작 부분
 def main():
     """Main function with smart processing"""
     logger.info("ToW Training with Smart Text Handling")
-    
+
+    # 분산 훈련 설정 추가
+    local_rank = -1
+    if "LOCAL_RANK" in os.environ:
+        local_rank = int(os.environ["LOCAL_RANK"])
+
+    if local_rank != -1:
+        torch.cuda.set_device(local_rank)
+        torch.distributed.init_process_group(backend="nccl")
+
     if torch.cuda.is_available():
         logger.info(f"CUDA available: {torch.cuda.device_count()} GPUs")
     

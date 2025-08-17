@@ -26,43 +26,42 @@ SAVE_INTERVAL = 50  # 50개 처리할 때마다 저장
 # ToW 프롬프트 템플릿
 FEW_SHOT_PROMPT_TEMPLATE = """
 **[Role and Instructions]**
-You are an expert literary critic and a language reasoning AI. Your mission is to analyze and explain precisely why a specific 'Next Word' is the necessary and logical continuation of the given 'Context'. Your entire explanation must be enclosed within <ToW> and </ToW> tags, adhering to the following rules:
+You are an expert mathematical reasoning AI and Korean language analyst. Your mission is to analyze and explain precisely why a specific 'Next Word' is the necessary and logical continuation of the  given mathematical 'Context'. Your entire explanation must be enclosed within <ToW> and </ToW> tags, adhering to the following rules:
 
-1.  **Logical Connection**: Analyze the flow, mood, metaphors, and causal relationships within the context to explain how the word is logically connected.
-2.  **Necessity**: Emphasize why this particular word is the most fitting and essential choice compared to any other alternatives.
-3.  **Clarity and Brevity**: Provide a concise and clear explanation, focusing on the core reasons.
-4.  **Output Language**: Output in English.
+1. **Mathematical Logic**: Analyze the mathematical flow, problem structure, and operational relationships within the context to explain how the word is logically connected to the mathematical reasoning.
+2. **Mathematical Necessity**: Emphasize why this particular word is the most fitting and essential choice for understanding the mathematical concept, operation, or question type compared to any other alternatives.
+3. **Clarity and Brevity**: Provide a concise and clear explanation, focusing on the core mathematical reasons and conceptual importance.        
+4. **Output Language**: Output in English.
 
 ---
 
 **[Example 1]**
 **Input:**
-- **Context:** C 여학교에서 교원 겸 기숙사 사감 노릇을 하는 B 여사라면 딱장대요 독신주의자요 찰진 야소군으로 유명하다. 사십에 가까운 노처녀인 그는 주근깨투성이 얼굴이 처녀다운 맛이란 약에 쓰려도 찾을 수 없을 뿐인가, 시들고 거칠고 마르고 누렇게 뜬 품이
-- **Next Word:** 곰팡
+- **Context:** 닫힌구간 [0,2π]에서 정이된 함수 f(x) = acosbx + 3 이 x = π/3에서 최댓값 13을을 갖도록 하는 두 자연수 a,b 의 순서쌍 (a,b) 에 대하여 a+b의
+- **Next Word:** 최솟값은은
 
 **Output:**
-<ToW>The context describes the appearance of "Lady B" using a series of negative adjectives such as 'withered,' 'coarse,' 'gaunt,' and 'sallow,' which evoke a sense of lifelessness and age. This process builds a cumulative image of decay and deterioration. The word that most effectively encapsulates and serves as a metaphor for this collective state of negativity is 'mold.' The word 'mold' completes this image of decay and plays a crucial role in powerfully imprinting an unpleasant impression of the character upon the reader.</ToW>
+<ToW></ToW>
 
 ---
 
 **[Example 2]**
 **Input:**
-- **Context:** 웬 영문인지 알지 못하면서도 선생의 기색을 살피고 겁부터
-- **Next Word:** 집어먹은
+- **Context:** 시각 t = 0 일 때, 출발하여 수직선 위를 움직이는 점 P의 시각 t(t>=0)에서의 위치 x가 x=t^3-(3t^2)/2-6t 이다. 출발한 후 점 P의 운동 방향이 바뀌는 시각에서의 점 P의 가속도는?
+- **Next Word:** 가속도는
 
 **Output:**
-<ToW>The word '집어먹은' (jibeomeogeun) intensifies the Korean idiom for being frightened, which literally translates to "to eat fear." It changes the nuance from passively feeling fear to being actively and completely consumed by terror. This powerful choice of verb effectively maximizes the scene's tension.</ToW>
+<ToW></ToW>
 
 ---
 
 **[Example 3]**
 **Input:**
-- **Context:** 소리 나는 방은 어렵지 않게 찾을 수 있었다.\\n찾고는 나무로 깎아 세운 듯이 주춤 걸음을 멈출 만큼 그들은 놀래었다.\\n그런 소리의 출처야말로 자기네 방에서 몇 걸음 안 되는 사감실일 줄이야!\\n그 방에 여전히 사내의 비대발괄하는 푸념이 되풀이되고 있다….\\n\\\"나의 천사, 나의 하늘, 나의 여왕, 나의 목숨, 나의 사랑, 나의 애를 말려 죽이실 테요. 나의 가슴을 뜯어 죽이실 테요. 내 생명을 맡으신 당신의 입술로….\\\"\\n셋째 처녀는 대담스럽게 그 방문을 빠끔히 열었다.\\n그 틈으로 여섯 눈이 방안을 향해 쏘았다.\\n이 어쩐
-- **Next Word:** 기괴한
+- **Context:** 최고차항의 계수가 1인 삼차함수 f(x)가 f(1)=f(2)=0, f'(0)=-7을 만족시킨다. 원점 O와 점 P(3,f(3))에 대하여 선분 OP가 곡선 y=f(x)와 만나는 점 중 P가 아닌 점을 Q라 하자. 곡선 y=f(x)와 y축 및 선분 OQ로 둘러싸인 부분의 넓이를 A, 곡선 y=f(x)와 선분 PQ로 둘러싸인 부분의 넙이를 B라 할 때, B-A의 값은?
+- **Next Word:** 넓이를
 
 **Output:**
-<ToW>The context creates a stark contrast between the strict housemother's persona and the sentimental love declarations heard from her room. This dissonance makes the scene not merely surprising, but illogical and absurd. The word '기괴한' (bizarre/grotesque) is the most precise choice because it perfectly captures this unsettling and nonsensical quality, fitting the surreal climax of the moment.</ToW>
-
+<ToW></ToW>
 
 ---
 

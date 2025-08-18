@@ -14,12 +14,13 @@ import re
 import glob
 from tqdm import tqdm
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer,AutoConfig, AutoModelForCausalLM, BitsAndBytesConfig
 from datetime import datetime
+from bitsandbytes import BitsAndBytesConfig
 import traceback
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt_oss/gpt-oss-20b"
+MODEL_PATH = "../DeepSeek_R1_Distill_Llama_70B"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리
@@ -47,6 +48,7 @@ Analyze the sentence and output your answer in a JSON format with a single key "
 ---
 Example 1:
 Sentence: "닫힌구간 [0,2π]에서 정이된 함수 f(x) = acosbx + 3 이 x = π/3에서 최댓값 13을을 갖도록 하는 두 자연수 a,b 의 순서쌍 (a,b) 에 대하여 a+b의 최솟값은?"
+Reasoning: "The final objective is the 'minimum value' of 'a+b', not the value itself. This is specified by the core noun '최솟값' (minimum value) in the question's final phrase. Following the established pattern of including the grammatical particle, the complete and most precise target is '최솟값은'."
 JSON Output:
 {{
 "unpredictable_word": "최솟값은"
@@ -56,6 +58,7 @@ JSON Output:
 
 Example 2:
 Sentence: "시각 t = 0 일 때, 출발하여 수직선 위를 움직이는 점 P의 시각 t(t>=0)에서의 위치 x가 x=t^3-(3t^2)/2-6t 이다. 출발한 후 점 P의 운동 방향이 바뀌는 시각에서의 점 P의 가속도는?"
+Reasoning: "This problem asks for a specific physical quantity under a certain condition. The question's final phrase, '점 P의 가속도는?' (What is the acceleration of point P?), explicitly states that the final goal is to find the 'acceleration'. Following the established pattern, the core noun '가속도' (acceleration) is combined with its grammatical particle '는' to make '가속도는' the most precise target word for the final answer."
 JSON Output:
 {{
 "unpredictable_word": "가속도는"
@@ -65,6 +68,7 @@ JSON Output:
 
 Example 3:
 Sentence: "최고차항의 계수가 1인 삼차함수 f(x)가 f(1)=f(2)=0, f'(0)=-7을 만족시킨다. 원점 O와 점 P(3,f(3))에 대하여 선분 OP가 곡선 y=f(x)와 만나는 점 중 P가 아닌 점을 Q라 하자. 곡선 y=f(x)와 y축 및 선분 OQ로 둘러싸인 부분의 넓이를 A, 곡선 y=f(x)와 선분 PQ로 둘러싸인 부분의 넙이를 B라 할 때, B-A의 값은?"
+Reasoning: "This case is unique because while the question asks for a '값은' (value), the target word is '넓이를' (area). The problem explicitly defines the components of the final calculation, A and B, as areas ('넓이'). Therefore, the fundamental quantity being calculated (B-A) is an area. '넓이를' is chosen because it correctly identifies the specific nature of the target quantity, which is more descriptive than the generic term '값은'."
 JSON Output:
 {{
 "unpredictable_word": "넓이를"
@@ -74,6 +78,7 @@ JSON Output:
 
 Example 4:
 Sentence: "방정식 log2(x-3)=log4(3x-5)를 만족시키는 실수 x의 값을 구하시오."
+Reasoning: "This problem directly asks to solve for an unknown variable, 'x'. The instruction '실수 x의 값을 구하시오' (Find the value of the real number x) makes it clear that the final target is not a property of x (like its maximum or minimum) but the variable itself. Therefore, 'x' is the most fundamental and direct representation of the quantity that needs to be found."
 JSON Output:
 {{
 "unpredictable_word": "x"
@@ -83,6 +88,7 @@ JSON Output:
 
 Example 5:
 Sentence: "두 사건 A,B에 대하여 P(A|B)=P(A)=1/2, P(A∩B)=1/5 일 때, P(A∪B)의 값은?"
+Reasoning: "The problem asks for the numerical result of the probability expression P(A∪B). The final phrase 'P(A∪B)의 값은?' directly translates to 'What is the value of P(A∪B)?'. Unlike Example 3, where a more specific noun ('area') was defined earlier, this problem does not provide a more fundamental descriptor for the probability. Therefore, the most direct and appropriate target word is '값은' (value is?), taken from the question itself, which identifies the generic numerical result required."
 JSON Output:
 {{
 "unpredictable_word": "값은"
@@ -94,144 +100,49 @@ Sentence: "{sentence}"
 JSON Output:"""
 
 def load_model():
-    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (강화된 안전 로딩)."""
-    print(f"[INFO] Loading GPT-OSS 120B model: {MODEL_PATH}")
-    print(f"[INFO] Available devices: {DEVICES}")
+    """
+    GPT-OSS 20B 모델과 토크나이저를 로드합니다 (강화된 안전 로딩).
+    """
+    print(f"[INFO] Loading GPT-OSS 20B model: {MODEL_PATH}")
     
     try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        print("[SUCCESS] Tokenizer loaded successfully")
-    except Exception as tokenizer_error:
-        print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
+        # Load model config (this is for general model settings, not quantization)
+        model_config = AutoConfig.from_pretrained(MODEL_PATH)
+        print("[INFO] Model config loaded.")
+    except Exception as e:
+        print(f"[ERROR] Model configuration loading failed: {e}")
         return None, None
 
-    # Define quantization configurations using the modern API
-    quantization_config_4bit = BitsAndBytesConfig(
+    # Define quantization configurations using the modern API (4-bit)
+    quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
     )
 
-    quantization_config_8bit = BitsAndBytesConfig(
-        load_in_8bit=True,
-    )
+    # GPU memory management (optional)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
-    # Dynamically create max_memory map based on available GPUs
-    max_memory_map_15gb = {i: "15GiB" for i in range(NUM_GPUS)}
-    max_memory_map_20gb = {i: "20GiB" for i in range(NUM_GPUS)}
-    max_memory_map_35gb = {i: "35GiB" for i in range(NUM_GPUS)}
+    # Try loading model with quantization configuration
+    try:
+        print("[INFO] Attempting to load model with the recommended 4-bit quantization strategy...")
 
-    # 메모리 최적화된 fallback 전략 (최신 bitsandbytes API 적용)
-    model_loading_strategies = [
-        {
-            "name": "4bit Quantization (Recommended)",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "quantization_config": quantization_config_4bit,
-                "low_cpu_mem_usage": True,
-                "max_memory": max_memory_map_15gb,
-            }
-        },
-        {
-            "name": "8bit Quantization",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "quantization_config": quantization_config_8bit,
-                "low_cpu_mem_usage": True,
-                "max_memory": max_memory_map_20gb,
-            }
-        },
-        {
-            "name": "Memory optimized with offload",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "low_cpu_mem_usage": True,
-                "torch_dtype": torch.bfloat16,
-                "max_memory": max_memory_map_35gb,
-                "offload_folder": "./offload_temp",
-                "offload_state_dict": True,
-            }
-        },
-        {
-            "name": "Sequential loading",
-            "config": {
-                "device_map": "sequential",
-                "trust_remote_code": True,
-                "low_cpu_mem_usage": True,
-                "torch_dtype": torch.bfloat16,
-                "max_memory": max_memory_map_35gb,
-            }
-        },
-        {
-            "name": "Basic bfloat16",
-            "config": {
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
-            }
-        },
-        {
-            "name": "CPU offload fallback",
-            "config": {
-                "device_map": {"": "cpu"},
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-            }
-        }
-    ]
-    
-    for strategy in model_loading_strategies:
-        try:
-            print(f"[INFO] Trying: {strategy['name']}")
-            
-            # 강화된 안전 로딩
-            try:
-                # 메모리 정리
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    
-                # 경고 억제
-                import warnings
-                warnings.filterwarnings("ignore")
-                
-                model = AutoModelForCausalLM.from_pretrained(
-                    MODEL_PATH, 
-                    **strategy['config'],
-                    use_safetensors=True,  # SafeTensors 사용
-                    use_cache=False,  # 캐시 비활성화
-                )
-                
-            except Exception as loading_error:
-                print(f"[ERROR] Detailed loading error: {loading_error}")
-                # 연속으로 다음 전략 시도
-                continue
-            
-            print(f"[SUCCESS] Model loaded with strategy: {strategy['name']}")
-            
-            if hasattr(model, 'gradient_checkpointing_disable'):
-                model.gradient_checkpointing_disable()
-            
-            try:
-                total_params = sum(p.numel() for p in model.parameters())
-                print(f"[INFO] Total model parameters: {total_params:,}")
-            except Exception as e:
-                print(f"[WARNING] Parameter count failed: {e}")
-            
-            model.eval()
-            return model, tokenizer
-            
-        except Exception as e:
-            print(f"[WARNING] Strategy '{strategy['name']}' failed: {e}")
-            continue
-    
-    print(f"[ERROR] All model loading strategies failed")
-    return None, None
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_PATH,
+            device_map="auto",  # Automatically distribute model layers across available GPUs
+            trust_remote_code=True,
+            use_safetensors=True,  # Use safe tensors for memory safety
+            low_cpu_mem_usage=True,  # Optimize CPU memory usage
+        )
+
+        print("[SUCCESS] Model loaded successfully.")
+        return model
+
+    except Exception as e:
+        print(f"[ERROR] Model loading failed with the quantization strategy: {e}")
+        return None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
     """극도로 안전한 텍스트 생성"""

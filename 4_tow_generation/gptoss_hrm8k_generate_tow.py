@@ -11,7 +11,7 @@ import json
 import os
 from tqdm import tqdm
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 # --- 설정 (Configuration) ---
 MODEL_PATH = "../1_models/gpt-oss-120b"
@@ -96,13 +96,21 @@ def load_model():
             device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
             
         print("[INFO] Loading model with 8-bit quantization for stability...")
+        
+        # BitsAndBytesConfig 설정
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            bnb_8bit_compute_dtype=torch.float16,
+            bnb_8bit_use_double_quant=True,
+        )
+        
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             torch_dtype=torch.float16,
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            load_in_8bit=True,  # 8bit 양자화 활성화 (안정성 향상)
+            quantization_config=quantization_config,
             max_memory={i: "15GiB" for i in range(NUM_GPUS)},  # GPU당 메모리 제한 감소
             offload_folder="./model_offload",
         )

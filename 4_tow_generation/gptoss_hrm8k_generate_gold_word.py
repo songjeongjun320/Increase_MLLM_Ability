@@ -38,15 +38,64 @@ SAVE_INTERVAL = 50  # 50개 처리할 때마다 저장
 # =================================================================
 def create_prompt(sentence: str) -> str:
     """
-    간소화된 프롬프트로 메모리 사용량을 줄임
+    모델이 예측하기 가장 어려운 단어를 JSON 형식으로 출력하도록 유도하는
+    상세한 Few-shot 프롬프트를 생성합니다.
     """
-    return f"""Find the target word in Korean math problem. Output JSON format only.
+    return f"""You are an expert mathematician specializing in problem analysis. Your task is to identify the single most critical word in a Korean math problem. This word specifies the final quantity, value, or object that must be found to solve the problem. It is the 'target word' that the entire problem-solving process is aimed at.
 
-Examples:
-1. "a+b의 최솟값은?" → {{"unpredictable_word": "최솟값은"}}
-2. "점 P의 가속도는?" → {{"unpredictable_word": "가속도는"}}  
-3. "실수 x의 값을 구하시오." → {{"unpredictable_word": "x"}}
+Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number.
 
+---
+Example 1:
+Sentence: "닫힌구간 [0,2π]에서 정이된 함수 f(x) = acosbx + 3 이 x = π/3에서 최댓값 13을을 갖도록 하는 두 자연수 a,b 의 순서쌍 (a,b) 에 대하여 a+b의 최솟값은?"
+Reasoning: "The final objective is the 'minimum value' of 'a+b', not the value itself. This is specified by the core noun '최솟값' (minimum value) in the question's final phrase. Following the established pattern of including the grammatical particle, the complete and most precise target is '최솟값은'."
+JSON Output:
+{{
+"unpredictable_word": "최솟값은"
+}}
+
+---
+
+Example 2:
+Sentence: "시각 t = 0 일 때, 출발하여 수직선 위를 움직이는 점 P의 시각 t(t>=0)에서의 위치 x가 x=t^3-(3t^2)/2-6t 이다. 출발한 후 점 P의 운동 방향이 바뀌는 시각에서의 점 P의 가속도는?"
+Reasoning: "This problem asks for a specific physical quantity under a certain condition. The question's final phrase, '점 P의 가속도는?' (What is the acceleration of point P?), explicitly states that the final goal is to find the 'acceleration'. Following the established pattern, the core noun '가속도' (acceleration) is combined with its grammatical particle '는' to make '가속도는' the most precise target word for the final answer."
+JSON Output:
+{{
+"unpredictable_word": "가속도는"
+}}
+
+---
+
+Example 3:
+Sentence: "최고차항의 계수가 1인 삼차함수 f(x)가 f(1)=f(2)=0, f'(0)=-7을 만족시킨다. 원점 O와 점 P(3,f(3))에 대하여 선분 OP가 곡선 y=f(x)와 만나는 점 중 P가 아닌 점을 Q라 하자. 곡선 y=f(x)와 y축 및 선분 OQ로 둘러싸인 부분의 넓이를 A, 곡선 y=f(x)와 선분 PQ로 둘러싸인 부분의 넙이를 B라 할 때, B-A의 값은?"
+Reasoning: "This case is unique because while the question asks for a '값은' (value), the target word is '넓이를' (area). The problem explicitly defines the components of the final calculation, A and B, as areas ('넓이'). Therefore, the fundamental quantity being calculated (B-A) is an area. '넓이를' is chosen because it correctly identifies the specific nature of the target quantity, which is more descriptive than the generic term '값은'."
+JSON Output:
+{{
+"unpredictable_word": "넓이를"
+}}
+
+---
+
+Example 4:
+Sentence: "방정식 log2(x-3)=log4(3x-5)를 만족시키는 실수 x의 값을 구하시오."
+Reasoning: "This problem directly asks to solve for an unknown variable, 'x'. The instruction '실수 x의 값을 구하시오' (Find the value of the real number x) makes it clear that the final target is not a property of x (like its maximum or minimum) but the variable itself. Therefore, 'x' is the most fundamental and direct representation of the quantity that needs to be found."
+JSON Output:
+{{
+"unpredictable_word": "x"
+}}
+
+---
+
+Example 5:
+Sentence: "두 사건 A,B에 대하여 P(A|B)=P(A)=1/2, P(A∩B)=1/5 일 때, P(A∪B)의 값은?"
+Reasoning: "The problem asks for the numerical result of the probability expression P(A∪B). The final phrase 'P(A∪B)의 값은?' directly translates to 'What is the value of P(A∪B)?'. Unlike Example 3, where a more specific noun ('area') was defined earlier, this problem does not provide a more fundamental descriptor for the probability. Therefore, the most direct and appropriate target word is '값은' (value is?), taken from the question itself, which identifies the generic numerical result required."
+JSON Output:
+{{
+"unpredictable_word": "값은"
+}}
+---
+
+Now, analyze this sentence:
 Sentence: "{sentence}"
 JSON Output:"""
 
@@ -162,12 +211,12 @@ def load_model():
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
     """메모리 최적화된 텍스트 생성"""
     try:
-        # 토크나이징 (최대 길이를 줄여 메모리 절약)
+        # 토크나이징
         try:
             inputs = tokenizer(
                 prompt,
                 truncation=True,
-                max_length=512,  # 1024 -> 512로 줄임
+                max_length=1024,
                 return_tensors="pt"
             )
         except Exception as e:
@@ -197,7 +246,7 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
         
         # 메모리 절약형 생성 설정
         generation_config = {
-            'max_new_tokens': min(max_new_tokens, 100),  # 토큰 수 제한
+            'max_new_tokens': min(max_new_tokens, 50),  # 토큰 수 제한
             'temperature': 0.3,
             'do_sample': True,
             'pad_token_id': tokenizer.eos_token_id,
@@ -223,7 +272,7 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
                 
                 if available_memory < 5.0:  # 5GB 미만이면 경고
                     print(f"[WARNING] Low GPU memory: {available_memory:.1f}GB available")
-                    generation_config['max_new_tokens'] = min(generation_config['max_new_tokens'], 50)
+                    generation_config['max_new_tokens'] = min(generation_config['max_new_tokens'], 30)
             
             with torch.no_grad():
                 outputs = model.generate(

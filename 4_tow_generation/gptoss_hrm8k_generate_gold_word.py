@@ -104,35 +104,44 @@ def load_model():
         print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
         return None, None
     
-    # 여러 단계의 fallback 전략
+    # 메모리 최적화된 fallback 전략
     model_loading_strategies = [
         {
-            "name": "Float16 without quantization",
+            "name": "Memory optimized with offload",
             "config": {
-                "device_map": "auto" if NUM_GPUS > 1 else DEVICES[0],
+                "device_map": "auto",
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
                 "torch_dtype": torch.float16,
+                "max_memory": {0: "40GiB", 1: "40GiB"},  # GPU당 40GB로 제한
+                "offload_folder": "./offload_temp",
+                "offload_state_dict": True,
             }
         },
         {
-            "name": "Basic loading with float16",
+            "name": "Sequential loading",
+            "config": {
+                "device_map": "sequential",
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+                "torch_dtype": torch.float16,
+                "max_memory": {0: "35GiB", 1: "35GiB"},
+            }
+        },
+        {
+            "name": "Basic float16 with memory limit",
             "config": {
                 "trust_remote_code": True,
                 "torch_dtype": torch.float16,
+                "low_cpu_mem_usage": True,
             }
         },
         {
-            "name": "Basic loading with auto dtype",
+            "name": "CPU offload fallback",
             "config": {
+                "device_map": {"": "cpu"},
                 "trust_remote_code": True,
-            }
-        },
-        {
-            "name": "Minimal loading (CPU fallback)",
-            "config": {
-                "trust_remote_code": True,
-                "device_map": "cpu",
+                "torch_dtype": torch.float16,
             }
         }
     ]

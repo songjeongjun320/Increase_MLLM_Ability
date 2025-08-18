@@ -77,7 +77,7 @@ You are an expert mathematical reasoning AI and Korean language analyst. Your mi
 """
 
 def load_model():
-    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (메모리 최적화)."""
+    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (포괄적 fallback)."""
     print(f"[INFO] GPT-OSS 120B 모델을 로드합니다: {MODEL_PATH}")
     print(f"[INFO] Available devices: {DEVICES}")
     
@@ -87,80 +87,95 @@ def load_model():
         # 패딩 토큰 설정
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
-            
-        # 메모리 최적화된 device_map 생성
-        if NUM_GPUS > 1:
-            print(f"[INFO] Using {NUM_GPUS} GPUs for model distribution with memory optimization")
-            device_map = "auto"
-        else:
-            device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
-            
-        print("[INFO] Loading model with 4-bit quantization...")
-        
-        # 4-bit 양자화 설정 추가 (호환성 개선)
-        try:
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-            )
-        except Exception as quant_error:
-            print(f"[WARNING] Quantization config failed: {quant_error}")
-            print("[INFO] Falling back to basic quantization...")
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-            )
-        
-        # 모델 로딩 시 양자화 적용 (fallback 옵션 포함)
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                MODEL_PATH,
-                quantization_config=quantization_config,
-                device_map=device_map,
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,
-                # max_memory={i: "12GiB" for i in range(NUM_GPUS)}, # 양자화 사용 시 충돌 가능성이 있어 주석 처리
-                offload_folder="./model_offload",
-                offload_state_dict=True,
-                use_cache=False,
-            )
-        except Exception as model_error:
-            print(f"[WARNING] Quantized model loading failed: {model_error}")
-            print("[INFO] Attempting to load without quantization...")
-            try:
-                model = AutoModelForCausalLM.from_pretrained(
-                    MODEL_PATH,
-                    device_map=device_map,
-                    trust_remote_code=True,
-                    low_cpu_mem_usage=True,
-                    torch_dtype=torch.float16,
-                    use_cache=False,
-                )
-            except Exception as fallback_error:
-                print(f"[ERROR] Model loading completely failed: {fallback_error}")
-                raise fallback_error
-        
-        # Gradient checkpointing 비활성화 (안정성을 위해)
-        if hasattr(model, 'gradient_checkpointing_disable'):
-            model.gradient_checkpointing_disable()
-        
-        # 모든 모델 레이어가 올바르게 로드되었는지 확인
-        print("[INFO] Checking model layer accessibility...")
-        try:
-            # 모델의 모든 매개변수가 접근 가능한지 테스트
-            total_params = sum(p.numel() for p in model.parameters())
-            print(f"[INFO] Total model parameters: {total_params:,}")
-        except Exception as e:
-            print(f"[WARNING] Model parameter access test failed: {e}")
-        
-        model.eval()
-        print(f"[INFO] Model loaded successfully with memory optimization across {NUM_GPUS} GPU(s)")
-        return model, tokenizer
-        
-    except Exception as e:
-        print(f"[ERROR] Model loading failed: {e}")
+    except Exception as tokenizer_error:
+        print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
         return None, None
+            
+    # 여러 단계의 fallback 전략
+    model_loading_strategies = [
+        {
+            "name": "4-bit quantization with advanced settings",
+            "config": {
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_use_double_quant=True,
+                ) if 'BitsAndBytesConfig' in globals() else None,
+                "device_map": "auto" if NUM_GPUS > 1 else DEVICES[0],
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+                "torch_dtype": torch.bfloat16,
+            }
+        },
+        {
+            "name": "Basic 4-bit quantization",
+            "config": {
+                "quantization_config": BitsAndBytesConfig(load_in_4bit=True) if 'BitsAndBytesConfig' in globals() else None,
+                "device_map": "auto" if NUM_GPUS > 1 else DEVICES[0],
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+                "torch_dtype": torch.float16,
+            }
+        },
+        {
+            "name": "Float16 without quantization",
+            "config": {
+                "device_map": "auto" if NUM_GPUS > 1 else DEVICES[0],
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+                "torch_dtype": torch.float16,
+            }
+        },
+        {
+            "name": "Basic loading",
+            "config": {
+                "trust_remote_code": True,
+                "torch_dtype": torch.float16,
+            }
+        },
+        {
+            "name": "Minimal loading (CPU fallback)",
+            "config": {
+                "trust_remote_code": True,
+            }
+        }
+    ]
+    
+    for strategy in model_loading_strategies:
+        try:
+            print(f"[INFO] Trying: {strategy['name']}")
+            
+            # quantization_config가 None이면 제거
+            config = strategy['config'].copy()
+            if config.get('quantization_config') is None:
+                config.pop('quantization_config', None)
+            
+            model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, **config)
+            
+            # 성공적으로 로드된 경우
+            print(f"[SUCCESS] Model loaded with strategy: {strategy['name']}")
+            
+            # Gradient checkpointing 비활성화 (안정성을 위해)
+            if hasattr(model, 'gradient_checkpointing_disable'):
+                model.gradient_checkpointing_disable()
+            
+            # 모델 파라미터 접근 테스트
+            try:
+                total_params = sum(p.numel() for p in model.parameters())
+                print(f"[INFO] Total model parameters: {total_params:,}")
+            except Exception as e:
+                print(f"[WARNING] Model parameter access test failed: {e}")
+            
+            model.eval()
+            return model, tokenizer
+            
+        except Exception as e:
+            print(f"[WARNING] Strategy '{strategy['name']}' failed: {e}")
+            continue
+    
+    print(f"[ERROR] All model loading strategies failed")
+    return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
     """모델을 사용하여 텍스트를 생성합니다 (향상된 오류 처리)."""

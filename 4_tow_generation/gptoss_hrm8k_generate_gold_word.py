@@ -15,6 +15,7 @@ import glob
 from tqdm import tqdm
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from safe_model_loader import load_model_safe, generate_safe
 
 # --- 설정 (Configuration) ---
 MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
@@ -91,145 +92,12 @@ Sentence: "{sentence}"
 JSON Output:"""
 
 def load_model():
-    """GPT-OSS 120B model and tokenizer loading with memory optimization"""
-    print(f"[INFO] Loading GPT-OSS 120B model: {MODEL_PATH}")
-    print(f"[INFO] Available devices: {DEVICES}")
-    
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-        
-        # Set padding token
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-            
-        # 메모리 최적화된 device_map 생성
-        if NUM_GPUS > 1:
-            print(f"[INFO] Using {NUM_GPUS} GPUs for model distribution with memory optimization")
-            device_map = "auto"
-        else:
-            device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
-            
-        print("[INFO] Loading model with 4-bit quantization...")
-        
-        # 4-bit 양자화 설정 추가 (호환성 개선)
-        try:
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-            )
-        except Exception as quant_error:
-            print(f"[WARNING] Quantization config failed: {quant_error}")
-            print("[INFO] Falling back to basic quantization...")
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-            )
-        
-        # 모델 로딩 시 양자화 적용 (fallback 옵션 포함)
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                MODEL_PATH,
-                quantization_config=quantization_config,
-                device_map=device_map,
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,
-                offload_folder="./model_offload",
-                offload_state_dict=True,
-                use_cache=False,
-            )
-        except Exception as model_error:
-            print(f"[WARNING] Quantized model loading failed: {model_error}")
-            print("[INFO] Attempting to load without quantization...")
-            try:
-                model = AutoModelForCausalLM.from_pretrained(
-                    MODEL_PATH,
-                    device_map=device_map,
-                    trust_remote_code=True,
-                    low_cpu_mem_usage=True,
-                    torch_dtype=torch.float16,
-                    use_cache=False,
-                )
-            except Exception as fallback_error:
-                print(f"[ERROR] Model loading completely failed: {fallback_error}")
-                raise fallback_error
-        
-        # Gradient checkpointing 비활성화 (안정성을 위해)
-        if hasattr(model, 'gradient_checkpointing_disable'):
-            model.gradient_checkpointing_disable()
-        
-        # 모든 모델 레이어가 올바르게 로드되었는지 확인
-        print("[INFO] Checking model layer accessibility...")
-        try:
-            # 모델의 모든 매개변수가 접근 가능한지 테스트
-            total_params = sum(p.numel() for p in model.parameters())
-            print(f"[INFO] Total model parameters: {total_params:,}")
-        except Exception as e:
-            print(f"[WARNING] Model parameter access test failed: {e}")
-        
-        model.eval()
-        print(f"[INFO] Model loaded successfully with memory optimization across {NUM_GPUS} GPU(s)")
-        return model, tokenizer
-        
-    except Exception as e:
-        print(f"[ERROR] Model loading failed: {e}")
-        return None, None
+    """GPT-OSS 120B model and tokenizer loading using safe loader"""
+    return load_model_safe(MODEL_PATH, NUM_GPUS, DEVICES)
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
-    """Generate text using the model with enhanced error handling"""
-    try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-        
-        # 더 안전한 device 확인 방법
-        try:
-            model_device = next(iter(model.parameters())).device
-        except:
-            model_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        
-        # 입력을 안전하게 device로 이동
-        inputs = {k: v.to(model_device) for k, v in inputs.items()}
-        
-        # 양자화 모델 사용 시 autocast는 필요하지 않음
-        # with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-        # 더 안전한 생성 설정
-        generation_config = {
-            'max_new_tokens': max_new_tokens,
-            'temperature': 0.1,
-            'do_sample': True,
-            'pad_token_id': tokenizer.eos_token_id,
-            'eos_token_id': tokenizer.eos_token_id,
-            'use_cache': False,  # 캐시 사용하지 않음
-            'return_dict_in_generate': True,
-            'output_scores': False,
-        }
-        
-        with torch.no_grad():
-            try:
-                outputs = model.generate(**inputs, **generation_config)
-                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
-            except Exception as gen_error:
-                print(f"[ERROR] Generation failed: {gen_error}")
-                # Fallback: 더 간단한 설정으로 재시도
-                simple_config = {
-                    'max_new_tokens': min(max_new_tokens, 20),
-                    'do_sample': False,  # 샘플링 비활성화
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                }
-                outputs = model.generate(**inputs, **simple_config)
-                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
-    
-        # 새로 생성된 토큰 디코딩
-        if len(sequences.shape) > 1 and sequences.shape[0] > 0:
-            new_tokens = sequences[0][inputs['input_ids'].shape[1]:]
-            generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
-            return generated_text.strip()
-        else:
-            return None
-        
-    except Exception as e:
-        print(f"[ERROR] Text generation failed: {e}")
-        return None
+    """Generate text using safe generation function"""
+    return generate_safe(model, tokenizer, prompt, max_new_tokens, temperature=0.1)
 
 def load_hrm8k_datasets():
     """Load all JSON files from HRM8K_TEXT directory"""

@@ -120,9 +120,9 @@ class ToWTrainingConfig:
     # Training hyperparameters
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 16
-    per_device_eval_batch_size: int = 16
-    gradient_accumulation_steps: int = 16  # Increased accumulation steps
+    per_device_train_batch_size: int = 32 # Increased for higher throughput
+    per_device_eval_batch_size: int = 32 # Increased for higher throughput
+    gradient_accumulation_steps: int = 8  # Decreased to compensate for batch size increase
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -143,7 +143,7 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 4  # Increased workers for faster data loading
+    dataloader_num_workers: int = 8  # Increased workers for faster data loading
     remove_unused_columns: bool = True
     fp16: bool = True  # Enable fp16 for faster training
     bf16: bool = False
@@ -154,7 +154,12 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=True
+        use_quantization=False  # Disabled to avoid get_keys_to_not_convert error
+    ),
+    ModelConfig(
+        name="GPT-OSS-120B-ToW",
+        model_id="openai/gpt-oss-120b",
+        use_quantization=False  # GPT-OSS uses native MXFP4, no additional quantization needed
     ),
     # ModelConfig(
     #     name="Mistral-8B-Instruct-2410-ToW",
@@ -308,32 +313,23 @@ class SmartToWDataProcessor:
             if original_truncation_side is not None:
                 self.tokenizer.truncation_side = original_truncation_side
 
-            all_labels = []
-            # Iterate over each example in the batch
-            for i in range(len(full_tokens['input_ids'])):
-                input_ids = full_tokens['input_ids'][i]
-                attention_mask = full_tokens['attention_mask'][i]
-                
-                # Get the length of the context for this specific example
-                context_len = len(context_tokens['input_ids'][i])
-                
-                labels = input_ids.copy()
-                
-                # Determine the actual number of context tokens to mask.
-                # This prevents index errors if the context itself was truncated.
-                mask_len = min(context_len, len(labels))
-
-                # Mask context tokens by setting them to -100
-                labels[:mask_len] = [-100] * mask_len
-                
-                # Also mask padding tokens
-                for j in range(len(labels)):
-                    if attention_mask[j] == 0:
-                        labels[j] = -100
-                
-                all_labels.append(labels)
+            # Vectorized label creation for performance
+            labels = np.array(full_tokens['input_ids'])
+            attention_mask = np.array(full_tokens['attention_mask'])
             
-            full_tokens['labels'] = all_labels
+            context_lengths = [len(ids) for ids in context_tokens['input_ids']]
+            
+            # Create a mask for context tokens
+            max_len = labels.shape[1]
+            context_mask = np.arange(max_len)[None, :] < np.array(context_lengths)[:, None]
+
+            # Apply context mask
+            labels[context_mask] = -100
+            
+            # Apply padding mask
+            labels[attention_mask == 0] = -100
+            
+            full_tokens['labels'] = labels.tolist()
             return full_tokens
         
         tokenized_dataset = dataset.map(
@@ -409,18 +405,15 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
-        # device_map 설정 수정
-        local_rank = -1
-        if "LOCAL_RANK" in os.environ:
-            local_rank = int(os.environ["LOCAL_RANK"])
-            
-        device_map = {"": f"cuda:{local_rank}"} if local_rank != -1 else "auto"
+        # For DDP, it's better to let Accelerate handle device placement.
+        # Setting device_map to "auto" is recommended for quantized models.
+        device_map = "auto"
 
         model = AutoModelForCausalLM.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
-            device_map=device_map, # 수정된 device_map 적용
+            device_map=device_map,
             quantization_config=quantization_config,
         )
 

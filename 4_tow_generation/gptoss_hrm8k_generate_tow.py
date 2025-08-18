@@ -187,9 +187,18 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
         except:
             model_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         
-        # 입력을 모델 디바이스로 이동
+        # 입력을 모델 디바이스로 이동 (데이터 타입 보정)
         try:
-            inputs = {k: v.to(model_device) for k, v in inputs.items()}
+            # input_ids는 항상 long 타입, attention_mask는 모델과 같은 타입
+            inputs_corrected = {}
+            for k, v in inputs.items():
+                if k == 'input_ids':
+                    inputs_corrected[k] = v.to(device=model_device, dtype=torch.long)
+                elif k == 'attention_mask':
+                    inputs_corrected[k] = v.to(device=model_device, dtype=torch.long)
+                else:
+                    inputs_corrected[k] = v.to(model_device)
+            inputs = inputs_corrected
         except Exception as e:
             print(f"[ERROR] Failed to move inputs to device: {e}")
             return None

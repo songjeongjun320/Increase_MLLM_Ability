@@ -9,6 +9,8 @@ venv/
 *.txt
 kakaobrain-kornli
 Ko-StrategyQA
+kosentences
+kobest
 
 # Model
 Base_Models/

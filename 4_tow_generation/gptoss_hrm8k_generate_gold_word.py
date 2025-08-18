@@ -111,13 +111,18 @@ def load_model():
             
         print("[INFO] Loading model with 4-bit quantization...")
         
-        # 모델 로딩 시 양자화 관련 파라미터를 직접 전달
-        model = AutoModelForCausalLM.from_pretrained(
-            MODEL_PATH,
+        # 4-bit 양자화 설정 추가
+        quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
+        )
+        
+        # 모델 로딩 시 양자화 적용
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_PATH,
+            quantization_config=quantization_config,
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,

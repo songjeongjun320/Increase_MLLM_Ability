@@ -97,11 +97,10 @@ def load_model():
             
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float16 if NUM_GPUS > 1 else torch.bfloat16,  # Multi-GPU에서는 float16 사용
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,  # 메모리 효율성을 위해 추가
-            torch_dtype=torch.float16 if NUM_GPUS > 1 else torch.bfloat16,  # Multi-GPU에서는 float16 사용
         )
         
         model.eval()

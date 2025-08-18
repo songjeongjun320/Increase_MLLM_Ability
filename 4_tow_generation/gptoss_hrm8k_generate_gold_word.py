@@ -344,7 +344,7 @@ def load_hrm8k_datasets():
     
     print(f"[INFO] Total {len(all_data)} sentences loaded")
     # app100개 처리를 위해 제한을 최대 100개로 설정 (전체 데이터가 100개 미만이면 모두 사용)
-    return all_data[:100] if len(all_data) > 100 else all_data
+    return all_data[:50] if len(all_data) > 50 else all_data
 
 def process_datasets():
     """Process HRM8K_TEXT dataset to generate gold labels"""

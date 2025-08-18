@@ -77,7 +77,7 @@ You are an expert mathematical reasoning AI and Korean language analyst. Your mi
 """
 
 def load_model():
-    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (Multi-GPU 지원)."""
+    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (메모리 최적화)."""
     print(f"[INFO] GPT-OSS 120B 모델을 로드합니다: {MODEL_PATH}")
     print(f"[INFO] Available devices: {DEVICES}")
     
@@ -88,28 +88,55 @@ def load_model():
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             
-        # Multi-GPU 설정을 위한 device_map 생성
+        # 메모리 최적화된 device_map 생성
         if NUM_GPUS > 1:
-            print(f"[INFO] Using {NUM_GPUS} GPUs for model distribution")
-            device_map = "auto"  # Transformers가 자동으로 multi-GPU 배치
+            print(f"[INFO] Using {NUM_GPUS} GPUs for model distribution with memory optimization")
+            device_map = "auto"
         else:
             device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
             
+        print("[INFO] Loading model with aggressive memory optimization...")
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.float16 if NUM_GPUS > 1 else torch.bfloat16,  # Multi-GPU에서는 float16 사용
+            torch_dtype=torch.float16,  # 항상 float16 사용으로 메모리 절약
             device_map=device_map,
             trust_remote_code=True,
-            low_cpu_mem_usage=True,  # 메모리 효율성을 위해 추가
+            low_cpu_mem_usage=True,
+            # 추가 메모리 최적화 옵션들
+            load_in_8bit=False,  # 8bit 양자화는 일단 비활성화 (안정성 위해)
+            load_in_4bit=False,  # 4bit 양자화도 비활성화
+            max_memory={i: "20GiB" for i in range(NUM_GPUS)},  # GPU당 최대 메모리 제한
+            offload_folder="./model_offload",  # 일부 가중치를 디스크에 저장
+            offload_state_dict=True,
         )
         
         model.eval()
-        print(f"[INFO] 모델이 {NUM_GPUS}개 GPU에 성공적으로 로드되었습니다.")
+        print(f"[INFO] Model loaded successfully with memory optimization across {NUM_GPUS} GPU(s)")
         return model, tokenizer
         
     except Exception as e:
-        print(f"[ERROR] 모델 로드 실패: {e}")
-        return None, None
+        print(f"[ERROR] Model loading failed: {e}")
+        print("[INFO] Trying with 8-bit quantization...")
+        
+        # 8-bit 양자화로 재시도
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                MODEL_PATH,
+                torch_dtype=torch.float16,
+                device_map=device_map,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+                load_in_8bit=True,  # 8bit 양자화 활성화
+                max_memory={i: "15GiB" for i in range(NUM_GPUS)},
+                offload_folder="./model_offload",
+            )
+            model.eval()
+            print(f"[INFO] Model loaded with 8-bit quantization across {NUM_GPUS} GPU(s)")
+            return model, tokenizer
+            
+        except Exception as e2:
+            print(f"[ERROR] 8-bit quantization also failed: {e2}")
+            return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
     """모델을 사용하여 텍스트를 생성합니다."""

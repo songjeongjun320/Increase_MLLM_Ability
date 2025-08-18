@@ -19,7 +19,7 @@ from datetime import datetime
 import traceback
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "openai/gpt-oss-120b"  # 공식 Hugging Face 모델
+MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리
@@ -107,57 +107,46 @@ def load_model():
         print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
         return None, None
     
-    # GPT-OSS 120B 공식 Hugging Face 모델 로딩 전략
+    # 메모리 최적화된 fallback 전략 (이전 버전 복원)
     model_loading_strategies = [
         {
-            "name": "Native MXFP4 Quantization (Recommended)",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "torch_dtype": "auto",  # 자동 타입 감지
-                "low_cpu_mem_usage": True,
-                # MXFP4 quantization이 자동으로 적용됨
-            }
-        },
-        {
-            "name": "8bit Quantization (Fallback)",
+            "name": "8bit Quantization",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "load_in_8bit": True,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "40GiB", 1: "40GiB"},
+                "max_memory": {0: "20GiB", 1: "20GiB"},
             }
         },
         {
-            "name": "4bit Quantization (Backup)",
+            "name": "4bit Quantization",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "load_in_4bit": True,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "30GiB", 1: "30GiB"},
+                "max_memory": {0: "15GiB", 1: "15GiB"},
             }
         },
         {
-            "name": "BFloat16 with Memory Control",
+            "name": "Memory optimized with offload",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
                 "torch_dtype": torch.bfloat16,
                 "max_memory": {0: "35GiB", 1: "35GiB"},
+                "offload_folder": "./offload_temp",
+                "offload_state_dict": True,
             }
         },
         {
-            "name": "CPU Offload (Emergency)",
+            "name": "Basic bfloat16 with memory limit",
             "config": {
-                "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "10GiB", 1: "10GiB", "cpu": "100GiB"},
-                "offload_folder": "./offload_temp",
             }
         },
         {

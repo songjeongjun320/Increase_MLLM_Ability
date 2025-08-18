@@ -15,11 +15,14 @@ import glob
 from tqdm import tqdm
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from datetime import datetime
+import traceback
 
 # --- 설정 (Configuration) ---
 MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
+LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리
 
 # Multi-GPU 설정
 NUM_GPUS = torch.cuda.device_count()
@@ -104,8 +107,28 @@ def load_model():
         print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
         return None, None
     
-    # 메모리 최적화된 fallback 전략
+    # 강화된 메모리 최적화 전략 (모델 레이어 오류 방지)
     model_loading_strategies = [
+        {
+            "name": "8bit Quantization (Safe)",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "load_in_8bit": True,
+                "low_cpu_mem_usage": True,
+                "max_memory": {0: "20GiB", 1: "20GiB"},
+            }
+        },
+        {
+            "name": "4bit Quantization (Ultra Safe)",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "load_in_4bit": True,
+                "low_cpu_mem_usage": True,
+                "max_memory": {0: "15GiB", 1: "15GiB"},
+            }
+        },
         {
             "name": "Memory optimized with offload",
             "config": {
@@ -113,7 +136,7 @@ def load_model():
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
                 "torch_dtype": torch.bfloat16,
-                "max_memory": {0: "40GiB", 1: "40GiB"},  # GPU당 40GB로 제한
+                "max_memory": {0: "25GiB", 1: "25GiB"},  # 메모리 제한 감소
                 "offload_folder": "./offload_temp",
                 "offload_state_dict": True,
             }
@@ -273,7 +296,19 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
                 
                 with torch.no_grad():
                     try:
-                        outputs = model.generate(**inputs, **strategy['config'])
+                        # 메모리 정리 및 안전 장치
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            torch.cuda.synchronize()
+                        
+                        # 안전한 생성 시도
+                        outputs = model.generate(
+                            **inputs, 
+                            **strategy['config'],
+                            output_scores=False,  # 점수 출력 비활성화
+                            output_attentions=False,  # attention 출력 비활성화
+                            output_hidden_states=False,  # hidden state 출력 비활성화
+                        )
                         sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
                         
                         # 새로 생성된 토큰 디코딩
@@ -346,10 +381,39 @@ def load_hrm8k_datasets():
     # app100개 처리를 위해 제한을 최대 100개로 설정 (전체 데이터가 100개 미만이면 모두 사용)
     return all_data[:100] if len(all_data) > 100 else all_data
 
+def save_generation_log(item_id, prompt, raw_output, error_msg=None, success=True):
+    """모델 생성 로그를 JSON 파일로 저장"""
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        log_entry = {
+            "timestamp": timestamp,
+            "item_id": item_id,
+            "prompt_length": len(prompt) if prompt else 0,
+            "prompt_preview": prompt[-200:] if prompt else "",  # 마지막 200자
+            "raw_output": raw_output,
+            "output_length": len(raw_output) if raw_output else 0,
+            "success": success,
+            "error_message": error_msg
+        }
+        
+        # 로그 파일 명 (성공/실패 구분)
+        status = "success" if success else "error"
+        log_filename = f"generation_log_{status}_{timestamp}_{item_id}.json"
+        log_path = os.path.join(LOG_DIR, log_filename)
+        
+        with open(log_path, 'w', encoding='utf-8') as f:
+            json.dump(log_entry, f, ensure_ascii=False, indent=2)
+            
+    except Exception as e:
+        print(f"[WARNING] Failed to save log for {item_id}: {e}")
+
 def process_datasets():
     """Process HRM8K_TEXT dataset to generate gold labels"""
-    # Create output directory
+    # Create output and log directories
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(LOG_DIR, exist_ok=True)
     
     # Load model
     model, tokenizer = load_model()
@@ -376,9 +440,13 @@ def process_datasets():
             prompt = create_prompt(item['sentence'])
             raw_output = generate_with_model(model, tokenizer, prompt)
             
+            # 로그 저장 (성공/실패 구분 없이 모든 생성 시도를 기록)
             if raw_output is None:
+                save_generation_log(item['id'], prompt, "", "Model generation failed", False)
                 error_count += 1
                 continue
+            else:
+                save_generation_log(item['id'], prompt, raw_output, None, True)
             
             # JSON parsing
             predicted_word = None
@@ -427,7 +495,16 @@ def process_datasets():
                 continue
                 
         except Exception as e:
+            error_msg = f"Processing error: {str(e)}\n{traceback.format_exc()}"
             print(f"[ERROR] Processing error (ID: {item['id']}): {e}")
+            
+            # 예외 발생 시 로그 저장
+            try:
+                prompt = create_prompt(item['sentence'])
+                save_generation_log(item['id'], prompt, "", error_msg, False)
+            except:
+                save_generation_log(item['id'], "", "", error_msg, False)
+                
             error_count += 1
             continue
         

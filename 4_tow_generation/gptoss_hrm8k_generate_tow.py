@@ -95,19 +95,27 @@ def load_model():
         else:
             device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
             
-        print("[INFO] Loading model with memory optimization...")
+        print("[INFO] Loading model with 4-bit quantization...")
         
-        # 메모리 최적화 설정 (BFloat16으로 통일)
+        # 4-bit 양자화 설정 추가
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        
+        # 모델 로딩 시 양자화 적용
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.bfloat16,  # BFloat16으로 변경
+            quantization_config=quantization_config,
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            max_memory={i: "12GiB" for i in range(NUM_GPUS)},  # GPU당 메모리 제한 더 감소
+            # max_memory={i: "12GiB" for i in range(NUM_GPUS)}, # 양자화 사용 시 충돌 가능성이 있어 주석 처리
             offload_folder="./model_offload",
             offload_state_dict=True,
-            use_cache=False,  # 캐시 비활성화로 메모리 절약
+            use_cache=False,
         )
         
         # Gradient checkpointing 비활성화 (안정성을 위해)
@@ -145,36 +153,36 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
         # 입력을 안전하게 device로 이동
         inputs = {k: v.to(model_device) for k, v in inputs.items()}
         
-        # BFloat16으로 autocast 설정
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            # 더 안전한 생성 설정
-            generation_config = {
-                'max_new_tokens': max_new_tokens,
-                'temperature': 0.2,
-                'do_sample': True,
-                'pad_token_id': tokenizer.eos_token_id,
-                'eos_token_id': tokenizer.eos_token_id,
-                'use_cache': False,  # 캐시 사용하지 않음
-                'return_dict_in_generate': True,
-                'output_scores': False,
-            }
-            
-            with torch.no_grad():
-                try:
-                    outputs = model.generate(**inputs, **generation_config)
-                    sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
-                except Exception as gen_error:
-                    print(f"[ERROR] Generation failed: {gen_error}")
-                    # Fallback: 더 간단한 설정으로 재시도
-                    simple_config = {
-                        'max_new_tokens': min(max_new_tokens, 100),
-                        'do_sample': False,  # 샘플링 비활성화
-                        'pad_token_id': tokenizer.eos_token_id,
-                        'use_cache': False,
-                    }
-                    outputs = model.generate(**inputs, **simple_config)
-                    sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+        # 양자화 모델 사용 시 autocast는 필요하지 않음
+        # with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        # 더 안전한 생성 설정
+        generation_config = {
+            'max_new_tokens': max_new_tokens,
+            'temperature': 0.2,
+            'do_sample': True,
+            'pad_token_id': tokenizer.eos_token_id,
+            'eos_token_id': tokenizer.eos_token_id,
+            'use_cache': False,  # 캐시 사용하지 않음
+            'return_dict_in_generate': True,
+            'output_scores': False,
+        }
         
+        with torch.no_grad():
+            try:
+                outputs = model.generate(**inputs, **generation_config)
+                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+            except Exception as gen_error:
+                print(f"[ERROR] Generation failed: {gen_error}")
+                # Fallback: 더 간단한 설정으로 재시도
+                simple_config = {
+                    'max_new_tokens': min(max_new_tokens, 100),
+                    'do_sample': False,  # 샘플링 비활성화
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                }
+                outputs = model.generate(**inputs, **simple_config)
+                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+    
         # 새로 생성된 토큰 디코딩
         if len(sequences.shape) > 1 and sequences.shape[0] > 0:
             new_tokens = sequences[0][inputs['input_ids'].shape[1]:]

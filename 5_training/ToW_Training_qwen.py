@@ -156,11 +156,6 @@ MODEL_CONFIGS = [
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
         use_quantization=False  # Disabled to avoid get_keys_to_not_convert error
     ),
-    ModelConfig(
-        name="GPT-OSS-120B-ToW",
-        model_id="openai/gpt-oss-120b",
-        use_quantization=False  # GPT-OSS uses native MXFP4, no additional quantization needed
-    ),
     # ModelConfig(
     #     name="Mistral-8B-Instruct-2410-ToW",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",

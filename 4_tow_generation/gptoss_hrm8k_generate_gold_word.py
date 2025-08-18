@@ -129,48 +129,73 @@ def load_model():
             memory_free = (torch.cuda.get_device_properties(i).total_memory / 1024**3) - memory_cached
             print(f"[INFO] GPU {i}: {memory_free:.1f}GB free, {memory_cached:.1f}GB cached")
 
-    # Try multiple loading strategies
-    loading_strategies = [
-        # Strategy 1: 8bit quantization with CPU offload
-        {
-            "name": "8bit + CPU offload",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
-                "load_in_8bit": True,
-                "offload_folder": "./offload",
-                "max_memory": {i: "76GB" for i in range(torch.cuda.device_count())} | {"cpu": "32GB"}
-            }
-        },
-        # Strategy 2: 4bit quantization
-        {
-            "name": "4bit quantization",
-            "config": {
-                "device_map": "auto", 
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
-                "load_in_4bit": True,
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-                "bnb_4bit_use_double_quant": True,
-                "max_memory": {i: "78GB" for i in range(torch.cuda.device_count())}
-            }
-        },
-        # Strategy 3: CPU offload only
-        {
-            "name": "CPU offload",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True, 
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
-                "offload_folder": "./offload",
-                "max_memory": {i: "70GB" for i in range(torch.cuda.device_count())} | {"cpu": "64GB"}
-            }
+    # Try multiple loading strategies with proper BitsAndBytesConfig
+    try:
+        from transformers import BitsAndBytesConfig
+        use_bnb = True
+    except ImportError:
+        print("[WARNING] BitsAndBytes not available, using CPU offload only")
+        use_bnb = False
+    
+    loading_strategies = []
+    
+    # Strategy 1: 8bit quantization (only if BnB available)
+    if use_bnb:
+        try:
+            bnb_8bit_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_enable_fp32_cpu_offload=True,
+                llm_int8_threshold=6.0,
+            )
+            loading_strategies.append({
+                "name": "8bit quantization",
+                "config": {
+                    "device_map": "auto",
+                    "trust_remote_code": True,
+                    "torch_dtype": torch.bfloat16,
+                    "low_cpu_mem_usage": True,
+                    "quantization_config": bnb_8bit_config,
+                    "max_memory": {i: "70GB" for i in range(torch.cuda.device_count())} | {"cpu": "40GB"}
+                }
+            })
+        except Exception as e:
+            print(f"[WARNING] 8bit config failed: {e}")
+    
+    # Strategy 2: 4bit quantization (only if BnB available) 
+    if use_bnb:
+        try:
+            bnb_4bit_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+            )
+            loading_strategies.append({
+                "name": "4bit quantization", 
+                "config": {
+                    "device_map": "auto",
+                    "trust_remote_code": True,
+                    "torch_dtype": torch.bfloat16,
+                    "low_cpu_mem_usage": True,
+                    "quantization_config": bnb_4bit_config,
+                    "max_memory": {i: "72GB" for i in range(torch.cuda.device_count())}
+                }
+            })
+        except Exception as e:
+            print(f"[WARNING] 4bit config failed: {e}")
+    
+    # Strategy 3: CPU offload only (always available)
+    loading_strategies.append({
+        "name": "CPU offload",
+        "config": {
+            "device_map": "auto",
+            "trust_remote_code": True,
+            "torch_dtype": torch.bfloat16,
+            "low_cpu_mem_usage": True,
+            "offload_folder": "./offload",
+            "max_memory": {i: "65GB" for i in range(torch.cuda.device_count())} | {"cpu": "50GB"}
         }
-    ]
+    })
     
     for strategy in loading_strategies:
         try:

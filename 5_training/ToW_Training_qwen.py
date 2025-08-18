@@ -145,8 +145,8 @@ class ToWTrainingConfig:
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8  # Increased workers for faster data loading
     remove_unused_columns: bool = True
-    fp16: bool = True  # Enable fp16 for faster training
-    bf16: bool = False
+    fp16: bool = False  # Disable fp16 due to gradient scaling issues
+    bf16: bool = True  # Use bf16 instead for better stability
     gradient_checkpointing: bool = False  # Disable gradient checkpointing for speed
 
 
@@ -471,6 +471,7 @@ class ToWTrainer:
             gradient_checkpointing=self.training_config.gradient_checkpointing,
             dataloader_num_workers=self.training_config.dataloader_num_workers,
             remove_unused_columns=self.training_config.remove_unused_columns,
+            max_grad_norm=1.0,  # Add gradient clipping
             seed=42,
             data_seed=42,
             report_to=[],

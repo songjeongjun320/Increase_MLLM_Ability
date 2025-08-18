@@ -69,69 +69,88 @@ def check_system_requirements():
         "total_gpu_memory": total_gpu_memory if torch.cuda.is_available() else 0
     }
 
-def download_gpt_oss_120b():
-    """Download GPT-OSS-120B model for ToW generation"""
+def download_gpt_oss_120b(tokenizer_only=False):
+    """Download GPT-OSS-120B model or just the tokenizer for ToW generation"""
     
     model_name = "openai/gpt-oss-120b"
     local_dir = Path(__file__).parent / "gpt_oss" / "gpt-oss-120b"
     
-    print(f"[DOWNLOAD] Downloading {model_name} for ToW generation...")
-    print(f"[PATH] Saving to: {local_dir}")
-    print("[PURPOSE] Generate highest quality English ToW tokens for Korean stories")
-    print("[SIZE] ~240GB model - this will take significant time and bandwidth")
+    if tokenizer_only:
+        print(f"[DOWNLOAD] Downloading {model_name} TOKENIZER ONLY...")
+        print(f"[PATH] Saving to: {local_dir}")
+        print("[PURPOSE] For testing tokenization without downloading the full model")
+    else:
+        print(f"[DOWNLOAD] Downloading {model_name} for ToW generation...")
+        print(f"[PATH] Saving to: {local_dir}")
+        print("[PURPOSE] Generate highest quality English ToW tokens for Korean stories")
+        print("[SIZE] ~240GB model - this will take significant time and bandwidth")
     
     # Create directory
     local_dir.parent.mkdir(exist_ok=True)
     
-    # Check system requirements
-    requirements = check_system_requirements()
-    
-    # Warn about insufficient resources
-    warnings = []
-    if not requirements["ram_sufficient"]:
-        warnings.append("Insufficient RAM")
-    if not requirements["gpu_sufficient"]:
-        warnings.append("Insufficient GPU memory")
-    if not requirements["disk_sufficient"]:
-        warnings.append("Insufficient disk space")
-    
-    if warnings:
-        print(f"[WARNING] System issues detected: {', '.join(warnings)}")
-        print("[WARNING] GPT-OSS-120B may not run properly on this system")
-        print("[ALTERNATIVE] Consider using GPT-OSS-20B instead (download_gpt_oss_20b.py)")
+    if not tokenizer_only:
+        # Check system requirements
+        requirements = check_system_requirements()
         
-        response = input("Continue download anyway? (y/n): ")
+        # Warn about insufficient resources
+        warnings = []
+        if not requirements["ram_sufficient"]:
+            warnings.append("Insufficient RAM")
+        if not requirements["gpu_sufficient"]:
+            warnings.append("Insufficient GPU memory")
+        if not requirements["disk_sufficient"]:
+            warnings.append("Insufficient disk space")
+        
+        if warnings:
+            print(f"[WARNING] System issues detected: {', '.join(warnings)}")
+            print("[WARNING] GPT-OSS-120B may not run properly on this system")
+            print("[ALTERNATIVE] Consider using GPT-OSS-20B instead (download_gpt_oss_20b.py)")
+            
+            response = input("Continue download anyway? (y/n): ")
+            if response.lower() != 'y':
+                print("[CANCELLED] Download cancelled")
+                print("[ALTERNATIVE] Use GPT-OSS-20B for 16GB GPU systems")
+                return None
+        else:
+            print("[REQUIREMENTS] ✓ System meets GPT-OSS-120B requirements")
+        
+        # Confirm large download
+        print(f"[CONFIRMATION] This will download ~240GB of model files")
+        print(f"[CONFIRMATION] Estimated download time: 2-6 hours depending on internet speed")
+        response = input("Proceed with download? (y/n): ")
         if response.lower() != 'y':
             print("[CANCELLED] Download cancelled")
-            print("[ALTERNATIVE] Use GPT-OSS-20B for 16GB GPU systems")
             return None
-    else:
-        print("[REQUIREMENTS] ✓ System meets GPT-OSS-120B requirements")
-    
-    # Confirm large download
-    print(f"[CONFIRMATION] This will download ~240GB of model files")
-    print(f"[CONFIRMATION] Estimated download time: 2-6 hours depending on internet speed")
-    response = input("Proceed with download? (y/n): ")
-    if response.lower() != 'y':
-        print("[CANCELLED] Download cancelled")
-        return None
     
     try:
-        # Download model files
-        print("[DOWNLOADING] GPT-OSS-120B model files (this will take a long time)...")
-        print("[INFO] You can interrupt (Ctrl+C) and resume later if needed")
+        if tokenizer_only:
+            print("[DOWNLOADING] GPT-OSS-120B tokenizer files...")
+            snapshot_download(
+                repo_id=model_name,
+                local_dir=local_dir,
+                local_dir_use_symlinks=False,
+                resume_download=True,
+                allow_patterns=["*token*"]  # Download only tokenizer-related files
+            )
+        else:
+            # Download model files
+            print("[DOWNLOADING] GPT-OSS-120B model files (this will take a long time)...")
+            print("[INFO] You can interrupt (Ctrl+C) and resume later if needed")
+            
+            snapshot_download(
+                repo_id=model_name,
+                local_dir=local_dir,
+                local_dir_use_symlinks=False,
+                resume_download=True  # Allow resuming interrupted downloads
+            )
         
-        snapshot_download(
-            repo_id=model_name,
-            local_dir=local_dir,
-            local_dir_use_symlinks=False,
-            resume_download=True  # Allow resuming interrupted downloads
-        )
-        
-        print(f"[SUCCESS] GPT-OSS-120B downloaded successfully to {local_dir}")
+        if tokenizer_only:
+            print(f"[SUCCESS] GPT-OSS-120B tokenizer downloaded successfully to {local_dir}")
+        else:
+            print(f"[SUCCESS] GPT-OSS-120B downloaded successfully to {local_dir}")
         
         # Verify download
-        essential_files = ["config.json", "tokenizer.json"]
+        essential_files = ["tokenizer.json"] if tokenizer_only else ["config.json", "tokenizer.json"]
         missing_files = []
         
         for file in essential_files:
@@ -142,17 +161,18 @@ def download_gpt_oss_120b():
             print(f"[WARNING] Missing files: {missing_files}")
         else:
             print("[SUCCESS] All essential files present")
-            
-        # Check model size
-        total_size = sum(f.stat().st_size for f in local_dir.rglob('*') if f.is_file())
-        size_gb = total_size / (1024**3)
-        print(f"[INFO] Model size: {size_gb:.1f}GB")
         
-        # Final system check
-        if size_gb < 200:
-            print("[WARNING] Download may be incomplete (expected ~240GB)")
-        else:
-            print("[SUCCESS] Download appears complete")
+        if not tokenizer_only:
+            # Check model size
+            total_size = sum(f.stat().st_size for f in local_dir.rglob('*') if f.is_file())
+            size_gb = total_size / (1024**3)
+            print(f"[INFO] Model size: {size_gb:.1f}GB")
+            
+            # Final system check
+            if size_gb < 200:
+                print("[WARNING] Download may be incomplete (expected ~240GB)")
+            else:
+                print("[SUCCESS] Download appears complete")
             
         return str(local_dir)
         
@@ -164,8 +184,9 @@ def download_gpt_oss_120b():
         
     except Exception as e:
         print(f"[ERROR] Error downloading model: {e}")
-        print("[TROUBLESHOOTING] Check internet connection and disk space")
-        print("[ALTERNATIVE] Try GPT-OSS-20B instead for lower requirements")
+        if not tokenizer_only:
+            print("[TROUBLESHOOTING] Check internet connection and disk space")
+            print("[ALTERNATIVE] Try GPT-OSS-20B instead for lower requirements")
         return None
 
 def test_gpt_oss_120b_loading():
@@ -266,7 +287,14 @@ def show_usage_info():
     print("   4. Compare results: cd ../3_evaluation/")
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+    if len(sys.argv) > 1 and sys.argv[1] == "--tokenizer-only":
+        model_path = download_gpt_oss_120b(tokenizer_only=True)
+        if model_path:
+            print(f"\n[SUCCESS] GPT-OSS-120B tokenizer ready!")
+            print(f"[PATH] Tokenizer path: {model_path}")
+        else:
+            print("\n[FAILED] GPT-OSS-120B tokenizer download failed")
+    elif len(sys.argv) > 1 and sys.argv[1] == "--test":
         test_gpt_oss_120b_loading()
     elif len(sys.argv) > 1 and sys.argv[1] == "--info":
         show_usage_info()

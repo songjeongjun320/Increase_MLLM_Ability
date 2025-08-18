@@ -15,7 +15,6 @@ import glob
 from tqdm import tqdm
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from safe_model_loader import load_model_safe, generate_safe
 
 # --- 설정 (Configuration) ---
 MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
@@ -92,12 +91,209 @@ Sentence: "{sentence}"
 JSON Output:"""
 
 def load_model():
-    """GPT-OSS 120B model and tokenizer loading using safe loader"""
-    return load_model_safe(MODEL_PATH, NUM_GPUS, DEVICES)
+    """GPT-OSS 120B 모델과 토크나이저를 로드합니다 (강화된 안전 로딩)."""
+    print(f"[INFO] Loading GPT-OSS 120B model: {MODEL_PATH}")
+    print(f"[INFO] Available devices: {DEVICES}")
+    
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        print("[SUCCESS] Tokenizer loaded successfully")
+    except Exception as tokenizer_error:
+        print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
+        return None, None
+    
+    # 여러 단계의 fallback 전략
+    model_loading_strategies = [
+        {
+            "name": "Float16 without quantization",
+            "config": {
+                "device_map": "auto" if NUM_GPUS > 1 else DEVICES[0],
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+                "torch_dtype": torch.float16,
+            }
+        },
+        {
+            "name": "Basic loading with float16",
+            "config": {
+                "trust_remote_code": True,
+                "torch_dtype": torch.float16,
+            }
+        },
+        {
+            "name": "Basic loading with auto dtype",
+            "config": {
+                "trust_remote_code": True,
+            }
+        },
+        {
+            "name": "Minimal loading (CPU fallback)",
+            "config": {
+                "trust_remote_code": True,
+                "device_map": "cpu",
+            }
+        }
+    ]
+    
+    for strategy in model_loading_strategies:
+        try:
+            print(f"[INFO] Trying: {strategy['name']}")
+            
+            model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, **strategy['config'])
+            
+            print(f"[SUCCESS] Model loaded with strategy: {strategy['name']}")
+            
+            if hasattr(model, 'gradient_checkpointing_disable'):
+                model.gradient_checkpointing_disable()
+            
+            try:
+                total_params = sum(p.numel() for p in model.parameters())
+                print(f"[INFO] Total model parameters: {total_params:,}")
+            except Exception as e:
+                print(f"[WARNING] Parameter count failed: {e}")
+            
+            model.eval()
+            return model, tokenizer
+            
+        except Exception as e:
+            print(f"[WARNING] Strategy '{strategy['name']}' failed: {e}")
+            continue
+    
+    print(f"[ERROR] All model loading strategies failed")
+    return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
-    """Generate text using safe generation function"""
-    return generate_safe(model, tokenizer, prompt, max_new_tokens, temperature=0.1)
+    """극도로 안전한 텍스트 생성"""
+    try:
+        # 다양한 토크나이징 방법
+        input_methods = [
+            {"truncation": True, "max_length": 1024, "return_tensors": "pt"},
+            {"truncation": True, "max_length": 512, "return_tensors": "pt"},
+            {"return_tensors": "pt"},
+        ]
+        
+        inputs = None
+        for method in input_methods:
+            try:
+                inputs = tokenizer(prompt, **method)
+                break
+            except Exception:
+                continue
+        
+        if inputs is None:
+            print("[ERROR] All tokenization methods failed")
+            return None
+        
+        # 모델 디바이스 확인
+        try:
+            model_device = next(iter(model.parameters())).device
+        except:
+            model_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        
+        # 입력을 모델 디바이스로 이동
+        try:
+            inputs = {k: v.to(model_device) for k, v in inputs.items()}
+        except Exception as e:
+            print(f"[ERROR] Failed to move inputs to device: {e}")
+            return None
+        
+        # 생성 전략들 (안전성 순서)
+        generation_strategies = [
+            {
+                "name": "Minimal safe",
+                "config": {
+                    'max_new_tokens': min(max_new_tokens, 5),
+                    'do_sample': False,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                }
+            },
+            {
+                "name": "Conservative",
+                "config": {
+                    'max_new_tokens': min(max_new_tokens, 15),
+                    'do_sample': False,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                }
+            },
+            {
+                "name": "Standard with sampling",
+                "config": {
+                    'max_new_tokens': min(max_new_tokens, 30),
+                    'do_sample': True,
+                    'temperature': 0.1,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                }
+            },
+            {
+                "name": "Full generation",
+                "config": {
+                    'max_new_tokens': max_new_tokens,
+                    'temperature': 0.1,
+                    'do_sample': True,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                    'return_dict_in_generate': True,
+                }
+            }
+        ]
+        
+        for strategy in generation_strategies:
+            try:
+                print(f"[INFO] Trying: {strategy['name']}")
+                
+                # 메모리 정리
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                with torch.no_grad():
+                    try:
+                        outputs = model.generate(**inputs, **strategy['config'])
+                        sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+                        
+                        # 새로 생성된 토큰 디코딩
+                        if len(sequences.shape) > 1 and sequences.shape[0] > 0:
+                            input_length = inputs['input_ids'].shape[1]
+                            new_tokens = sequences[0][input_length:]
+                            
+                            if len(new_tokens) > 0:
+                                generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+                                print(f"[SUCCESS] Generated with: {strategy['name']}")
+                                return generated_text.strip()
+                            else:
+                                print(f"[WARNING] No new tokens with: {strategy['name']}")
+                                continue
+                        else:
+                            print(f"[WARNING] Invalid output shape with: {strategy['name']}")
+                            continue
+                            
+                    except torch.cuda.OutOfMemoryError as oom:
+                        print(f"[ERROR] CUDA OOM with {strategy['name']}: {oom}")
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        continue
+                        
+                    except Exception as gen_e:
+                        print(f"[ERROR] Generation failed with {strategy['name']}: {gen_e}")
+                        continue
+                
+            except Exception as strategy_e:
+                print(f"[ERROR] Strategy {strategy['name']} failed: {strategy_e}")
+                continue
+        
+        print("[ERROR] All generation strategies failed")
+        return None
+        
+    except Exception as e:
+        print(f"[ERROR] Text generation completely failed: {e}")
+        return None
 
 def load_hrm8k_datasets():
     """Load all JSON files from HRM8K_TEXT directory"""

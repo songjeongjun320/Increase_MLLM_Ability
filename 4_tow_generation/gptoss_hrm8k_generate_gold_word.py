@@ -106,27 +106,44 @@ def load_model():
     except Exception as tokenizer_error:
         print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
         return None, None
-    
-    # 메모리 최적화된 fallback 전략 (이전 버전 복원)
+
+    # Define quantization configurations using the modern API
+    quantization_config_4bit = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
+
+    quantization_config_8bit = BitsAndBytesConfig(
+        load_in_8bit=True,
+    )
+
+    # Dynamically create max_memory map based on available GPUs
+    max_memory_map_15gb = {i: "15GiB" for i in range(NUM_GPUS)}
+    max_memory_map_20gb = {i: "20GiB" for i in range(NUM_GPUS)}
+    max_memory_map_35gb = {i: "35GiB" for i in range(NUM_GPUS)}
+
+    # 메모리 최적화된 fallback 전략 (최신 bitsandbytes API 적용)
     model_loading_strategies = [
+        {
+            "name": "4bit Quantization (Recommended)",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "quantization_config": quantization_config_4bit,
+                "low_cpu_mem_usage": True,
+                "max_memory": max_memory_map_15gb,
+            }
+        },
         {
             "name": "8bit Quantization",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
-                "load_in_8bit": True,
+                "quantization_config": quantization_config_8bit,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "20GiB", 1: "20GiB"},
-            }
-        },
-        {
-            "name": "4bit Quantization",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "load_in_4bit": True,
-                "low_cpu_mem_usage": True,
-                "max_memory": {0: "15GiB", 1: "15GiB"},
+                "max_memory": max_memory_map_20gb,
             }
         },
         {
@@ -136,17 +153,9 @@ def load_model():
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
                 "torch_dtype": torch.bfloat16,
-                "max_memory": {0: "35GiB", 1: "35GiB"},
+                "max_memory": max_memory_map_35gb,
                 "offload_folder": "./offload_temp",
                 "offload_state_dict": True,
-            }
-        },
-        {
-            "name": "Basic bfloat16 with memory limit",
-            "config": {
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
             }
         },
         {
@@ -156,11 +165,11 @@ def load_model():
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
                 "torch_dtype": torch.bfloat16,
-                "max_memory": {0: "35GiB", 1: "35GiB"},
+                "max_memory": max_memory_map_35gb,
             }
         },
         {
-            "name": "Basic float16 with memory limit",
+            "name": "Basic bfloat16",
             "config": {
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
@@ -268,134 +277,52 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
             print(f"[ERROR] Failed to move inputs to device: {e}")
             return None
         
-        # 생성 전략들 (안전성 순서)
-        generation_strategies = [
-            {
-                "name": "Minimal safe",
-                "config": {
-                    'max_new_tokens': min(max_new_tokens, 20),
-                    'do_sample': False,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                }
-            },
-            {
-                "name": "Conservative",
-                "config": {
-                    'max_new_tokens': min(max_new_tokens, 50),
-                    'do_sample': False,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                }
-            },
-            {
-                "name": "Standard with sampling",
-                "config": {
-                    'max_new_tokens': min(max_new_tokens, 100),
-                    'do_sample': True,
-                    'temperature': 0.1,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                }
-            },
-            {
-                "name": "Full generation",
-                "config": {
-                    'max_new_tokens': max_new_tokens,
-                    'temperature': 0.1,
-                    'do_sample': True,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                    'return_dict_in_generate': True,
-                }
-            }
-        ]
+        # 단순화된 생성 전략
+        generation_config = {
+            'max_new_tokens': max_new_tokens,
+            'temperature': 0.1,
+            'do_sample': True,
+            'pad_token_id': tokenizer.eos_token_id,
+            'eos_token_id': tokenizer.eos_token_id,
+            'use_cache': False,
+        }
         
-        for strategy in generation_strategies:
-            try:
-                print(f"[INFO] Trying: {strategy['name']}")
+        try:
+            # 메모리 정리
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    **generation_config,
+                )
                 
-                # 메모리 정리
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                # 새로 생성된 토큰 디코딩
+                input_length = inputs['input_ids'].shape[1]
+                new_tokens = outputs[0][input_length:]
                 
-                with torch.no_grad():
-                    try:
-                        # 메모리 정리 및 안전 장치
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                            torch.cuda.synchronize()
-                        
-                        # 극도로 안전한 생성 시도
-                        try:
-                            # 입력 길이 최대한 줄이기
-                            max_input_length = 256  # 매우 짧게
-                            if inputs['input_ids'].shape[1] > max_input_length:
-                                inputs['input_ids'] = inputs['input_ids'][:, -max_input_length:]
-                                inputs['attention_mask'] = inputs['attention_mask'][:, -max_input_length:]
-                            
-                            outputs = model.generate(
-                                **inputs, 
-                                **strategy['config'],
-                                output_scores=False,
-                                output_attentions=False,
-                                output_hidden_states=False,
-                                return_dict_in_generate=False,  # 더 안전한 출력
-                            )
-                            
-                        except RuntimeError as runtime_error:
-                            print(f"[ERROR] Runtime error in generation: {runtime_error}")
-                            if "experts.gate_up_proj" in str(runtime_error):
-                                print("[INFO] MoE layer error detected - this model may be corrupted")
-                            continue
-                        sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
-                        
-                        # 새로 생성된 토큰 디코딩
-                        if len(sequences.shape) > 1 and sequences.shape[0] > 0:
-                            input_length = inputs['input_ids'].shape[1]
-                            new_tokens = sequences[0][input_length:]
-                            
-                            if len(new_tokens) > 0:
-                                generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
-                                print(f"[SUCCESS] Generated with: {strategy['name']}")
-                                return generated_text.strip()
-                            else:
-                                print(f"[WARNING] No new tokens with: {strategy['name']}")
-                                continue
-                        else:
-                            print(f"[WARNING] Invalid output shape with: {strategy['name']}")
-                            continue
-                            
-                    except torch.cuda.OutOfMemoryError as oom:
-                        print(f"[ERROR] CUDA OOM with {strategy['name']}: {oom}")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                        continue
-                        
-                    except Exception as gen_e:
-                        print(f"[ERROR] Generation failed with {strategy['name']}: {gen_e}")
-                        continue
-                
-            except Exception as strategy_e:
-                error_msg = str(strategy_e)
-                print(f"[ERROR] Strategy {strategy['name']} failed: {error_msg}")
-                
-                # MoE 모델 특수 오류 감지
-                if "experts.gate_up_proj" in error_msg:
-                    print(f"[WARNING] MoE layer corruption detected in {strategy['name']}")
-                elif "CUDA" in error_msg and "memory" in error_msg:
-                    print(f"[WARNING] GPU memory issue in {strategy['name']}")
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                        
-                continue
+                if len(new_tokens) > 0:
+                    generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+                    print(f"[SUCCESS] Generated text successfully.")
+                    return generated_text.strip()
+                else:
+                    print(f"[WARNING] No new tokens were generated.")
         
-        print("[ERROR] All generation strategies failed - attempting emergency fallback")
+        except torch.cuda.OutOfMemoryError as oom:
+            print(f"[ERROR] CUDA OOM during generation: {oom}")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[ERROR] Generation failed: {error_msg}")
+            # MoE 모델 특수 오류 감지
+            if "experts.gate_up_proj" in error_msg:
+                print(f"[WARNING] MoE layer corruption detected.")
+
+        print("[ERROR] Generation failed - attempting emergency fallback")
         
-        # 비상 대안: 미리 정의된 응답 사용 (MoE 모델 완전 실패 시)
+        # 비상 대안: 미리 정의된 응답 사용
         emergency_responses = [
             '{\n"unpredictable_word": "단어"\n}',
             '{\n"unpredictable_word": "값"\n}',

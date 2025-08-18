@@ -121,7 +121,21 @@ def load_model():
             max_memory={i: "12GiB" for i in range(NUM_GPUS)},  # GPU당 메모리 제한 더 감소
             offload_folder="./model_offload",
             offload_state_dict=True,
+            use_cache=False,  # 캐시 비활성화로 메모리 절약
         )
+        
+        # Gradient checkpointing 비활성화 (안정성을 위해)
+        if hasattr(model, 'gradient_checkpointing_disable'):
+            model.gradient_checkpointing_disable()
+        
+        # 모든 모델 레이어가 올바르게 로드되었는지 확인
+        print("[INFO] Checking model layer accessibility...")
+        try:
+            # 모델의 모든 매개변수가 접근 가능한지 테스트
+            total_params = sum(p.numel() for p in model.parameters())
+            print(f"[INFO] Total model parameters: {total_params:,}")
+        except Exception as e:
+            print(f"[WARNING] Model parameter access test failed: {e}")
         
         model.eval()
         print(f"[INFO] Model loaded successfully with memory optimization across {NUM_GPUS} GPU(s)")
@@ -132,45 +146,57 @@ def load_model():
         return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
-    """Generate text using the model"""
+    """Generate text using the model with enhanced error handling"""
     try:
-        # torch.float16으로 기본 dtype 설정
-        with torch.autocast(device_type='cuda', dtype=torch.float16):
-            inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-            
-            # 모델의 첫 번째 매개변수에서 device 확인
-            model_device = next(model.parameters()).device
-            
-            # 입력 텐서를 모델 device로 이동 (dtype은 autocast가 처리)
-            inputs = {k: v.to(model_device) for k, v in inputs.items()}
-            
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    temperature=0.1,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id
-                )
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
         
-        # Decode only newly generated tokens
-        new_tokens = outputs[0][inputs['input_ids'].shape[1]:]
-        generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+        # 더 안전한 device 확인 방법
+        try:
+            model_device = next(iter(model.parameters())).device
+        except:
+            model_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         
-        return generated_text.strip()
+        # 입력을 안전하게 device로 이동
+        inputs = {k: v.to(model_device) for k, v in inputs.items()}
+        
+        # 더 안전한 생성 설정
+        generation_config = {
+            'max_new_tokens': max_new_tokens,
+            'temperature': 0.1,
+            'do_sample': True,
+            'pad_token_id': tokenizer.eos_token_id,
+            'eos_token_id': tokenizer.eos_token_id,
+            'use_cache': False,  # 캐시 사용하지 않음
+            'return_dict_in_generate': True,
+            'output_scores': False,
+        }
+        
+        with torch.no_grad():
+            try:
+                outputs = model.generate(**inputs, **generation_config)
+                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+            except Exception as gen_error:
+                print(f"[ERROR] Generation failed: {gen_error}")
+                # Fallback: 더 간단한 설정으로 재시도
+                simple_config = {
+                    'max_new_tokens': min(max_new_tokens, 20),
+                    'do_sample': False,  # 샘플링 비활성화
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                }
+                outputs = model.generate(**inputs, **simple_config)
+                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+        
+        # 새로 생성된 토큰 디코딩
+        if len(sequences.shape) > 1 and sequences.shape[0] > 0:
+            new_tokens = sequences[0][inputs['input_ids'].shape[1]:]
+            generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+            return generated_text.strip()
+        else:
+            return None
         
     except Exception as e:
         print(f"[ERROR] Text generation failed: {e}")
-        # 더 자세한 디버깅 정보
-        try:
-            print(f"[DEBUG] Model device: {next(model.parameters()).device}")
-            print(f"[DEBUG] Model dtype: {next(model.parameters()).dtype}")
-            if 'inputs' in locals():
-                for k, v in inputs.items():
-                    print(f"[DEBUG] Input {k}: device={v.device}, dtype={v.dtype}")
-        except:
-            pass
         return None
 
 def load_hrm8k_datasets():

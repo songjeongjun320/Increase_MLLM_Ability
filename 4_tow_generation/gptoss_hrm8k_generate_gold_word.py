@@ -17,7 +17,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/1_models/gpt_oss/gpt-oss-120b"
+MODEL_PATH = "../1_models/gpt-oss-120b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 

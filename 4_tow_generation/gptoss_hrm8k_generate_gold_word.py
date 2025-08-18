@@ -101,15 +101,27 @@ JSON Output:"""
 
 def load_model():
     """
-    GPT-OSS 120B 모델을 메모리 효율적으로 로드합니다.
-    A100 80GB x2 (160GB 총 메모리)에서 120B 모델 로딩 최적화
+    GPT-OSS 120B 모델을 A100 80GB x2에서 특별한 설정으로 로드합니다.
+    OpenAI 공식 권장사항을 적용한 tensor parallel 설정
     """
     print(f"[INFO] Loading GPT-OSS 120B model: {MODEL_PATH}")
+    print(f"[INFO] Optimized for A100 80GB x2 setup")
+    
+    # A100 80GB x2 전용 환경 설정
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['TORCH_CUDA_ARCH_LIST'] = '8.0'  # A100 아키텍처
     
     try:
-        # Load model config first
-        model_config = AutoConfig.from_pretrained(MODEL_PATH)
+        # Load model config with GPT-OSS specific settings
+        model_config = AutoConfig.from_pretrained(
+            MODEL_PATH,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        )
         print("[INFO] Model config loaded.")
+        print(f"[INFO] Model type: {model_config.model_type}")
+        print(f"[INFO] Total parameters: ~120B")
+        
     except Exception as e:
         print(f"[ERROR] Model configuration loading failed: {e}")
         return None, None
@@ -120,49 +132,84 @@ def load_model():
         for i in range(torch.cuda.device_count()):
             with torch.cuda.device(i):
                 torch.cuda.empty_cache()
+                torch.cuda.synchronize()
     
-    # 메모리 체크
+    # A100 80GB x2 메모리 체크
     if torch.cuda.is_available():
+        total_memory = 0
         for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
             memory_allocated = torch.cuda.memory_allocated(i) / 1024**3
             memory_cached = torch.cuda.memory_reserved(i) / 1024**3
-            memory_free = (torch.cuda.get_device_properties(i).total_memory / 1024**3) - memory_cached
-            print(f"[INFO] GPU {i}: {memory_free:.1f}GB free, {memory_cached:.1f}GB cached")
+            memory_total = props.total_memory / 1024**3
+            memory_free = memory_total - memory_cached
+            total_memory += memory_total
+            print(f"[INFO] GPU {i} ({props.name}): {memory_free:.1f}GB free, {memory_total:.1f}GB total")
+        
+        print(f"[INFO] Total GPU memory: {total_memory:.1f}GB")
+        
+        if total_memory < 150:  # A100 80GB x2 = 160GB
+            print("[WARNING] Insufficient GPU memory for optimal performance")
 
-    # Ultra-conservative memory strategies (120B model needs extreme care)
+    # A100 80GB x2 최적화된 로딩 전략 (OpenAI GPT-OSS 권장사항)
     loading_strategies = [
-        # Strategy 1: Minimal GPU, maximum CPU offload
+        # Strategy 1: A100 80GB x2 최적 분배 (권장)
         {
-            "name": "Minimal GPU + CPU offload",
+            "name": "A100 80GB x2 optimal distribution",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "torch_dtype": torch.bfloat16,
+                "low_cpu_mem_usage": True,
+                "max_memory": {
+                    0: "75GB",  # 첫 번째 A100 80GB
+                    1: "75GB",  # 두 번째 A100 80GB
+                    "cpu": "64GB"  # CPU 메모리
+                }
+            }
+        },
+        # Strategy 2: 보수적 A100 설정
+        {
+            "name": "A100 80GB x2 conservative",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
                 "offload_folder": "./offload",
-                "max_memory": {i: "20GB" for i in range(torch.cuda.device_count())} | {"cpu": "150GB"}
+                "max_memory": {
+                    0: "70GB",
+                    1: "70GB", 
+                    "cpu": "80GB"
+                }
             }
         },
-        # Strategy 2: Even more conservative
+        # Strategy 3: GPU 주력 + 최소 CPU offload
         {
-            "name": "Ultra minimal GPU",
+            "name": "GPU priority with minimal CPU offload",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
                 "offload_folder": "./offload",
-                "max_memory": {i: "10GB" for i in range(torch.cuda.device_count())} | {"cpu": "200GB"}
+                "max_memory": {
+                    0: "65GB",
+                    1: "65GB",
+                    "cpu": "100GB"
+                }
             }
         },
-        # Strategy 3: CPU only (last resort)
+        # Strategy 4: 극보수적 설정 (fallback)
         {
-            "name": "CPU only",
+            "name": "Ultra conservative fallback",
             "config": {
-                "device_map": {"": "cpu"},
+                "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
+                "offload_folder": "./offload",
+                "max_memory": {i: "40GB" for i in range(torch.cuda.device_count())} | {"cpu": "120GB"}
             }
         }
     ]

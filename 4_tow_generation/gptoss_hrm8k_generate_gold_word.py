@@ -19,7 +19,7 @@ from datetime import datetime
 import traceback
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt_oss/gpt-oss-20b"
+MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리

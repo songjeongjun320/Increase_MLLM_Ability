@@ -14,9 +14,8 @@ import re
 import glob
 from tqdm import tqdm
 import torch
-from transformers import AutoTokenizer,AutoConfig, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM, BitsAndBytesConfig
 from datetime import datetime
-from bitsandbytes import BitsAndBytesConfig
 import traceback
 
 # --- 설정 (Configuration) ---

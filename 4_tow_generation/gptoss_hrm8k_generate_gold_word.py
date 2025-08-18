@@ -112,7 +112,7 @@ def load_model():
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
-                "torch_dtype": torch.float16,
+                "torch_dtype": torch.bfloat16,
                 "max_memory": {0: "40GiB", 1: "40GiB"},  # GPU당 40GB로 제한
                 "offload_folder": "./offload_temp",
                 "offload_state_dict": True,
@@ -124,7 +124,7 @@ def load_model():
                 "device_map": "sequential",
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
-                "torch_dtype": torch.float16,
+                "torch_dtype": torch.bfloat16,
                 "max_memory": {0: "35GiB", 1: "35GiB"},
             }
         },
@@ -132,7 +132,7 @@ def load_model():
             "name": "Basic float16 with memory limit",
             "config": {
                 "trust_remote_code": True,
-                "torch_dtype": torch.float16,
+                "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
             }
         },
@@ -141,7 +141,7 @@ def load_model():
             "config": {
                 "device_map": {"": "cpu"},
                 "trust_remote_code": True,
-                "torch_dtype": torch.float16,
+                "torch_dtype": torch.bfloat16,
             }
         }
     ]
@@ -173,12 +173,12 @@ def load_model():
     print(f"[ERROR] All model loading strategies failed")
     return None, None
 
-def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
+def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
     """극도로 안전한 텍스트 생성"""
     try:
         # 다양한 토크나이징 방법
         input_methods = [
-            {"truncation": True, "max_length": 1024, "return_tensors": "pt"},
+            {"truncation": True, "max_length": 2048, "return_tensors": "pt"},
             {"truncation": True, "max_length": 512, "return_tensors": "pt"},
             {"return_tensors": "pt"},
         ]
@@ -222,7 +222,7 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
             {
                 "name": "Minimal safe",
                 "config": {
-                    'max_new_tokens': min(max_new_tokens, 5),
+                    'max_new_tokens': min(max_new_tokens, 20),
                     'do_sample': False,
                     'pad_token_id': tokenizer.eos_token_id,
                     'eos_token_id': tokenizer.eos_token_id,
@@ -231,7 +231,7 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
             {
                 "name": "Conservative",
                 "config": {
-                    'max_new_tokens': min(max_new_tokens, 15),
+                    'max_new_tokens': min(max_new_tokens, 50),
                     'do_sample': False,
                     'pad_token_id': tokenizer.eos_token_id,
                     'eos_token_id': tokenizer.eos_token_id,
@@ -241,7 +241,7 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
             {
                 "name": "Standard with sampling",
                 "config": {
-                    'max_new_tokens': min(max_new_tokens, 30),
+                    'max_new_tokens': min(max_new_tokens, 100),
                     'do_sample': True,
                     'temperature': 0.1,
                     'pad_token_id': tokenizer.eos_token_id,

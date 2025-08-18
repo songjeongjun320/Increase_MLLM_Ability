@@ -30,29 +30,43 @@ def load_model():
     # 모델 로딩 전략들
     strategies = [
         {
-            "name": "GPU with BFloat16",
+            "name": "8bit Quantization",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "load_in_8bit": True,
+                "low_cpu_mem_usage": True,
+                "max_memory": {0: "20GiB", 1: "20GiB"},
+            }
+        },
+        {
+            "name": "4bit Quantization",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "load_in_4bit": True,
+                "low_cpu_mem_usage": True,
+                "max_memory": {0: "15GiB", 1: "15GiB"},
+            }
+        },
+        {
+            "name": "CPU Offload with Memory Limit",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
+                "max_memory": {0: "10GiB", 1: "10GiB", "cpu": "50GiB"},
+                "offload_folder": "./offload_temp",
             }
         },
         {
-            "name": "GPU with Float16",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "torch_dtype": torch.float16,
-                "low_cpu_mem_usage": True,
-            }
-        },
-        {
-            "name": "CPU Fallback",
+            "name": "CPU Only",
             "config": {
                 "device_map": {"": "cpu"},
                 "trust_remote_code": True,
                 "torch_dtype": torch.float32,
+                "low_cpu_mem_usage": True,
             }
         }
     ]
@@ -71,7 +85,7 @@ def load_model():
     print("[ERROR] All loading strategies failed")
     return None, None
 
-def generate_response(model, tokenizer, user_input, max_new_tokens=100):
+def generate_response(model, tokenizer, user_input, max_new_tokens=200):
     """사용자 입력에 대한 응답을 생성합니다."""
     try:
         # 프롬프트 구성

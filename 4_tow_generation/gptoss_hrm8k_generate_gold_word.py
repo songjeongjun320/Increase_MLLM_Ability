@@ -157,8 +157,15 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
     try:
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
         
-        # GPU로 텐서 이동 (dtype 변환 없이)
-        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        # 모델의 첫 번째 매개변수에서 device와 dtype 확인
+        model_device = next(model.parameters()).device
+        model_dtype = next(model.parameters()).dtype
+        
+        # 입력 텐서를 모델과 동일한 device와 dtype으로 이동
+        if 'input_ids' in inputs:
+            inputs['input_ids'] = inputs['input_ids'].to(model_device)
+        if 'attention_mask' in inputs:
+            inputs['attention_mask'] = inputs['attention_mask'].to(model_device)
         
         with torch.no_grad():
             outputs = model.generate(
@@ -178,6 +185,8 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
         
     except Exception as e:
         print(f"[ERROR] Text generation failed: {e}")
+        print(f"[DEBUG] Model device: {next(model.parameters()).device}")
+        print(f"[DEBUG] Model dtype: {next(model.parameters()).dtype}")
         return None
 
 def load_hrm8k_datasets():

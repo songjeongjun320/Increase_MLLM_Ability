@@ -111,25 +111,48 @@ def load_model():
             
         print("[INFO] Loading model with 4-bit quantization...")
         
-        # 4-bit 양자화 설정 추가
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-        )
+        # 4-bit 양자화 설정 추가 (호환성 개선)
+        try:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+            )
+        except Exception as quant_error:
+            print(f"[WARNING] Quantization config failed: {quant_error}")
+            print("[INFO] Falling back to basic quantization...")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+            )
         
-        # 모델 로딩 시 양자화 적용
-        model = AutoModelForCausalLM.from_pretrained(
-            MODEL_PATH,
-            quantization_config=quantization_config,
-            device_map=device_map,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-            offload_folder="./model_offload",
-            offload_state_dict=True,
-            use_cache=False,
-        )
+        # 모델 로딩 시 양자화 적용 (fallback 옵션 포함)
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                MODEL_PATH,
+                quantization_config=quantization_config,
+                device_map=device_map,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+                offload_folder="./model_offload",
+                offload_state_dict=True,
+                use_cache=False,
+            )
+        except Exception as model_error:
+            print(f"[WARNING] Quantized model loading failed: {model_error}")
+            print("[INFO] Attempting to load without quantization...")
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    MODEL_PATH,
+                    device_map=device_map,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True,
+                    torch_dtype=torch.float16,
+                    use_cache=False,
+                )
+            except Exception as fallback_error:
+                print(f"[ERROR] Model loading completely failed: {fallback_error}")
+                raise fallback_error
         
         # Gradient checkpointing 비활성화 (안정성을 위해)
         if hasattr(model, 'gradient_checkpointing_disable'):

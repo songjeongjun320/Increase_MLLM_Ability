@@ -11,7 +11,7 @@ import os
 import sys
 
 # 모델 경로
-MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
+MODEL_PATH = "openai/gpt-oss-120b"  # 공식 Hugging Face 모델
 
 def load_model():
     """GPT-OSS 120B 모델과 토크나이저를 로드합니다."""
@@ -30,13 +30,22 @@ def load_model():
     # 모델 로딩 전략들
     strategies = [
         {
+            "name": "Native MXFP4 Quantization (Official)",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "torch_dtype": "auto",
+                "low_cpu_mem_usage": True,
+            }
+        },
+        {
             "name": "8bit Quantization",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "load_in_8bit": True,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "20GiB", 1: "20GiB"},
+                "max_memory": {0: "40GiB", 1: "40GiB"},
             }
         },
         {
@@ -46,18 +55,7 @@ def load_model():
                 "trust_remote_code": True,
                 "load_in_4bit": True,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "15GiB", 1: "15GiB"},
-            }
-        },
-        {
-            "name": "CPU Offload with Memory Limit",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
-                "max_memory": {0: "10GiB", 1: "10GiB", "cpu": "50GiB"},
-                "offload_folder": "./offload_temp",
+                "max_memory": {0: "30GiB", 1: "30GiB"},
             }
         },
         {

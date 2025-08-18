@@ -19,7 +19,7 @@ from datetime import datetime
 import traceback
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
+MODEL_PATH = "openai/gpt-oss-120b"  # 공식 Hugging Face 모델
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리
@@ -107,50 +107,57 @@ def load_model():
         print(f"[ERROR] Tokenizer loading failed: {tokenizer_error}")
         return None, None
     
-    # MoE 모델 전용 안전 로딩 전략
+    # GPT-OSS 120B 공식 Hugging Face 모델 로딩 전략
     model_loading_strategies = [
         {
-            "name": "CPU Only (Most Safe)",
-            "config": {
-                "device_map": {"": "cpu"},
-                "trust_remote_code": True,
-                "torch_dtype": torch.float32,
-                "low_cpu_mem_usage": True,
-                }
-        },
-        {
-            "name": "Manual Layer Assignment", 
-            "config": {
-                "device_map": {
-                    "model.embed_tokens": "cpu",
-                    "model.layers": "cpu", 
-                    "model.norm": "cpu",
-                    "lm_head": "cpu"
-                },
-                "trust_remote_code": True,
-                "torch_dtype": torch.float32,
-                "low_cpu_mem_usage": True,
-            }
-        },
-        {
-            "name": "Safe GPU with Custom Memory",
+            "name": "Native MXFP4 Quantization (Recommended)",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
-                "torch_dtype": torch.float32,  # float32로 더 안전하게
+                "torch_dtype": "auto",  # 자동 타입 감지
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "5GiB", 1: "5GiB", "cpu": "100GiB"},  # GPU 메모리 극대한 제한
-                "offload_folder": "./offload_temp",
+                # MXFP4 quantization이 자동으로 적용됨
             }
         },
         {
-            "name": "4bit Quantization (Fallback)",
+            "name": "8bit Quantization (Fallback)",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "load_in_8bit": True,
+                "low_cpu_mem_usage": True,
+                "max_memory": {0: "40GiB", 1: "40GiB"},
+            }
+        },
+        {
+            "name": "4bit Quantization (Backup)",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "load_in_4bit": True,
                 "low_cpu_mem_usage": True,
-                "max_memory": {0: "8GiB", 1: "8GiB", "cpu": "100GiB"},
+                "max_memory": {0: "30GiB", 1: "30GiB"},
+            }
+        },
+        {
+            "name": "BFloat16 with Memory Control",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+                "torch_dtype": torch.bfloat16,
+                "max_memory": {0: "35GiB", 1: "35GiB"},
+            }
+        },
+        {
+            "name": "CPU Offload (Emergency)",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "torch_dtype": torch.bfloat16,
+                "low_cpu_mem_usage": True,
+                "max_memory": {0: "10GiB", 1: "10GiB", "cpu": "100GiB"},
+                "offload_folder": "./offload_temp",
             }
         },
         {
@@ -272,53 +279,48 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
             print(f"[ERROR] Failed to move inputs to device: {e}")
             return None
         
-        # MoE 모델 전용 초안전 생성 전략
+        # 생성 전략들 (안전성 순서)
         generation_strategies = [
-            {
-                "name": "Ultra Minimal (1 token)",
-                "config": {
-                    'max_new_tokens': 1,
-                    'do_sample': False,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                    'num_beams': 1,
-                    'early_stopping': True,
-                }
-            },
-            {
-                "name": "Super Safe (3 tokens)",
-                "config": {
-                    'max_new_tokens': 3,
-                    'do_sample': False,
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'eos_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                    'num_beams': 1,
-                    'early_stopping': True,
-                    'repetition_penalty': 1.0,
-                }
-            },
             {
                 "name": "Minimal safe",
                 "config": {
-                    'max_new_tokens': min(max_new_tokens, 10),
+                    'max_new_tokens': min(max_new_tokens, 20),
                     'do_sample': False,
                     'pad_token_id': tokenizer.eos_token_id,
                     'eos_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                    'num_beams': 1,
                 }
             },
             {
                 "name": "Conservative",
                 "config": {
-                    'max_new_tokens': min(max_new_tokens, 30),
+                    'max_new_tokens': min(max_new_tokens, 50),
                     'do_sample': False,
                     'pad_token_id': tokenizer.eos_token_id,
                     'eos_token_id': tokenizer.eos_token_id,
                     'use_cache': False,
-                    'num_beams': 1,
+                }
+            },
+            {
+                "name": "Standard with sampling",
+                "config": {
+                    'max_new_tokens': min(max_new_tokens, 100),
+                    'do_sample': True,
+                    'temperature': 0.1,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                }
+            },
+            {
+                "name": "Full generation",
+                "config": {
+                    'max_new_tokens': max_new_tokens,
+                    'temperature': 0.1,
+                    'do_sample': True,
+                    'pad_token_id': tokenizer.eos_token_id,
+                    'eos_token_id': tokenizer.eos_token_id,
+                    'use_cache': False,
+                    'return_dict_in_generate': True,
                 }
             }
         ]

@@ -236,23 +236,16 @@ def load_model():
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
     """극도로 안전한 텍스트 생성"""
     try:
-        # 다양한 토크나이징 방법
-        input_methods = [
-            {"truncation": True, "max_length": 2048, "return_tensors": "pt"},
-            {"truncation": True, "max_length": 512, "return_tensors": "pt"},
-            {"return_tensors": "pt"},
-        ]
-        
-        inputs = None
-        for method in input_methods:
-            try:
-                inputs = tokenizer(prompt, **method)
-                break
-            except Exception:
-                continue
-        
-        if inputs is None:
-            print("[ERROR] All tokenization methods failed")
+        # 토크나이징 (max_length 1024로 고정)
+        try:
+            inputs = tokenizer(
+                prompt,
+                truncation=True,
+                max_length=1024,
+                return_tensors="pt"
+            )
+        except Exception as e:
+            print(f"[ERROR] Tokenization failed: {e}")
             return None
         
         # 모델 디바이스 확인

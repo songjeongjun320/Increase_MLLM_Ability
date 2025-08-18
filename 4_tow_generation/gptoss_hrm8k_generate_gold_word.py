@@ -19,7 +19,7 @@ from datetime import datetime
 import traceback
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
+MODEL_PATH = "../1_models/gpt_oss/gpt-oss-20b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리
@@ -40,7 +40,7 @@ def create_prompt(sentence: str) -> str:
     모델이 예측하기 가장 어려운 단어를 JSON 형식으로 출력하도록 유도하는
     상세한 Few-shot 프롬프트를 생성합니다.
     """
-    return f"""You are a language prediction expert. Your task is to find the single most unpredictable or surprising word in a given Korean sentence. This word is often a proper noun, a specific number, or a key piece of information that cannot be easily guessed.
+    return f"""You are an expert mathematician specializing in problem analysis. Your task is to identify the single most critical word in a Korean math problem. This word specifies the final quantity, value, or object that must be found to solve the problem. It is the 'target word' that the entire problem-solving process is aimed at.
 
 Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number.
 

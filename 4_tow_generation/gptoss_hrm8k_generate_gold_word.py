@@ -17,6 +17,7 @@ import torch
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
 from datetime import datetime
 import traceback
+import psutil  # CPU 메모리 체크용
 
 # --- 설정 (Configuration) ---
 MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
@@ -37,165 +38,192 @@ SAVE_INTERVAL = 50  # 50개 처리할 때마다 저장
 # =================================================================
 def create_prompt(sentence: str) -> str:
     """
-    모델이 예측하기 가장 어려운 단어를 JSON 형식으로 출력하도록 유도하는
-    상세한 Few-shot 프롬프트를 생성합니다.
+    간소화된 프롬프트로 메모리 사용량을 줄임
     """
-    return f"""You are an expert mathematician specializing in problem analysis. Your task is to identify the single most critical word in a Korean math problem. This word specifies the final quantity, value, or object that must be found to solve the problem. It is the 'target word' that the entire problem-solving process is aimed at.
+    return f"""Find the target word in Korean math problem. Output JSON format only.
 
-Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number.
+Examples:
+1. "a+b의 최솟값은?" → {{"unpredictable_word": "최솟값은"}}
+2. "점 P의 가속도는?" → {{"unpredictable_word": "가속도는"}}  
+3. "실수 x의 값을 구하시오." → {{"unpredictable_word": "x"}}
 
----
-Example 1:
-Sentence: "닫힌구간 [0,2π]에서 정이된 함수 f(x) = acosbx + 3 이 x = π/3에서 최댓값 13을을 갖도록 하는 두 자연수 a,b 의 순서쌍 (a,b) 에 대하여 a+b의 최솟값은?"
-Reasoning: "The final objective is the 'minimum value' of 'a+b', not the value itself. This is specified by the core noun '최솟값' (minimum value) in the question's final phrase. Following the established pattern of including the grammatical particle, the complete and most precise target is '최솟값은'."
-JSON Output:
-{{
-"unpredictable_word": "최솟값은"
-}}
-
----
-
-Example 2:
-Sentence: "시각 t = 0 일 때, 출발하여 수직선 위를 움직이는 점 P의 시각 t(t>=0)에서의 위치 x가 x=t^3-(3t^2)/2-6t 이다. 출발한 후 점 P의 운동 방향이 바뀌는 시각에서의 점 P의 가속도는?"
-Reasoning: "This problem asks for a specific physical quantity under a certain condition. The question's final phrase, '점 P의 가속도는?' (What is the acceleration of point P?), explicitly states that the final goal is to find the 'acceleration'. Following the established pattern, the core noun '가속도' (acceleration) is combined with its grammatical particle '는' to make '가속도는' the most precise target word for the final answer."
-JSON Output:
-{{
-"unpredictable_word": "가속도는"
-}}
-
----
-
-Example 3:
-Sentence: "최고차항의 계수가 1인 삼차함수 f(x)가 f(1)=f(2)=0, f'(0)=-7을 만족시킨다. 원점 O와 점 P(3,f(3))에 대하여 선분 OP가 곡선 y=f(x)와 만나는 점 중 P가 아닌 점을 Q라 하자. 곡선 y=f(x)와 y축 및 선분 OQ로 둘러싸인 부분의 넓이를 A, 곡선 y=f(x)와 선분 PQ로 둘러싸인 부분의 넙이를 B라 할 때, B-A의 값은?"
-Reasoning: "This case is unique because while the question asks for a '값은' (value), the target word is '넓이를' (area). The problem explicitly defines the components of the final calculation, A and B, as areas ('넓이'). Therefore, the fundamental quantity being calculated (B-A) is an area. '넓이를' is chosen because it correctly identifies the specific nature of the target quantity, which is more descriptive than the generic term '값은'."
-JSON Output:
-{{
-"unpredictable_word": "넓이를"
-}}
-
----
-
-Example 4:
-Sentence: "방정식 log2(x-3)=log4(3x-5)를 만족시키는 실수 x의 값을 구하시오."
-Reasoning: "This problem directly asks to solve for an unknown variable, 'x'. The instruction '실수 x의 값을 구하시오' (Find the value of the real number x) makes it clear that the final target is not a property of x (like its maximum or minimum) but the variable itself. Therefore, 'x' is the most fundamental and direct representation of the quantity that needs to be found."
-JSON Output:
-{{
-"unpredictable_word": "x"
-}}
-
----
-
-Example 5:
-Sentence: "두 사건 A,B에 대하여 P(A|B)=P(A)=1/2, P(A∩B)=1/5 일 때, P(A∪B)의 값은?"
-Reasoning: "The problem asks for the numerical result of the probability expression P(A∪B). The final phrase 'P(A∪B)의 값은?' directly translates to 'What is the value of P(A∪B)?'. Unlike Example 3, where a more specific noun ('area') was defined earlier, this problem does not provide a more fundamental descriptor for the probability. Therefore, the most direct and appropriate target word is '값은' (value is?), taken from the question itself, which identifies the generic numerical result required."
-JSON Output:
-{{
-"unpredictable_word": "값은"
-}}
----
-
-Now, analyze this sentence:
 Sentence: "{sentence}"
 JSON Output:"""
 
 def load_model():
     """
-    GPT-OSS 20B 모델과 토크나이저를 로드합니다 (강화된 안전 로딩).
+    GPT-OSS 120B 모델을 메모리 효율적으로 로드합니다.
+    A100 80GB x2 (160GB 총 메모리)에서 120B 모델 로딩 최적화
     """
-    print(f"[INFO] Loading GPT-OSS 20B model: {MODEL_PATH}")
+    print(f"[INFO] Loading GPT-OSS 120B model: {MODEL_PATH}")
     
     try:
-        # Load model config (this is for general model settings, not quantization)
+        # Load model config first
         model_config = AutoConfig.from_pretrained(MODEL_PATH)
         print("[INFO] Model config loaded.")
     except Exception as e:
         print(f"[ERROR] Model configuration loading failed: {e}")
         return None, None
 
-    # GPU memory management (optional)
+    # Aggressive memory cleanup
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+        for i in range(torch.cuda.device_count()):
+            with torch.cuda.device(i):
+                torch.cuda.empty_cache()
+    
+    # 메모리 체크
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            memory_allocated = torch.cuda.memory_allocated(i) / 1024**3
+            memory_cached = torch.cuda.memory_reserved(i) / 1024**3
+            memory_free = (torch.cuda.get_device_properties(i).total_memory / 1024**3) - memory_cached
+            print(f"[INFO] GPU {i}: {memory_free:.1f}GB free, {memory_cached:.1f}GB cached")
 
-    # Try loading model without quantization (bitsandbytes issue workaround)
-    try:
-        print("[INFO] Attempting to load model without quantization...")
-
-        model = AutoModelForCausalLM.from_pretrained(
-            MODEL_PATH,
-            device_map="auto",  # Automatically distribute model layers across available GPUs
-            trust_remote_code=True,
-            torch_dtype=torch.bfloat16,  # Use bfloat16 for memory efficiency
-            low_cpu_mem_usage=True,  # Optimize CPU memory usage
-        )
-
-        print("[SUCCESS] Model loaded successfully.")
-        
-        # Load tokenizer
+    # Try multiple loading strategies
+    loading_strategies = [
+        # Strategy 1: 8bit quantization with CPU offload
+        {
+            "name": "8bit + CPU offload",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "torch_dtype": torch.bfloat16,
+                "low_cpu_mem_usage": True,
+                "load_in_8bit": True,
+                "offload_folder": "./offload",
+                "max_memory": {i: "76GB" for i in range(torch.cuda.device_count())} | {"cpu": "32GB"}
+            }
+        },
+        # Strategy 2: 4bit quantization
+        {
+            "name": "4bit quantization",
+            "config": {
+                "device_map": "auto", 
+                "trust_remote_code": True,
+                "torch_dtype": torch.bfloat16,
+                "low_cpu_mem_usage": True,
+                "load_in_4bit": True,
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+                "bnb_4bit_use_double_quant": True,
+                "max_memory": {i: "78GB" for i in range(torch.cuda.device_count())}
+            }
+        },
+        # Strategy 3: CPU offload only
+        {
+            "name": "CPU offload",
+            "config": {
+                "device_map": "auto",
+                "trust_remote_code": True, 
+                "torch_dtype": torch.bfloat16,
+                "low_cpu_mem_usage": True,
+                "offload_folder": "./offload",
+                "max_memory": {i: "70GB" for i in range(torch.cuda.device_count())} | {"cpu": "64GB"}
+            }
+        }
+    ]
+    
+    for strategy in loading_strategies:
         try:
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            print("[SUCCESS] Tokenizer loaded successfully.")
-            return model, tokenizer
+            print(f"[INFO] Trying strategy: {strategy['name']}")
+            
+            # Create offload directory if needed
+            if "offload_folder" in strategy["config"]:
+                os.makedirs(strategy["config"]["offload_folder"], exist_ok=True)
+            
+            model = AutoModelForCausalLM.from_pretrained(
+                MODEL_PATH,
+                **strategy["config"]
+            )
+            
+            print(f"[SUCCESS] Model loaded with strategy: {strategy['name']}")
+            
+            # Load tokenizer
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
+                print("[SUCCESS] Tokenizer loaded successfully.")
+                return model, tokenizer
+            except Exception as e:
+                print(f"[ERROR] Tokenizer loading failed: {e}")
+                return None, None
+                
         except Exception as e:
-            print(f"[ERROR] Tokenizer loading failed: {e}")
-            return None, None
-
-    except Exception as e:
-        print(f"[ERROR] Model loading failed: {e}")
-        return None, None
+            print(f"[WARNING] Strategy '{strategy['name']}' failed: {e}")
+            # Clean up on failure
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            continue
+    
+    print("[ERROR] All loading strategies failed.")
+    return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
-    """극도로 안전한 텍스트 생성"""
+    """메모리 최적화된 텍스트 생성"""
     try:
-        # 토크나이징 (max_length 1024로 고정)
+        # 토크나이징 (최대 길이를 줄여 메모리 절약)
         try:
             inputs = tokenizer(
                 prompt,
                 truncation=True,
-                max_length=1024,
+                max_length=512,  # 1024 -> 512로 줄임
                 return_tensors="pt"
             )
         except Exception as e:
             print(f"[ERROR] Tokenization failed: {e}")
             return None
         
-        # 모델 디바이스 확인
+        # 모델 위치 확인
         try:
-            model_device = next(iter(model.parameters())).device
+            # 분산된 모델의 첫 번째 디바이스 찾기
+            if hasattr(model, 'hf_device_map'):
+                first_device = list(model.hf_device_map.values())[0]
+                if isinstance(first_device, int):
+                    model_device = torch.device(f'cuda:{first_device}')
+                else:
+                    model_device = torch.device(first_device)
+            else:
+                model_device = next(iter(model.parameters())).device
         except:
             model_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         
-        # 입력을 모델 디바이스로 이동 (데이터 타입 보정)
+        # 입력을 첫 번째 디바이스로 이동
         try:
-            # input_ids는 항상 long 타입, attention_mask는 모델과 같은 타입
-            inputs_corrected = {}
-            for k, v in inputs.items():
-                if k == 'input_ids':
-                    inputs_corrected[k] = v.to(device=model_device, dtype=torch.long)
-                elif k == 'attention_mask':
-                    inputs_corrected[k] = v.to(device=model_device, dtype=torch.long)
-                else:
-                    inputs_corrected[k] = v.to(model_device)
-            inputs = inputs_corrected
+            inputs = {k: v.to(model_device, dtype=torch.long) for k, v in inputs.items()}
         except Exception as e:
             print(f"[ERROR] Failed to move inputs to device: {e}")
             return None
         
-        # 단순화된 생성 전략
+        # 메모리 절약형 생성 설정
         generation_config = {
-            'max_new_tokens': max_new_tokens,
-            'temperature': 0.1,
+            'max_new_tokens': min(max_new_tokens, 100),  # 토큰 수 제한
+            'temperature': 0.3,
             'do_sample': True,
             'pad_token_id': tokenizer.eos_token_id,
             'eos_token_id': tokenizer.eos_token_id,
-            'use_cache': False,
+            'use_cache': False,  # 메모리 절약
+            'output_scores': False,
+            'return_dict_in_generate': False,
         }
         
         try:
-            # 메모리 정리
+            # 생성 전 메모리 정리
             if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                for i in range(torch.cuda.device_count()):
+                    with torch.cuda.device(i):
+                        torch.cuda.empty_cache()
+            
+            # GPU 메모리 체크
+            if torch.cuda.is_available():
+                available_memory = min([
+                    torch.cuda.get_device_properties(i).total_memory - torch.cuda.memory_reserved(i) 
+                    for i in range(torch.cuda.device_count())
+                ]) / 1024**3
+                
+                if available_memory < 5.0:  # 5GB 미만이면 경고
+                    print(f"[WARNING] Low GPU memory: {available_memory:.1f}GB available")
+                    generation_config['max_new_tokens'] = min(generation_config['max_new_tokens'], 50)
             
             with torch.no_grad():
                 outputs = model.generate(
@@ -203,29 +231,36 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
                     **generation_config,
                 )
                 
-                # 새로 생성된 토큰 디코딩
+                # 새로 생성된 토큰만 디코딩
                 input_length = inputs['input_ids'].shape[1]
                 new_tokens = outputs[0][input_length:]
                 
                 if len(new_tokens) > 0:
                     generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
-                    print(f"[SUCCESS] Generated text successfully.")
+                    print(f"[SUCCESS] Generated {len(new_tokens)} tokens successfully.")
                     return generated_text.strip()
                 else:
                     print(f"[WARNING] No new tokens were generated.")
+                    return ""
         
         except torch.cuda.OutOfMemoryError as oom:
             print(f"[ERROR] CUDA OOM during generation: {oom}")
+            # 강제 메모리 정리
             if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                for i in range(torch.cuda.device_count()):
+                    with torch.cuda.device(i):
+                        torch.cuda.empty_cache()
+            return None
         except Exception as e:
             error_msg = str(e)
             print(f"[ERROR] Generation failed: {error_msg}")
-            # MoE 모델 특수 오류 감지
-            if "experts.gate_up_proj" in error_msg:
-                print(f"[WARNING] MoE layer corruption detected.")
+            if "out of memory" in error_msg.lower():
+                print(f"[INFO] OOM detected, trying emergency cleanup...")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            return None
 
-        print("[ERROR] Generation failed. The model could not produce an output.")
+        print("[ERROR] Generation failed. No output produced.")
         return None
         
     except Exception as e:

@@ -95,48 +95,25 @@ def load_model():
         else:
             device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
             
-        print("[INFO] Loading model with aggressive memory optimization...")
+        print("[INFO] Loading model with 8-bit quantization for stability...")
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.float16,  # 항상 float16 사용으로 메모리 절약
+            torch_dtype=torch.float16,
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            # 추가 메모리 최적화 옵션들
-            load_in_8bit=False,  # 8bit 양자화는 일단 비활성화 (안정성 위해)
-            load_in_4bit=False,  # 4bit 양자화도 비활성화
-            max_memory={i: "20GiB" for i in range(NUM_GPUS)},  # GPU당 최대 메모리 제한
-            offload_folder="./model_offload",  # 일부 가중치를 디스크에 저장
-            offload_state_dict=True,
+            load_in_8bit=True,  # 8bit 양자화 활성화 (안정성 향상)
+            max_memory={i: "15GiB" for i in range(NUM_GPUS)},  # GPU당 메모리 제한 감소
+            offload_folder="./model_offload",
         )
         
         model.eval()
-        print(f"[INFO] Model loaded successfully with memory optimization across {NUM_GPUS} GPU(s)")
+        print(f"[INFO] Model loaded successfully with 8-bit quantization across {NUM_GPUS} GPU(s)")
         return model, tokenizer
         
     except Exception as e:
         print(f"[ERROR] Model loading failed: {e}")
-        print("[INFO] Trying with 8-bit quantization...")
-        
-        # 8-bit 양자화로 재시도
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                MODEL_PATH,
-                torch_dtype=torch.float16,
-                device_map=device_map,
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,
-                load_in_8bit=True,  # 8bit 양자화 활성화
-                max_memory={i: "15GiB" for i in range(NUM_GPUS)},
-                offload_folder="./model_offload",
-            )
-            model.eval()
-            print(f"[INFO] Model loaded with 8-bit quantization across {NUM_GPUS} GPU(s)")
-            return model, tokenizer
-            
-        except Exception as e2:
-            print(f"[ERROR] 8-bit quantization also failed: {e2}")
-            return None, None
+        return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
     """모델을 사용하여 텍스트를 생성합니다."""

@@ -320,23 +320,8 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
             if "experts.gate_up_proj" in error_msg:
                 print(f"[WARNING] MoE layer corruption detected.")
 
-        print("[ERROR] Generation failed - attempting emergency fallback")
-        
-        # 비상 대안: 미리 정의된 응답 사용
-        emergency_responses = [
-            '{\n"unpredictable_word": "단어"\n}',
-            '{\n"unpredictable_word": "값"\n}',
-            '{\n"unpredictable_word": "결과"\n}',
-            '{\n"unpredictable_word": "해"\n}',
-            '{\n"unpredictable_word": "식"\n}'
-        ]
-        
-        # 프롬프트 길이에 따라 다른 응답 선택
-        response_index = len(prompt) % len(emergency_responses)
-        emergency_output = emergency_responses[response_index]
-        
-        print(f"[WARNING] Using emergency fallback response: {emergency_output}")
-        return emergency_output
+        print("[ERROR] Generation failed. The model could not produce an output.")
+        return None
         
     except Exception as e:
         print(f"[ERROR] Text generation completely failed: {e}")

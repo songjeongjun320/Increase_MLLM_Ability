@@ -14,7 +14,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../1_models/gpt-oss-120b"
+MODEL_PATH = "../1_models/gpt_oss/gpt-oss-120b"
 INPUT_JSON_PATH = "./gold_labels/hrm8k_gold_labels_gptoss120b.json"
 OUTPUT_JSON_PATH = "./tow_data/hrm8k_tow_gptoss120b.json"
 

@@ -141,27 +141,25 @@ def load_model():
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
     """모델을 사용하여 텍스트를 생성합니다."""
     try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-        
-        # 모델의 첫 번째 매개변수에서 device와 dtype 확인
-        model_device = next(model.parameters()).device
-        model_dtype = next(model.parameters()).dtype
-        
-        # 입력 텐서를 모델과 동일한 device와 dtype으로 이동
-        if 'input_ids' in inputs:
-            inputs['input_ids'] = inputs['input_ids'].to(model_device)
-        if 'attention_mask' in inputs:
-            inputs['attention_mask'] = inputs['attention_mask'].to(model_device)
-        
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=0.2,  # 약간의 창의성을 허용하되 일관성을 유지
-                do_sample=True,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id
-            )
+        # torch.float16으로 기본 dtype 설정
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
+            
+            # 모델의 첫 번째 매개변수에서 device 확인
+            model_device = next(model.parameters()).device
+            
+            # 입력 텐서를 모델 device로 이동 (dtype은 autocast가 처리)
+            inputs = {k: v.to(model_device) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.2,  # 약간의 창의성을 허용하되 일관성을 유지
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id
+                )
         
         # 새로 생성된 토큰만 디코딩
         new_tokens = outputs[0][inputs['input_ids'].shape[1]:]
@@ -171,8 +169,15 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=512):
         
     except Exception as e:
         print(f"[ERROR] 텍스트 생성 실패: {e}")
-        print(f"[DEBUG] Model device: {next(model.parameters()).device}")
-        print(f"[DEBUG] Model dtype: {next(model.parameters()).dtype}")
+        # 더 자세한 디버깅 정보
+        try:
+            print(f"[DEBUG] Model device: {next(model.parameters()).device}")
+            print(f"[DEBUG] Model dtype: {next(model.parameters()).dtype}")
+            if 'inputs' in locals():
+                for k, v in inputs.items():
+                    print(f"[DEBUG] Input {k}: device={v.device}, dtype={v.dtype}")
+        except:
+            pass
         return None
 
 def generate_tow_dataset():

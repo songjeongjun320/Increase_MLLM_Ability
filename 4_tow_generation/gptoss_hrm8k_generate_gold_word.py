@@ -155,27 +155,25 @@ def load_model():
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
     """Generate text using the model"""
     try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-        
-        # 모델의 첫 번째 매개변수에서 device와 dtype 확인
-        model_device = next(model.parameters()).device
-        model_dtype = next(model.parameters()).dtype
-        
-        # 입력 텐서를 모델과 동일한 device와 dtype으로 이동
-        if 'input_ids' in inputs:
-            inputs['input_ids'] = inputs['input_ids'].to(model_device)
-        if 'attention_mask' in inputs:
-            inputs['attention_mask'] = inputs['attention_mask'].to(model_device)
-        
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=0.1,
-                do_sample=True,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id
-            )
+        # torch.float16으로 기본 dtype 설정
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
+            
+            # 모델의 첫 번째 매개변수에서 device 확인
+            model_device = next(model.parameters()).device
+            
+            # 입력 텐서를 모델 device로 이동 (dtype은 autocast가 처리)
+            inputs = {k: v.to(model_device) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.1,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id
+                )
         
         # Decode only newly generated tokens
         new_tokens = outputs[0][inputs['input_ids'].shape[1]:]
@@ -185,8 +183,15 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
         
     except Exception as e:
         print(f"[ERROR] Text generation failed: {e}")
-        print(f"[DEBUG] Model device: {next(model.parameters()).device}")
-        print(f"[DEBUG] Model dtype: {next(model.parameters()).dtype}")
+        # 더 자세한 디버깅 정보
+        try:
+            print(f"[DEBUG] Model device: {next(model.parameters()).device}")
+            print(f"[DEBUG] Model dtype: {next(model.parameters()).dtype}")
+            if 'inputs' in locals():
+                for k, v in inputs.items():
+                    print(f"[DEBUG] Input {k}: device={v.device}, dtype={v.dtype}")
+        except:
+            pass
         return None
 
 def load_hrm8k_datasets():

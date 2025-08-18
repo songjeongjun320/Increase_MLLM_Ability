@@ -430,8 +430,10 @@ def process_datasets():
     results = []
     error_count = 0
     processed_count = 0
+    all_logs = []  # 전체 로그를 저장할 리스트
     
     print(f"[INFO] Starting gold label generation for {len(all_data)} sentences")
+    print(f"[INFO] Logs will be saved to: {LOG_DIR}")
     
     for item in tqdm(all_data, desc="Generating gold labels"):
         processed_count += 1
@@ -447,6 +449,16 @@ def process_datasets():
                 continue
             else:
                 save_generation_log(item['id'], prompt, raw_output, None, True)
+                
+            # 전체 로그에 추가
+            all_logs.append({
+                "item_id": item['id'],
+                "sentence": item['sentence'],
+                "prompt_length": len(prompt),
+                "raw_output": raw_output,
+                "output_length": len(raw_output) if raw_output else 0,
+                "timestamp": datetime.now().isoformat()
+            })
             
             # JSON parsing
             predicted_word = None
@@ -508,22 +520,54 @@ def process_datasets():
             error_count += 1
             continue
         
-        # Periodic saving
-        if len(results) % SAVE_INTERVAL == 0 and len(results) > 0:
+        # Periodic saving (결과와 로그 둘 다 저장)
+        if processed_count % SAVE_INTERVAL == 0 and processed_count > 0:
+            # 결과 저장
             output_path = os.path.join(OUTPUT_DIR, "hrm8k_gold_labels_gptoss120b.json")
             print(f"\n[INFO] Intermediate save: saving {len(results)} results")
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, ensure_ascii=False, indent=2)
+                
+            # 전체 로그 저장
+            log_summary_path = os.path.join(LOG_DIR, "generation_summary.json")
+            with open(log_summary_path, 'w', encoding='utf-8') as f:
+                summary = {
+                    "total_processed": processed_count,
+                    "successful_results": len(results),
+                    "error_count": error_count,
+                    "success_rate": len(results) / processed_count if processed_count > 0 else 0,
+                    "last_updated": datetime.now().isoformat(),
+                    "all_logs": all_logs
+                }
+                json.dump(summary, f, ensure_ascii=False, indent=2)
     
-    # Final save
+    # Final save (결과와 전체 로그)
     output_path = os.path.join(OUTPUT_DIR, "hrm8k_gold_labels_gptoss120b.json")
+    log_summary_path = os.path.join(LOG_DIR, "generation_summary_final.json")
+    
     print(f"\n[SUCCESS] Processing complete!")
     print(f"  - Successfully processed sentences: {len(results)}")
     print(f"  - Errors or skipped sentences: {error_count}")
+    print(f"  - Success rate: {len(results)/len(all_data)*100:.1f}%")
     print(f"  - Result file: {output_path}")
+    print(f"  - Log summary: {log_summary_path}")
     
+    # 최종 결과 저장
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
+        
+    # 최종 로그 요약 저장
+    with open(log_summary_path, 'w', encoding='utf-8') as f:
+        final_summary = {
+            "total_sentences": len(all_data),
+            "total_processed": processed_count,
+            "successful_results": len(results),
+            "error_count": error_count,
+            "success_rate": len(results) / len(all_data) if len(all_data) > 0 else 0,
+            "completion_time": datetime.now().isoformat(),
+            "all_generation_logs": all_logs
+        }
+        json.dump(final_summary, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     process_datasets()

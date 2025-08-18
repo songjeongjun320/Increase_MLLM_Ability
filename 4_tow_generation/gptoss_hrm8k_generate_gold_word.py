@@ -157,9 +157,8 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
     try:
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
         
-        # Ensure all tensors are in the same dtype as the model
-        inputs = {k: v.to(device=model.device, dtype=model.dtype) if v.dtype.is_floating_point else v.to(model.device) 
-                 for k, v in inputs.items()}
+        # GPU로 텐서 이동 (dtype 변환 없이)
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
         
         with torch.no_grad():
             outputs = model.generate(

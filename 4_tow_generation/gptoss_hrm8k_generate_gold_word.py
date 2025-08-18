@@ -111,10 +111,10 @@ def load_model():
             
         print("[INFO] Loading model with memory optimization...")
         
-        # 메모리 최적화 설정 (양자화 없이)
+        # 메모리 최적화 설정 (BFloat16으로 통일)
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,  # BFloat16으로 변경
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
@@ -159,33 +159,35 @@ def generate_with_model(model, tokenizer, prompt, max_new_tokens=50):
         # 입력을 안전하게 device로 이동
         inputs = {k: v.to(model_device) for k, v in inputs.items()}
         
-        # 더 안전한 생성 설정
-        generation_config = {
-            'max_new_tokens': max_new_tokens,
-            'temperature': 0.1,
-            'do_sample': True,
-            'pad_token_id': tokenizer.eos_token_id,
-            'eos_token_id': tokenizer.eos_token_id,
-            'use_cache': False,  # 캐시 사용하지 않음
-            'return_dict_in_generate': True,
-            'output_scores': False,
-        }
-        
-        with torch.no_grad():
-            try:
-                outputs = model.generate(**inputs, **generation_config)
-                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
-            except Exception as gen_error:
-                print(f"[ERROR] Generation failed: {gen_error}")
-                # Fallback: 더 간단한 설정으로 재시도
-                simple_config = {
-                    'max_new_tokens': min(max_new_tokens, 20),
-                    'do_sample': False,  # 샘플링 비활성화
-                    'pad_token_id': tokenizer.eos_token_id,
-                    'use_cache': False,
-                }
-                outputs = model.generate(**inputs, **simple_config)
-                sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+        # BFloat16으로 autocast 설정
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            # 더 안전한 생성 설정
+            generation_config = {
+                'max_new_tokens': max_new_tokens,
+                'temperature': 0.1,
+                'do_sample': True,
+                'pad_token_id': tokenizer.eos_token_id,
+                'eos_token_id': tokenizer.eos_token_id,
+                'use_cache': False,  # 캐시 사용하지 않음
+                'return_dict_in_generate': True,
+                'output_scores': False,
+            }
+            
+            with torch.no_grad():
+                try:
+                    outputs = model.generate(**inputs, **generation_config)
+                    sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
+                except Exception as gen_error:
+                    print(f"[ERROR] Generation failed: {gen_error}")
+                    # Fallback: 더 간단한 설정으로 재시도
+                    simple_config = {
+                        'max_new_tokens': min(max_new_tokens, 20),
+                        'do_sample': False,  # 샘플링 비활성화
+                        'pad_token_id': tokenizer.eos_token_id,
+                        'use_cache': False,
+                    }
+                    outputs = model.generate(**inputs, **simple_config)
+                    sequences = outputs.sequences if hasattr(outputs, 'sequences') else outputs
         
         # 새로 생성된 토큰 디코딩
         if len(sequences.shape) > 1 and sequences.shape[0] > 0:

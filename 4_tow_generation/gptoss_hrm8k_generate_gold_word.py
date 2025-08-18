@@ -14,12 +14,12 @@ import re
 import glob
 from tqdm import tqdm
 import torch
-from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
 from datetime import datetime
 import traceback
 
 # --- 설정 (Configuration) ---
-MODEL_PATH = "../DeepSeek_R1_Distill_Llama_70B"
+MODEL_PATH = "../1_models/gpt_oss/gpt-oss-20b"
 DATASET_DIR = "../2_datasets/HRM8K_TEXT"
 OUTPUT_DIR = "./gold_labels"
 LOG_DIR = "./generation_logs"  # 새로운 로그 디렉토리
@@ -112,36 +112,38 @@ def load_model():
         print(f"[ERROR] Model configuration loading failed: {e}")
         return None, None
 
-    # Define quantization configurations using the modern API (4-bit)
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
-
     # GPU memory management (optional)
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    # Try loading model with quantization configuration
+    # Try loading model without quantization (bitsandbytes issue workaround)
     try:
-        print("[INFO] Attempting to load model with the recommended 4-bit quantization strategy...")
+        print("[INFO] Attempting to load model without quantization...")
 
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             device_map="auto",  # Automatically distribute model layers across available GPUs
             trust_remote_code=True,
-            use_safetensors=True,  # Use safe tensors for memory safety
+            torch_dtype=torch.bfloat16,  # Use bfloat16 for memory efficiency
             low_cpu_mem_usage=True,  # Optimize CPU memory usage
         )
 
         print("[SUCCESS] Model loaded successfully.")
-        return model
+        
+        # Load tokenizer
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            print("[SUCCESS] Tokenizer loaded successfully.")
+            return model, tokenizer
+        except Exception as e:
+            print(f"[ERROR] Tokenizer loading failed: {e}")
+            return None, None
 
     except Exception as e:
-        print(f"[ERROR] Model loading failed with the quantization strategy: {e}")
-        return None
+        print(f"[ERROR] Model loading failed: {e}")
+        return None, None
 
 def generate_with_model(model, tokenizer, prompt, max_new_tokens=150):
     """극도로 안전한 텍스트 생성"""

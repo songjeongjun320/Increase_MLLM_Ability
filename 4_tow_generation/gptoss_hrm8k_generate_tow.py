@@ -95,28 +95,22 @@ def load_model():
         else:
             device_map = DEVICES[0] if DEVICES[0] != "cpu" else "cpu"
             
-        print("[INFO] Loading model with 8-bit quantization for stability...")
+        print("[INFO] Loading model with memory optimization...")
         
-        # BitsAndBytesConfig 설정
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            bnb_8bit_compute_dtype=torch.float16,
-            bnb_8bit_use_double_quant=True,
-        )
-        
+        # 메모리 최적화 설정 (양자화 없이)
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             torch_dtype=torch.float16,
             device_map=device_map,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            quantization_config=quantization_config,
-            max_memory={i: "15GiB" for i in range(NUM_GPUS)},  # GPU당 메모리 제한 감소
+            max_memory={i: "12GiB" for i in range(NUM_GPUS)},  # GPU당 메모리 제한 더 감소
             offload_folder="./model_offload",
+            offload_state_dict=True,
         )
         
         model.eval()
-        print(f"[INFO] Model loaded successfully with 8-bit quantization across {NUM_GPUS} GPU(s)")
+        print(f"[INFO] Model loaded successfully with memory optimization across {NUM_GPUS} GPU(s)")
         return model, tokenizer
         
     except Exception as e:

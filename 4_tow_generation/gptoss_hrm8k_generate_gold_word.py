@@ -129,41 +129,40 @@ def load_model():
             memory_free = (torch.cuda.get_device_properties(i).total_memory / 1024**3) - memory_cached
             print(f"[INFO] GPU {i}: {memory_free:.1f}GB free, {memory_cached:.1f}GB cached")
 
-    # Multiple loading strategies without BitsAndBytes dependency
+    # Ultra-conservative memory strategies (120B model needs extreme care)
     loading_strategies = [
-        # Strategy 1: Aggressive GPU memory limitation
+        # Strategy 1: Minimal GPU, maximum CPU offload
         {
-            "name": "GPU memory limited",
-            "config": {
-                "device_map": "auto",
-                "trust_remote_code": True,
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True,
-                "max_memory": {i: "60GB" for i in range(torch.cuda.device_count())} | {"cpu": "60GB"}
-            }
-        },
-        # Strategy 2: CPU offload with conservative GPU memory
-        {
-            "name": "CPU offload conservative",
+            "name": "Minimal GPU + CPU offload",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
                 "offload_folder": "./offload",
-                "max_memory": {i: "50GB" for i in range(torch.cuda.device_count())} | {"cpu": "80GB"}
+                "max_memory": {i: "20GB" for i in range(torch.cuda.device_count())} | {"cpu": "150GB"}
             }
         },
-        # Strategy 3: Mostly CPU with minimal GPU
+        # Strategy 2: Even more conservative
         {
-            "name": "Mostly CPU",
+            "name": "Ultra minimal GPU",
             "config": {
                 "device_map": "auto",
                 "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
                 "low_cpu_mem_usage": True,
                 "offload_folder": "./offload",
-                "max_memory": {i: "30GB" for i in range(torch.cuda.device_count())} | {"cpu": "120GB"}
+                "max_memory": {i: "10GB" for i in range(torch.cuda.device_count())} | {"cpu": "200GB"}
+            }
+        },
+        # Strategy 3: CPU only (last resort)
+        {
+            "name": "CPU only",
+            "config": {
+                "device_map": {"": "cpu"},
+                "trust_remote_code": True,
+                "torch_dtype": torch.bfloat16,
+                "low_cpu_mem_usage": True,
             }
         }
     ]
@@ -172,10 +171,27 @@ def load_model():
         try:
             print(f"[INFO] Trying strategy: {strategy['name']}")
             
+            # Pre-loading memory check
+            if torch.cuda.is_available():
+                for i in range(torch.cuda.device_count()):
+                    allocated = torch.cuda.memory_allocated(i) / 1024**3
+                    reserved = torch.cuda.memory_reserved(i) / 1024**3
+                    print(f"[INFO] Pre-load GPU {i}: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved")
+            
+            # CPU memory check
+            cpu_mem = psutil.virtual_memory()
+            print(f"[INFO] CPU memory: {cpu_mem.used/1024**3:.1f}GB used, {cpu_mem.available/1024**3:.1f}GB available")
+            
             # Create offload directory if needed
             if "offload_folder" in strategy["config"]:
                 os.makedirs(strategy["config"]["offload_folder"], exist_ok=True)
             
+            # Aggressive memory cleanup before loading
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            print(f"[INFO] Starting model loading with {strategy['name']} strategy...")
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_PATH,
                 **strategy["config"]

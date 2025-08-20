@@ -400,17 +400,27 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
-        # For DDP, it's better to let Accelerate handle device placement.
-        # Setting device_map to "auto" is recommended for quantized models.
-        device_map = "auto"
-
-        model = AutoModelForCausalLM.from_pretrained(
-            self.model_config.model_id,
-            trust_remote_code=True,
-            torch_dtype=self.model_config.torch_dtype,
-            device_map=device_map,
-            quantization_config=quantization_config,
-        )
+        # For DDP, we need to avoid device_map="auto" and let DDP handle device placement
+        # Check if we're in distributed mode
+        is_distributed = int(os.getenv('LOCAL_RANK', -1)) != -1
+        
+        if is_distributed:
+            # In distributed mode, don't use device_map - let DDP handle it
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_config.model_id,
+                trust_remote_code=True,
+                torch_dtype=self.model_config.torch_dtype,
+                quantization_config=quantization_config,
+            )
+        else:
+            # Single GPU mode - use device_map="auto"
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_config.model_id,
+                trust_remote_code=True,
+                torch_dtype=self.model_config.torch_dtype,
+                device_map="auto",
+                quantization_config=quantization_config,
+            )
 
         # Resize model embeddings
         model.resize_token_embeddings(len(tokenizer))
@@ -444,38 +454,53 @@ class ToWTrainer:
     
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
-        return TrainingArguments(
-            output_dir=str(self.output_dir),
-            overwrite_output_dir=False,
-            learning_rate=self.training_config.learning_rate,
-            num_train_epochs=self.training_config.num_train_epochs,
-            per_device_train_batch_size=self.training_config.per_device_train_batch_size,
-            per_device_eval_batch_size=self.training_config.per_device_eval_batch_size,
-            gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
-            warmup_ratio=self.training_config.warmup_ratio,
-            weight_decay=self.training_config.weight_decay,
-            logging_dir=str(self.output_dir / "logs"),
-            logging_steps=self.training_config.logging_steps,
-            eval_strategy=self.training_config.eval_strategy,
-            eval_steps=self.training_config.eval_steps,
-            save_strategy=self.training_config.save_strategy,
-            save_steps=self.training_config.save_steps,
-            save_total_limit=3,
-            ddp_find_unused_parameters=False, # Qwen 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
-            load_best_model_at_end=True,
-            local_rank=int(os.getenv('LOCAL_RANK', -1)),
-            metric_for_best_model="eval_loss",
-            greater_is_better=False,
-            fp16=self.training_config.fp16,
-            bf16=self.training_config.bf16,
-            gradient_checkpointing=self.training_config.gradient_checkpointing,
-            dataloader_num_workers=self.training_config.dataloader_num_workers,
-            remove_unused_columns=self.training_config.remove_unused_columns,
-            max_grad_norm=1.0,  # Add gradient clipping
-            seed=42,
-            data_seed=42,
-            report_to=[],
-        )
+        
+        # Check if we're in distributed mode
+        local_rank = int(os.getenv('LOCAL_RANK', -1))
+        is_distributed = local_rank != -1
+        
+        # Base arguments
+        args = {
+            "output_dir": str(self.output_dir),
+            "overwrite_output_dir": False,
+            "learning_rate": self.training_config.learning_rate,
+            "num_train_epochs": self.training_config.num_train_epochs,
+            "per_device_train_batch_size": self.training_config.per_device_train_batch_size,
+            "per_device_eval_batch_size": self.training_config.per_device_eval_batch_size,
+            "gradient_accumulation_steps": self.training_config.gradient_accumulation_steps,
+            "warmup_ratio": self.training_config.warmup_ratio,
+            "weight_decay": self.training_config.weight_decay,
+            "logging_dir": str(self.output_dir / "logs"),
+            "logging_steps": self.training_config.logging_steps,
+            "eval_strategy": self.training_config.eval_strategy,
+            "eval_steps": self.training_config.eval_steps,
+            "save_strategy": self.training_config.save_strategy,
+            "save_steps": self.training_config.save_steps,
+            "save_total_limit": 3,
+            "load_best_model_at_end": True,
+            "metric_for_best_model": "eval_loss",
+            "greater_is_better": False,
+            "fp16": self.training_config.fp16,
+            "bf16": self.training_config.bf16,
+            "gradient_checkpointing": self.training_config.gradient_checkpointing,
+            "dataloader_num_workers": self.training_config.dataloader_num_workers,
+            "remove_unused_columns": self.training_config.remove_unused_columns,
+            "max_grad_norm": 1.0,
+            "seed": 42,
+            "data_seed": 42,
+            "report_to": [],
+        }
+        
+        # Add distributed-specific arguments only when in distributed mode
+        if is_distributed:
+            args.update({
+                "local_rank": local_rank,
+                "ddp_find_unused_parameters": False,
+                "ddp_backend": "nccl",
+                "ddp_bucket_cap_mb": 25,
+            })
+        
+        return TrainingArguments(**args)
     
     def train(self):
         """Execute smart ToW fine-tuning"""
@@ -567,9 +592,7 @@ def main():
     logger.info("ToW Training with Smart Text Handling")
 
     # 분산 훈련 설정 추가
-    local_rank = -1
-    if "LOCAL_RANK" in os.environ:
-        local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank = int(os.getenv('LOCAL_RANK', -1))
 
     if local_rank != -1:
         torch.cuda.set_device(local_rank)

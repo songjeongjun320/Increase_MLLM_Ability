@@ -117,12 +117,12 @@ class ToWTrainingConfig:
     ])
     output_base_dir: str = "ToW_Models"
 
-    # Training hyperparameters
+    # Training hyperparameters - Optimized for 2x A100 (80GB each)
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 8 # Reduced to prevent OOM
-    per_device_eval_batch_size: int = 8 # Reduced to prevent OOM
-    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 32 # Optimized for A100 80GB memory
+    per_device_eval_batch_size: int = 32 # Optimized for A100 80GB memory
+    gradient_accumulation_steps: int = 8  # Reduced for multi-GPU setup (effective batch = 32*2*8 = 512)
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -143,11 +143,11 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 2  # Optimized for single GPU setup
+    dataloader_num_workers: int = 8  # Optimized for 2x A100 multi-GPU setup
     remove_unused_columns: bool = True
     fp16: bool = False  # Disable fp16 due to gradient scaling issues
     bf16: bool = True  # Use bf16 instead for better stability
-    gradient_checkpointing: bool = True  # Enable to save memory
+    gradient_checkpointing: bool = False  # Disable to maximize A100 performance (plenty of memory)
 
 
 MODEL_CONFIGS = [
@@ -461,7 +461,9 @@ class ToWTrainer:
             save_strategy=self.training_config.save_strategy,
             save_steps=self.training_config.save_steps,
             save_total_limit=3,
-            ddp_find_unused_parameters=False, # Qwen 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
+            ddp_find_unused_parameters=False, # Optimized for Qwen + LoRA
+            ddp_backend="nccl", # Best backend for A100 multi-GPU
+            ddp_bucket_cap_mb=25, # Optimized for A100 bandwidth
             load_best_model_at_end=True,
             local_rank=int(os.getenv('LOCAL_RANK', -1)),
             metric_for_best_model="eval_loss",

@@ -12,6 +12,7 @@ import os
 import asyncio
 import time
 from tqdm import tqdm
+import random
 
 # =================================================================
 # Vertex AI SDK 임포트
@@ -34,7 +35,7 @@ OUTPUT_JSON_PATH = "./klue_tow_gemini_2.0-flash-lite.json"
 # =================================================================
 # 배치 크기 및 저장 주기 설정
 # =================================================================
-BATCH_SIZE = 10  # 한 번에 처리할 요청의 수 (병렬 처리 개수)
+BATCH_SIZE = 5  # 한 번에 처리할 요청의 수 (병렬 처리 개수)
 SAVE_INTERVAL = 1000 # 몇 개의 결과를 처리할 때마다 저장할지 결정
 
 # =================================================================
@@ -185,7 +186,7 @@ async def generate_tow_dataset_async():
             last_save_count = len(results)
             
         # API 속도 제한을 피하기 위한 짧은 대기
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(random.uniform(0, 4))
 
     # 모든 배치가 끝난 후 최종 저장
     print(f"\n[SUCCESS] ToW 데이터셋 생성이 완료되었습니다.")

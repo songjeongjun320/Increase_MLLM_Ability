@@ -14,6 +14,7 @@ import re
 import time
 import asyncio  # 비동기 처리를 위해 추가
 from tqdm import tqdm
+import random
 
 # =================================================================
 # 수정 1: Vertex AI SDK 임포트
@@ -30,13 +31,13 @@ LOCATION = "us-central1"
 
 GEMINI_MODEL_ID = "gemini-2.0-flash-lite"
 
-INPUT_JSON_PATH = "./koconovel.json"
-OUTPUT_JSON_PATH = "koconovel_next_word_prediction_gemini_2.0-flash-lite.json"
+INPUT_JSON_PATH = "./org_data/kornli_kobest-kostrategyqa.json"
+OUTPUT_JSON_PATH = "kornli_kobest-kostrategyqa_next_word_prediction_gemini_2.0-flash-lite.json"
 
 # =================================================================
 # 수정 3: 배치 크기 및 저장 주기 설정 추가
 # =================================================================
-BATCH_SIZE = 3  # 한 번에 처리할 문장의 수 (병렬 요청 개수)
+BATCH_SIZE = 5  # 한 번에 처리할 문장의 수 (병렬 요청 개수)
 SAVE_INTERVAL = 100 # 몇 개의 문장을 처리할 때마다 저장할지 결정
 
 # =================================================================
@@ -214,6 +215,8 @@ async def generate_prediction_dataset_async():
             with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
                 json.dump(results, f, ensure_ascii=False, indent=2)
             last_save_count = len(results)
+            
+        await asyncio.sleep(random.uniform(0, 4))
 
     # 모든 배치가 끝난 후 최종 저장
     print(f"\n[SUCCESS] 데이터셋 생성이 완료되었습니다.")

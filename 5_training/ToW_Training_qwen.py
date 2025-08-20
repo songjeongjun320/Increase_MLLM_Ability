@@ -454,40 +454,53 @@ class ToWTrainer:
     
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
-        return TrainingArguments(
-            output_dir=str(self.output_dir),
-            overwrite_output_dir=False,
-            learning_rate=self.training_config.learning_rate,
-            num_train_epochs=self.training_config.num_train_epochs,
-            per_device_train_batch_size=self.training_config.per_device_train_batch_size,
-            per_device_eval_batch_size=self.training_config.per_device_eval_batch_size,
-            gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
-            warmup_ratio=self.training_config.warmup_ratio,
-            weight_decay=self.training_config.weight_decay,
-            logging_dir=str(self.output_dir / "logs"),
-            logging_steps=self.training_config.logging_steps,
-            eval_strategy=self.training_config.eval_strategy,
-            eval_steps=self.training_config.eval_steps,
-            save_strategy=self.training_config.save_strategy,
-            save_steps=self.training_config.save_steps,
-            save_total_limit=3,
-            ddp_find_unused_parameters=False, # Optimized for Qwen + LoRA
-            ddp_backend="nccl", # Best backend for A100 multi-GPU
-            ddp_bucket_cap_mb=25, # Optimized for A100 bandwidth
-            load_best_model_at_end=True,
-            local_rank=int(os.getenv('LOCAL_RANK', -1)),
-            metric_for_best_model="eval_loss",
-            greater_is_better=False,
-            fp16=self.training_config.fp16,
-            bf16=self.training_config.bf16,
-            gradient_checkpointing=self.training_config.gradient_checkpointing,
-            dataloader_num_workers=self.training_config.dataloader_num_workers,
-            remove_unused_columns=self.training_config.remove_unused_columns,
-            max_grad_norm=1.0,  # Add gradient clipping
-            seed=42,
-            data_seed=42,
-            report_to=[],
-        )
+        
+        # Check if we're in distributed mode
+        local_rank = int(os.getenv('LOCAL_RANK', -1))
+        is_distributed = local_rank != -1
+        
+        # Base arguments
+        args = {
+            "output_dir": str(self.output_dir),
+            "overwrite_output_dir": False,
+            "learning_rate": self.training_config.learning_rate,
+            "num_train_epochs": self.training_config.num_train_epochs,
+            "per_device_train_batch_size": self.training_config.per_device_train_batch_size,
+            "per_device_eval_batch_size": self.training_config.per_device_eval_batch_size,
+            "gradient_accumulation_steps": self.training_config.gradient_accumulation_steps,
+            "warmup_ratio": self.training_config.warmup_ratio,
+            "weight_decay": self.training_config.weight_decay,
+            "logging_dir": str(self.output_dir / "logs"),
+            "logging_steps": self.training_config.logging_steps,
+            "eval_strategy": self.training_config.eval_strategy,
+            "eval_steps": self.training_config.eval_steps,
+            "save_strategy": self.training_config.save_strategy,
+            "save_steps": self.training_config.save_steps,
+            "save_total_limit": 3,
+            "load_best_model_at_end": True,
+            "metric_for_best_model": "eval_loss",
+            "greater_is_better": False,
+            "fp16": self.training_config.fp16,
+            "bf16": self.training_config.bf16,
+            "gradient_checkpointing": self.training_config.gradient_checkpointing,
+            "dataloader_num_workers": self.training_config.dataloader_num_workers,
+            "remove_unused_columns": self.training_config.remove_unused_columns,
+            "max_grad_norm": 1.0,
+            "seed": 42,
+            "data_seed": 42,
+            "report_to": [],
+        }
+        
+        # Add distributed-specific arguments only when in distributed mode
+        if is_distributed:
+            args.update({
+                "local_rank": local_rank,
+                "ddp_find_unused_parameters": False,
+                "ddp_backend": "nccl",
+                "ddp_bucket_cap_mb": 25,
+            })
+        
+        return TrainingArguments(**args)
     
     def train(self):
         """Execute smart ToW fine-tuning"""

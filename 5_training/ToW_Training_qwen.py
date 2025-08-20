@@ -120,9 +120,9 @@ class ToWTrainingConfig:
     # Training hyperparameters - Optimized for 2x A100 (80GB each)
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 16 # Reduced to prevent OOM during loading
-    per_device_eval_batch_size: int = 16 # Reduced to prevent OOM during loading  
-    gradient_accumulation_steps: int = 16  # Increased to maintain effective batch (16*2*16 = 512)
+    per_device_train_batch_size: int = 8 # Further reduced due to no quantization
+    per_device_eval_batch_size: int = 8 # Further reduced due to no quantization  
+    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch (8*2*32 = 512)
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -154,7 +154,7 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=True  # Enabled to reduce memory usage during loading
+        use_quantization=False  # Disabled due to bitsandbytes package issue
     ),
     # ModelConfig(
     #     name="Mistral-8B-Instruct-2410-ToW",

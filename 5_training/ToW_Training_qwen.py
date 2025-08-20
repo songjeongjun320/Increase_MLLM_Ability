@@ -535,7 +535,12 @@ class ToWTrainer:
         )
         
         logger.info("Starting smart training...")
-        train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
+        # bf16 사용 시 scaler 관련 문제 해결을 위해 체크포인트 복원 비활성화
+        if self.training_config.bf16 and last_checkpoint:
+            logger.warning("bf16 모드에서는 체크포인트 복원을 건너뜁니다.")
+            train_result = trainer.train()
+        else:
+            train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
         
         logger.info("Saving final model...")
         trainer.save_model()

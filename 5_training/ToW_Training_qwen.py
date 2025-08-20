@@ -120,9 +120,9 @@ class ToWTrainingConfig:
     # Training hyperparameters - Optimized for 2x A100 (80GB each)
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 8 # Further reduced due to no quantization
-    per_device_eval_batch_size: int = 8 # Further reduced due to no quantization  
-    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch (8*2*32 = 512)
+    per_device_train_batch_size: int = 4 # Minimum batch size for memory constraints
+    per_device_eval_batch_size: int = 4 # Minimum batch size for memory constraints  
+    gradient_accumulation_steps: int = 64  # Increased to maintain effective batch (4*2*64 = 512 for multi-GPU, 4*64 = 256 for single GPU)
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -589,6 +589,17 @@ def main():
 
     if torch.cuda.is_available():
         logger.info(f"CUDA available: {torch.cuda.device_count()} GPUs")
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            memory_gb = props.total_memory / 1024**3
+            logger.info(f"GPU {i}: {props.name}, Memory: {memory_gb:.1f} GB")
+            
+            # Check available memory
+            torch.cuda.set_device(i)
+            allocated = torch.cuda.memory_allocated(i) / 1024**3
+            reserved = torch.cuda.memory_reserved(i) / 1024**3
+            free = memory_gb - reserved
+            logger.info(f"GPU {i} Memory - Total: {memory_gb:.1f}GB, Free: {free:.1f}GB, Allocated: {allocated:.1f}GB")
     
     training_config = ToWTrainingConfig()
     

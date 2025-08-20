@@ -117,12 +117,12 @@ class ToWTrainingConfig:
     ])
     output_base_dir: str = "ToW_Models"
 
-    # Training hyperparameters - Optimized for 2x A100 (80GB each)
+    # Training hyperparameters
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 4 # Minimum batch size for memory constraints
-    per_device_eval_batch_size: int = 4 # Minimum batch size for memory constraints  
-    gradient_accumulation_steps: int = 64  # Increased to maintain effective batch (4*2*64 = 512 for multi-GPU, 4*64 = 256 for single GPU)
+    per_device_train_batch_size: int = 8 # Reduced to prevent OOM
+    per_device_eval_batch_size: int = 8 # Reduced to prevent OOM
+    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -143,18 +143,18 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 8  # Optimized for 2x A100 multi-GPU setup
+    dataloader_num_workers: int = 1  # Optimized for single GPU setup
     remove_unused_columns: bool = True
     fp16: bool = False  # Disable fp16 due to gradient scaling issues
     bf16: bool = True  # Use bf16 instead for better stability
-    gradient_checkpointing: bool = True  # Enable to save memory during training
+    gradient_checkpointing: bool = True  # Enable to save memory
 
 
 MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False  # Disabled due to bitsandbytes package issue
+        use_quantization=False  # Disabled to avoid get_keys_to_not_convert error
     ),
     # ModelConfig(
     #     name="Mistral-8B-Instruct-2410-ToW",
@@ -400,27 +400,17 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
-        # For DDP, we need to avoid device_map="auto" and let DDP handle device placement
-        # Check if we're in distributed mode
-        is_distributed = int(os.getenv('LOCAL_RANK', -1)) != -1
-        
-        if is_distributed:
-            # In distributed mode, don't use device_map - let DDP handle it
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_config.model_id,
-                trust_remote_code=True,
-                torch_dtype=self.model_config.torch_dtype,
-                quantization_config=quantization_config,
-            )
-        else:
-            # Single GPU mode - use device_map="auto"
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_config.model_id,
-                trust_remote_code=True,
-                torch_dtype=self.model_config.torch_dtype,
-                device_map="auto",
-                quantization_config=quantization_config,
-            )
+        # For DDP, it's better to let Accelerate handle device placement.
+        # Setting device_map to "auto" is recommended for quantized models.
+        device_map = "auto"
+
+        model = AutoModelForCausalLM.from_pretrained(
+            self.model_config.model_id,
+            trust_remote_code=True,
+            torch_dtype=self.model_config.torch_dtype,
+            device_map=device_map,
+            quantization_config=quantization_config,
+        )
 
         # Resize model embeddings
         model.resize_token_embeddings(len(tokenizer))
@@ -454,53 +444,38 @@ class ToWTrainer:
     
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
-        
-        # Check if we're in distributed mode
-        local_rank = int(os.getenv('LOCAL_RANK', -1))
-        is_distributed = local_rank != -1
-        
-        # Base arguments
-        args = {
-            "output_dir": str(self.output_dir),
-            "overwrite_output_dir": False,
-            "learning_rate": self.training_config.learning_rate,
-            "num_train_epochs": self.training_config.num_train_epochs,
-            "per_device_train_batch_size": self.training_config.per_device_train_batch_size,
-            "per_device_eval_batch_size": self.training_config.per_device_eval_batch_size,
-            "gradient_accumulation_steps": self.training_config.gradient_accumulation_steps,
-            "warmup_ratio": self.training_config.warmup_ratio,
-            "weight_decay": self.training_config.weight_decay,
-            "logging_dir": str(self.output_dir / "logs"),
-            "logging_steps": self.training_config.logging_steps,
-            "eval_strategy": self.training_config.eval_strategy,
-            "eval_steps": self.training_config.eval_steps,
-            "save_strategy": self.training_config.save_strategy,
-            "save_steps": self.training_config.save_steps,
-            "save_total_limit": 3,
-            "load_best_model_at_end": True,
-            "metric_for_best_model": "eval_loss",
-            "greater_is_better": False,
-            "fp16": self.training_config.fp16,
-            "bf16": self.training_config.bf16,
-            "gradient_checkpointing": self.training_config.gradient_checkpointing,
-            "dataloader_num_workers": self.training_config.dataloader_num_workers,
-            "remove_unused_columns": self.training_config.remove_unused_columns,
-            "max_grad_norm": 1.0,
-            "seed": 42,
-            "data_seed": 42,
-            "report_to": [],
-        }
-        
-        # Add distributed-specific arguments only when in distributed mode
-        if is_distributed:
-            args.update({
-                "local_rank": local_rank,
-                "ddp_find_unused_parameters": False,
-                "ddp_backend": "nccl",
-                "ddp_bucket_cap_mb": 25,
-            })
-        
-        return TrainingArguments(**args)
+        return TrainingArguments(
+            output_dir=str(self.output_dir),
+            overwrite_output_dir=False,
+            learning_rate=self.training_config.learning_rate,
+            num_train_epochs=self.training_config.num_train_epochs,
+            per_device_train_batch_size=self.training_config.per_device_train_batch_size,
+            per_device_eval_batch_size=self.training_config.per_device_eval_batch_size,
+            gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
+            warmup_ratio=self.training_config.warmup_ratio,
+            weight_decay=self.training_config.weight_decay,
+            logging_dir=str(self.output_dir / "logs"),
+            logging_steps=self.training_config.logging_steps,
+            eval_strategy=self.training_config.eval_strategy,
+            eval_steps=self.training_config.eval_steps,
+            save_strategy=self.training_config.save_strategy,
+            save_steps=self.training_config.save_steps,
+            save_total_limit=3,
+            ddp_find_unused_parameters=False, # Qwen 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
+            load_best_model_at_end=True,
+            local_rank=int(os.getenv('LOCAL_RANK', -1)),
+            metric_for_best_model="eval_loss",
+            greater_is_better=False,
+            fp16=self.training_config.fp16,
+            bf16=self.training_config.bf16,
+            gradient_checkpointing=self.training_config.gradient_checkpointing,
+            dataloader_num_workers=self.training_config.dataloader_num_workers,
+            remove_unused_columns=self.training_config.remove_unused_columns,
+            max_grad_norm=1.0,  # Add gradient clipping
+            seed=42,
+            data_seed=42,
+            report_to=[],
+        )
     
     def train(self):
         """Execute smart ToW fine-tuning"""
@@ -602,17 +577,6 @@ def main():
 
     if torch.cuda.is_available():
         logger.info(f"CUDA available: {torch.cuda.device_count()} GPUs")
-        for i in range(torch.cuda.device_count()):
-            props = torch.cuda.get_device_properties(i)
-            memory_gb = props.total_memory / 1024**3
-            logger.info(f"GPU {i}: {props.name}, Memory: {memory_gb:.1f} GB")
-            
-            # Check available memory
-            torch.cuda.set_device(i)
-            allocated = torch.cuda.memory_allocated(i) / 1024**3
-            reserved = torch.cuda.memory_reserved(i) / 1024**3
-            free = memory_gb - reserved
-            logger.info(f"GPU {i} Memory - Total: {memory_gb:.1f}GB, Free: {free:.1f}GB, Allocated: {allocated:.1f}GB")
     
     training_config = ToWTrainingConfig()
     

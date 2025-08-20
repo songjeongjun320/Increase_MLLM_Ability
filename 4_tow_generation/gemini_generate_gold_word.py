@@ -32,7 +32,7 @@ LOCATION = "us-central1"
 GEMINI_MODEL_ID = "gemini-2.0-flash-lite"
 
 INPUT_JSON_PATH = "./org_data/kornli_kobest-kostrategyqa.json"
-OUTPUT_JSON_PATH = "kornli_kobest-kostrategyqa_next_word_prediction_gemini_2.0-flash-lite.json"
+OUTPUT_JSON_PATH = "./gold_labels/kornli_kobest-kostrategyqa_next_word_prediction_gemini_2.0-flash-lite.json"
 
 # =================================================================
 # 수정 3: 배치 크기 및 저장 주기 설정 추가
@@ -103,6 +103,30 @@ Sentence: "{sentence}"
 JSON Output:"""
 
 # =================================================================
+# 수정: 지수 백오프(Exponential Backoff)를 적용한 API 호출 래퍼
+# =================================================================
+async def generate_with_backoff(model, prompt, generation_config):
+    """지수 백오프를 사용하여 API를 호출하고, 실패 시 재시도합니다."""
+    max_retries = 5
+    base_delay = 2  # 초
+
+    for i in range(max_retries):
+        try:
+            # model.generate_content_async를 사용하여 비동기 태스크 생성
+            response = await model.generate_content_async(prompt, generation_config=generation_config)
+            return response # 성공 시 결과 반환
+        except Exception as e:
+            if i == max_retries - 1:
+                # 마지막 재시도도 실패하면 예외를 다시 발생시킴
+                print(f"\n[ERROR] API 호출 최종 실패: {e}")
+                raise e
+            
+            # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
+            delay = base_delay * (2 ** i) + random.uniform(0, 1)
+            print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
+            await asyncio.sleep(delay)
+
+# =================================================================
 # 수정 4: 비동기 배치 처리 및 주기적 저장을 위한 함수로 전면 수정
 # =================================================================
 async def generate_prediction_dataset_async():
@@ -144,8 +168,8 @@ async def generate_prediction_dataset_async():
         tasks = []
         for item in batch:
             prompt = create_prompt(item['sentence'])
-            # model.generate_content_async를 사용하여 비동기 태스크 생성
-            task = model.generate_content_async(prompt, generation_config=generation_config)
+            # 수정: 백오프 래퍼 함수를 사용하여 태스크 생성
+            task = generate_with_backoff(model, prompt, generation_config)
             tasks.append(task)
         
         # asyncio.gather를 사용해 현재 배치의 모든 API 요청을 병렬로 실행

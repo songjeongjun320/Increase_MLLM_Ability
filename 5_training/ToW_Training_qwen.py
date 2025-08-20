@@ -400,17 +400,27 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
-        # For DDP, it's better to let Accelerate handle device placement.
-        # Setting device_map to "auto" is recommended for quantized models.
-        device_map = "auto"
-
-        model = AutoModelForCausalLM.from_pretrained(
-            self.model_config.model_id,
-            trust_remote_code=True,
-            torch_dtype=self.model_config.torch_dtype,
-            device_map=device_map,
-            quantization_config=quantization_config,
-        )
+        # For DDP, we need to avoid device_map="auto" and let DDP handle device placement
+        # Check if we're in distributed mode
+        is_distributed = int(os.getenv('LOCAL_RANK', -1)) != -1
+        
+        if is_distributed:
+            # In distributed mode, don't use device_map - let DDP handle it
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_config.model_id,
+                trust_remote_code=True,
+                torch_dtype=self.model_config.torch_dtype,
+                quantization_config=quantization_config,
+            )
+        else:
+            # Single GPU mode - use device_map="auto"
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_config.model_id,
+                trust_remote_code=True,
+                torch_dtype=self.model_config.torch_dtype,
+                device_map="auto",
+                quantization_config=quantization_config,
+            )
 
         # Resize model embeddings
         model.resize_token_embeddings(len(tokenizer))

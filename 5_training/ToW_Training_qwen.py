@@ -143,7 +143,7 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 2  # Decreased to address system warning
+    dataloader_num_workers: int = 1  # Optimized for single GPU setup
     remove_unused_columns: bool = True
     fp16: bool = False  # Disable fp16 due to gradient scaling issues
     bf16: bool = True  # Use bf16 instead for better stability
@@ -535,12 +535,18 @@ class ToWTrainer:
         )
         
         logger.info("Starting smart training...")
-        # bf16 사용 시 scaler 관련 문제 해결을 위해 체크포인트 복원 비활성화
-        if self.training_config.bf16 and last_checkpoint:
-            logger.warning("bf16 모드에서는 체크포인트 복원을 건너뜁니다.")
-            train_result = trainer.train()
+        # 체크포인트 복원 활성화 (bf16 호환성 문제 해결)
+        if last_checkpoint:
+            logger.info(f"체크포인트부터 재개: {last_checkpoint}")
+            try:
+                train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
+            except Exception as e:
+                logger.warning(f"체크포인트 복원 실패: {e}")
+                logger.info("처음부터 새로 시작합니다.")
+                train_result = trainer.train()
         else:
-            train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
+            logger.info("새로운 훈련을 시작합니다.")
+            train_result = trainer.train()
         
         logger.info("Saving final model...")
         trainer.save_model()

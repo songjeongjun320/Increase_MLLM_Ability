@@ -143,7 +143,7 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 1  # Optimized for single GPU setup
+    dataloader_num_workers: int = 2  # Optimized for single GPU setup
     remove_unused_columns: bool = True
     fp16: bool = False  # Disable fp16 due to gradient scaling issues
     bf16: bool = True  # Use bf16 instead for better stability

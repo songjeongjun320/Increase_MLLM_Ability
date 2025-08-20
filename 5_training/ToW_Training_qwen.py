@@ -120,9 +120,9 @@ class ToWTrainingConfig:
     # Training hyperparameters
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 32 # Increased for higher throughput
-    per_device_eval_batch_size: int = 32 # Increased for higher throughput
-    gradient_accumulation_steps: int = 8  # Decreased to compensate for batch size increase
+    per_device_train_batch_size: int = 8 # Reduced to prevent OOM
+    per_device_eval_batch_size: int = 8 # Reduced to prevent OOM
+    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -143,11 +143,11 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 8  # Increased workers for faster data loading
+    dataloader_num_workers: int = 2  # Decreased to address system warning
     remove_unused_columns: bool = True
     fp16: bool = False  # Disable fp16 due to gradient scaling issues
     bf16: bool = True  # Use bf16 instead for better stability
-    gradient_checkpointing: bool = False  # Disable gradient checkpointing for speed
+    gradient_checkpointing: bool = True  # Enable to save memory
 
 
 MODEL_CONFIGS = [

@@ -24,18 +24,18 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # =================================================================
 # GCP 프로젝트 및 Gemini 모델 설정
 # =================================================================
-PROJECT_ID = "apt-summer-468801-i9"
+PROJECT_ID = "gen-lang-client-0996841973"
 LOCATION = "us-central1"
 
 GEMINI_MODEL_ID = "gemini-2.0-flash-lite"
 
 INPUT_JSON_PATH = "./gold_labels/kornli_kobest-kostrategyqa_next_word_prediction_gemini_2.0-flash-lite.json"
-OUTPUT_JSON_PATH = "./tow_data/klue_tow_gemini_2.0-flash-lite.json"
+OUTPUT_JSON_PATH = "./tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite.json"
 
 # =================================================================
 # 배치 크기 및 저장 주기 설정
 # =================================================================
-BATCH_SIZE = 5  # 한 번에 처리할 요청의 수 (병렬 처리 개수)
+BATCH_SIZE = 10  # 한 번에 처리할 요청의 수 (병렬 처리 개수)
 SAVE_INTERVAL = 1000 # 몇 개의 결과를 처리할 때마다 저장할지 결정
 
 # =================================================================
@@ -112,7 +112,7 @@ async def generate_with_backoff(model, prompt, generation_config):
                 raise e
             
             # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
-            delay = base_delay * (2 ** i) + random.uniform(0, 1)
+            delay = base_delay * (3 ** i) + random.uniform(0, 1)
             print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
             await asyncio.sleep(delay)
 
@@ -142,7 +142,7 @@ async def generate_tow_dataset_async():
     except FileNotFoundError:
         print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
         return
-        
+    
     # 이미 처리된 결과를 불러와서 이어하기
     results = []
     processed_ids = set()

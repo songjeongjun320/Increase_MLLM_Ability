@@ -15,18 +15,19 @@ import time
 import asyncio  # 비동기 처리를 위해 추가
 from tqdm import tqdm
 import random
+import logging # 로깅 모듈 추가
 
 # =================================================================
 # 수정 1: Vertex AI SDK 임포트
 # =================================================================
 import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from vertexai.generative_models import GenerativeModel, GenerationConfig, HarmCategory, HarmBlockThreshold
 
 # --- 설정 (Configuration) ---
 # =================================================================
 # 수정 2: GCP 및 Gemini 모델 설정으로 변경
 # =================================================================
-PROJECT_ID = "apt-summer-468801-i9"
+PROJECT_ID = "gen-lang-client-0996841973"
 LOCATION = "us-central1"
 
 GEMINI_MODEL_ID = "gemini-2.0-flash-lite"
@@ -37,8 +38,8 @@ OUTPUT_JSON_PATH = "./gold_labels/kornli_kobest-kostrategyqa_next_word_predictio
 # =================================================================
 # 수정 3: 배치 크기 및 저장 주기 설정 추가
 # =================================================================
-BATCH_SIZE = 5  # 한 번에 처리할 문장의 수 (병렬 요청 개수)
-SAVE_INTERVAL = 100 # 몇 개의 문장을 처리할 때마다 저장할지 결정
+BATCH_SIZE = 10  # 한 번에 처리할 문장의 수 (병렬 요청 개수)
+SAVE_INTERVAL = 1000 # 몇 개의 문장을 처리할 때마다 저장할지 결정
 
 # =================================================================
 # 프롬프트는 기존 형식을 그대로 유지합니다.
@@ -51,7 +52,7 @@ def create_prompt(sentence: str) -> str:
     # (프롬프트 내용은 질문과 동일하므로 생략)
     return f"""You are a language prediction expert. Your task is to find the single most unpredictable or surprising word in a given Korean sentence. This word is often a proper noun, a specific number, or a key piece of information that cannot be easily guessed.
 
-Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number.
+Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number. Don't choose a first word of the sentence.
 
 ---
 Example 1:
@@ -113,17 +114,21 @@ async def generate_with_backoff(model, prompt, generation_config):
     for i in range(max_retries):
         try:
             # model.generate_content_async를 사용하여 비동기 태스크 생성
-            response = await model.generate_content_async(prompt, generation_config=generation_config)
+            response = await model.generate_content_async(
+                prompt,
+                generation_config=generation_config
+            )
             return response # 성공 시 결과 반환
         except Exception as e:
+            error_type = type(e).__name__
             if i == max_retries - 1:
                 # 마지막 재시도도 실패하면 예외를 다시 발생시킴
-                print(f"\n[ERROR] API 호출 최종 실패: {e}")
+                print(f"\n[ERROR] API 호출 최종 실패. Error Type: {error_type}, Details: {e}")
                 raise e
             
             # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
-            delay = base_delay * (2 ** i) + random.uniform(0, 1)
-            print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
+            delay = base_delay * (3 ** i) + random.uniform(0, 1)
+            print(f"\n[Warning] API 오류 발생 (Type: {error_type}). {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
             await asyncio.sleep(delay)
 
 # =================================================================
@@ -132,124 +137,202 @@ async def generate_with_backoff(model, prompt, generation_config):
 async def generate_prediction_dataset_async():
     """Gemini API를 비동기 배치로 호출하고 주기적으로 저장하여 데이터셋을 생성합니다."""
 
+    # =================================================================
+    # 추가: 파일 로거 설정
+    # =================================================================
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        filename='generation.log',
+        filemode='a' # 'w'는 덮어쓰기, 'a'는 이어쓰기
+    )
+    # 콘솔에도 로그를 출력하기 위한 핸들러
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(console_handler)
+
+
     # Vertex AI 초기화
-    print(f"[INFO] Vertex AI를 초기화합니다. (Project: {PROJECT_ID}, Location: {LOCATION})")
+    logging.info(f"Vertex AI를 초기화합니다. (Project: {PROJECT_ID}, Location: {LOCATION})")
     vertexai.init(project=PROJECT_ID, location=LOCATION)
 
+    # =================================================================
+    # 추가: 안전 필터 비활성화 설정
+    # =================================================================
+    safety_settings = {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
     # Gemini 모델 로드
-    print(f"[INFO] Gemini 모델 '{GEMINI_MODEL_ID}'을(를) 로드합니다.")
-    model = GenerativeModel(GEMINI_MODEL_ID)
+    logging.info(f"Gemini 모델 '{GEMINI_MODEL_ID}'을(를) 로드합니다.")
+    model = GenerativeModel(
+        GEMINI_MODEL_ID,
+        safety_settings=safety_settings
+    )
     
     generation_config = GenerationConfig(
         temperature=0.0,
-        max_output_tokens=50
+        max_output_tokens=100
     )
 
+    # =================================================================
+    # 추가: 이어서 작업을 시작하기 위한 로직
+    # =================================================================
+    results = []
+    processed_ids = set()
+    if os.path.exists(OUTPUT_JSON_PATH):
+        logging.info(f"기존 출력 파일 '{OUTPUT_JSON_PATH}'을(를) 확인합니다.")
+        try:
+            with open(OUTPUT_JSON_PATH, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if content and content.strip(): # 파일이 비어있지 않은지 확인
+                    results = json.loads(content)
+                    processed_ids = {item['id'] for item in results if 'id' in item}
+                    logging.info(f"{len(results)}개의 기존 결과를 불러왔습니다. 이어서 작업을 시작합니다.")
+                else:
+                    logging.info("기존 출력 파일이 비어있어 처음부터 시작합니다.")
+        except (json.JSONDecodeError, FileNotFoundError):
+            logging.warning(f"기존 출력 파일을 읽는 데 실패했습니다. 처음부터 다시 시작합니다.")
+            results = []
+            processed_ids = set()
+
     # 입력 데이터 로드
-    print(f"[INFO] '{INPUT_JSON_PATH}' 파일에서 데이터를 로드합니다.")
+    logging.info(f"'{INPUT_JSON_PATH}' 파일에서 데이터를 로드합니다.")
     try:
         with open(INPUT_JSON_PATH, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+            all_data = json.load(f)
     except FileNotFoundError:
-        print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
+        logging.error(f"입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
         return
-    
+
+    # 이미 처리된 데이터를 제외
+    data_to_process = [item for item in all_data if item.get('id') not in processed_ids]
+
     # 데이터를 BATCH_SIZE 크기의 묶음(배치)으로 나눔
-    batches = [data[i:i + BATCH_SIZE] for i in range(0, len(data), BATCH_SIZE)]
+    batches = [data_to_process[i:i + BATCH_SIZE] for i in range(0, len(data_to_process), BATCH_SIZE)]
     
-    results = []
     error_count = 0
-    processed_count = 0
-    last_save_count = 0
+    processed_count_this_run = 0
+    last_save_count = len(results)
 
-    print(f"[INFO] 총 {len(data)}개의 문장을 {len(batches)}개의 배치로 나누어 처리를 시작합니다. (배치 크기: {BATCH_SIZE})")
+    logging.info(f"총 {len(all_data)}개 문장 중, 이미 처리된 {len(processed_ids)}개를 제외하고 {len(data_to_process)}개를 {len(batches)}개 배치로 나누어 처리를 시작합니다. (배치 크기: {BATCH_SIZE})")
 
-    for batch in tqdm(batches, desc="Generating with Gemini (Batch)"):
-        tasks = []
-        for item in batch:
-            prompt = create_prompt(item['sentence'])
-            # 수정: 백오프 래퍼 함수를 사용하여 태스크 생성
-            task = generate_with_backoff(model, prompt, generation_config)
-            tasks.append(task)
-        
-        # asyncio.gather를 사용해 현재 배치의 모든 API 요청을 병렬로 실행
-        # return_exceptions=True: 하나의 요청이 실패해도 전체가 멈추지 않음
-        try:
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            print(f"\n[ERROR] 배치 처리 중 심각한 오류 발생: {e}")
-            error_count += len(batch)
-            continue # 다음 배치로 넘어감
-
-        # 응답 처리
-        for item, response in zip(batch, responses):
-            processed_count += 1
-            if isinstance(response, Exception):
-                # API 호출 중 예외가 발생한 경우
-                print(f"\n[Warning] API 요청 실패. Error: {response}")
-                error_count += 1
-                continue
-
+    # =================================================================
+    # 수정: tqdm 진행 표시줄에 상세 정보 추가
+    # =================================================================
+    progress_bar = tqdm(batches, desc="Generating with Gemini (Batch)")
+    try:
+        for batch in progress_bar:
+            tasks = []
+            for item in batch:
+                prompt = create_prompt(item['sentence'])
+                # 수정: 백오프 래퍼 함수를 사용하여 태스크 생성
+                task = generate_with_backoff(model, prompt, generation_config)
+                tasks.append(task)
+            
+            # asyncio.gather를 사용해 현재 배치의 모든 API 요청을 병렬로 실행
+            # return_exceptions=True: 하나의 요청이 실패해도 전체가 멈추지 않음
             try:
-                raw_output = response.text
-                predicted_word = None
-                
-                json_match = re.search(r'{\s*"unpredictable_word":\s*".*?"\s*}', raw_output, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    parsed_json = json.loads(json_str)
-                    predicted_word = parsed_json.get("unpredictable_word")
+                responses = await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as e:
+                logging.error(f"배치 처리 중 심각한 오류 발생: {e}")
+                error_count += len(batch)
+                continue # 다음 배치로 넘어감
 
-                if not predicted_word:
+            # 응답 처리
+            for item, response in zip(batch, responses):
+                processed_count_this_run += 1
+                if isinstance(response, Exception):
+                    # API 호출 중 예외가 발생한 경우
+                    error_type = type(response).__name__
+                    logging.warning(f"API 요청 실패. ID: {item.get('id')}, Error Type: {error_type}, Details: {response}")
                     error_count += 1
                     continue
 
-                original_sentence = item['sentence']
-                if predicted_word in original_sentence:
-                    index = original_sentence.find(predicted_word) # find가 더 안전
-                    context = original_sentence[:index].strip()
-                    gold_label = predicted_word
+                try:
+                    raw_output = response.text
+                    predicted_word = None
+                    
+                    json_match = re.search(r'{\s*"unpredictable_word":\s*".*?"\s*}', raw_output, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(0)
+                        parsed_json = json.loads(json_str)
+                        predicted_word = parsed_json.get("unpredictable_word")
 
-                    if not context:
+                    if not predicted_word:
+                        logging.warning(f"파싱 실패. ID: {item.get('id')}, 응답에서 'unpredictable_word'를 찾을 수 없음. Raw Output: {raw_output}")
                         error_count += 1
                         continue
 
-                    new_item = {
-                        'id': item['id'],
-                        'original_sentence': original_sentence,
-                        'context': context,
-                        'gold_label': gold_label
-                    }
-                    results.append(new_item)
-                else:
+                    original_sentence = item['sentence']
+                    if predicted_word in original_sentence:
+                        index = original_sentence.find(predicted_word) # find가 더 안전
+                        context = original_sentence[:index].strip()
+                        gold_label = predicted_word
+
+                        if not context:
+                            logging.warning(f"컨텍스트 없음. ID: {item.get('id')}, Predicted: '{predicted_word}', Sentence: '{original_sentence}'")
+                            error_count += 1
+                            continue
+
+                        new_item = {
+                            'id': item['id'],
+                            'original_sentence': original_sentence,
+                            'context': context,
+                            'gold_label': gold_label
+                        }
+                        results.append(new_item)
+                    else:
+                        logging.warning(f"예측 단어 없음. ID: {item.get('id')}, Predicted: '{predicted_word}', Sentence: '{original_sentence}'")
+                        error_count += 1
+                        continue
+
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    error_type = type(e).__name__
+                    # 수정: raw_output이 없을 수 있으므로 예외 'e'를 직접 로깅
+                    logging.warning(f"응답 처리/디코딩 오류. ID: {item.get('id')}, Error: {error_type}, Details: {e}")
                     error_count += 1
                     continue
-
-            except (json.JSONDecodeError, ValueError, TypeError) as e:
-                error_count += 1
-                continue
-            except Exception as e:
-                print(f"\n[ERROR] 응답 처리 중 에러 발생: {e}")
-                error_count += 1
-                continue
-        
-        # 주기적 저장 로직
-        if len(results) - last_save_count >= SAVE_INTERVAL:
-            print(f"\n[INFO] 중간 저장: {len(results)}개의 결과를 파일에 저장합니다. (총 {processed_count}개 처리)")
-            with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
-                json.dump(results, f, ensure_ascii=False, indent=2)
-            last_save_count = len(results)
+                except Exception as e:
+                    error_type = type(e).__name__
+                    logging.error(f"응답 처리 중 예외 발생. ID: {item.get('id')}, Error: {error_type}, Details: {e}")
+                    error_count += 1
+                    continue
             
-        await asyncio.sleep(random.uniform(0, 4))
+            # =================================================================
+            # 수정: tqdm 진행 표시줄 업데이트
+            # =================================================================
+            progress_bar.set_postfix(success=len(results), errors=error_count, refresh=True)
 
-    # 모든 배치가 끝난 후 최종 저장
-    print(f"\n[SUCCESS] 데이터셋 생성이 완료되었습니다.")
-    print(f"  - 성공적으로 처리된 문장: {len(results)}")
-    print(f"  - 오류 또는 건너뛴 문장: {error_count}")
-    
-    print(f"  - '{OUTPUT_JSON_PATH}' 파일에 최종 결과를 저장합니다.")
-    with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+            # 주기적 저장 로직
+            if len(results) - last_save_count >= SAVE_INTERVAL:
+                logging.info(f"중간 저장: 총 {len(results)}개의 결과를 파일에 저장합니다. (이번 실행에서 {processed_count_this_run}개 처리)")
+                with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(results, f, ensure_ascii=False, indent=2)
+                last_save_count = len(results)
+                
+            await asyncio.sleep(random.uniform(0, 4))
+        
+        # for 루프가 정상적으로 완료되었을 때 실행
+        logging.info(f"데이터셋 생성이 완료되었습니다.")
+
+    finally:
+        # =================================================================
+        # 추가: 강제 종료 시에도 저장을 보장하는 로직
+        # =================================================================
+        logging.info(f"프로그램을 종료합니다. 현재까지의 결과를 저장합니다.")
+        logging.info(f"  - 총 성공적으로 처리된 문장: {len(results)}")
+        logging.info(f"  - 이번 실행에서 오류 또는 건너뛴 문장: {error_count}")
+        
+        logging.info(f"  - '{OUTPUT_JSON_PATH}' 파일에 최종 결과를 저장합니다.")
+        with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        logging.info("저장 완료.")
 
 
 if __name__ == "__main__":

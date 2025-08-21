@@ -5,7 +5,14 @@ ToW Training with Smart Text Handling - Fixed Version
 - Adaptive max length based on data analysis
 - ToW token preservation
 - Smart chunking for long texts
-- torchrun --nproc_per_node=[사용할 GPU 개수] ToW_Training_qwen.py
+- torchrun --nproc_per_node=2 ToW_Training_qwen.py
+
+# 사용 가능한 CUDA 모듈 확인
+# CUDA 모듈 로드 (가장 최신 버전)
+# 환경변수 확인
+module avail cuda
+module load cuda-12.6.1-gcc-12.1.0
+echo $CUDA_HOME
 """
 
 import os
@@ -120,9 +127,9 @@ class ToWTrainingConfig:
     # Training hyperparameters
     learning_rate: float = 5e-5  # Increased learning rate
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 8 # Reduced to prevent OOM
-    per_device_eval_batch_size: int = 8 # Reduced to prevent OOM
-    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 16
+    per_device_eval_batch_size: int = 16
+    gradient_accumulation_steps: int = 16  # Increased accumulation steps
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -137,24 +144,24 @@ class ToWTrainingConfig:
 
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 500  # Decreased evaluation frequency
+    eval_steps: int = 200  # Decreased evaluation frequency
     save_strategy: str = "steps"
-    save_steps: int = 500  # Decreased save frequency
+    save_steps: int = 200  # Decreased save frequency
     logging_steps: int = 500  # Decreased logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 1  # Optimized for single GPU setup
+    dataloader_num_workers: int = 4  # Increased workers for faster data loading
     remove_unused_columns: bool = True
-    fp16: bool = False  # Disable fp16 due to gradient scaling issues
-    bf16: bool = True  # Use bf16 instead for better stability
-    gradient_checkpointing: bool = True  # Enable to save memory
+    fp16: bool = True  # Enable fp16 for faster training
+    bf16: bool = False
+    gradient_checkpointing: bool = False  # Disable gradient checkpointing for speed
 
 
 MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False  # Disabled to avoid get_keys_to_not_convert error
+        use_quantization=True
     ),
     # ModelConfig(
     #     name="Mistral-8B-Instruct-2410-ToW",
@@ -308,23 +315,32 @@ class SmartToWDataProcessor:
             if original_truncation_side is not None:
                 self.tokenizer.truncation_side = original_truncation_side
 
-            # Vectorized label creation for performance
-            labels = np.array(full_tokens['input_ids'])
-            attention_mask = np.array(full_tokens['attention_mask'])
-            
-            context_lengths = [len(ids) for ids in context_tokens['input_ids']]
-            
-            # Create a mask for context tokens
-            max_len = labels.shape[1]
-            context_mask = np.arange(max_len)[None, :] < np.array(context_lengths)[:, None]
+            all_labels = []
+            # Iterate over each example in the batch
+            for i in range(len(full_tokens['input_ids'])):
+                input_ids = full_tokens['input_ids'][i]
+                attention_mask = full_tokens['attention_mask'][i]
+                
+                # Get the length of the context for this specific example
+                context_len = len(context_tokens['input_ids'][i])
+                
+                labels = input_ids.copy()
+                
+                # Determine the actual number of context tokens to mask.
+                # This prevents index errors if the context itself was truncated.
+                mask_len = min(context_len, len(labels))
 
-            # Apply context mask
-            labels[context_mask] = -100
+                # Mask context tokens by setting them to -100
+                labels[:mask_len] = [-100] * mask_len
+                
+                # Also mask padding tokens
+                for j in range(len(labels)):
+                    if attention_mask[j] == 0:
+                        labels[j] = -100
+                
+                all_labels.append(labels)
             
-            # Apply padding mask
-            labels[attention_mask == 0] = -100
-            
-            full_tokens['labels'] = labels.tolist()
+            full_tokens['labels'] = all_labels
             return full_tokens
         
         tokenized_dataset = dataset.map(
@@ -400,27 +416,20 @@ class ToWTrainer:
                 bnb_4bit_use_double_quant=True,
             )
 
-        # For DDP, we need to avoid device_map="auto" and let DDP handle device placement
-        # Check if we're in distributed mode
-        is_distributed = int(os.getenv('LOCAL_RANK', -1)) != -1
-        
-        if is_distributed:
-            # In distributed mode, don't use device_map - let DDP handle it
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_config.model_id,
-                trust_remote_code=True,
-                torch_dtype=self.model_config.torch_dtype,
-                quantization_config=quantization_config,
-            )
-        else:
-            # Single GPU mode - use device_map="auto"
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_config.model_id,
-                trust_remote_code=True,
-                torch_dtype=self.model_config.torch_dtype,
-                device_map="auto",
-                quantization_config=quantization_config,
-            )
+        # device_map 설정 수정
+        local_rank = -1
+        if "LOCAL_RANK" in os.environ:
+            local_rank = int(os.environ["LOCAL_RANK"])
+            
+        device_map = {"": f"cuda:{local_rank}"} if local_rank != -1 else "auto"
+
+        model = AutoModelForCausalLM.from_pretrained(
+            self.model_config.model_id,
+            trust_remote_code=True,
+            torch_dtype=self.model_config.torch_dtype,
+            device_map=device_map, # 수정된 device_map 적용
+            quantization_config=quantization_config,
+        )
 
         # Resize model embeddings
         model.resize_token_embeddings(len(tokenizer))
@@ -454,53 +463,37 @@ class ToWTrainer:
     
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
-        
-        # Check if we're in distributed mode
-        local_rank = int(os.getenv('LOCAL_RANK', -1))
-        is_distributed = local_rank != -1
-        
-        # Base arguments
-        args = {
-            "output_dir": str(self.output_dir),
-            "overwrite_output_dir": False,
-            "learning_rate": self.training_config.learning_rate,
-            "num_train_epochs": self.training_config.num_train_epochs,
-            "per_device_train_batch_size": self.training_config.per_device_train_batch_size,
-            "per_device_eval_batch_size": self.training_config.per_device_eval_batch_size,
-            "gradient_accumulation_steps": self.training_config.gradient_accumulation_steps,
-            "warmup_ratio": self.training_config.warmup_ratio,
-            "weight_decay": self.training_config.weight_decay,
-            "logging_dir": str(self.output_dir / "logs"),
-            "logging_steps": self.training_config.logging_steps,
-            "eval_strategy": self.training_config.eval_strategy,
-            "eval_steps": self.training_config.eval_steps,
-            "save_strategy": self.training_config.save_strategy,
-            "save_steps": self.training_config.save_steps,
-            "save_total_limit": 3,
-            "load_best_model_at_end": True,
-            "metric_for_best_model": "eval_loss",
-            "greater_is_better": False,
-            "fp16": self.training_config.fp16,
-            "bf16": self.training_config.bf16,
-            "gradient_checkpointing": self.training_config.gradient_checkpointing,
-            "dataloader_num_workers": self.training_config.dataloader_num_workers,
-            "remove_unused_columns": self.training_config.remove_unused_columns,
-            "max_grad_norm": 1.0,
-            "seed": 42,
-            "data_seed": 42,
-            "report_to": [],
-        }
-        
-        # Add distributed-specific arguments only when in distributed mode
-        if is_distributed:
-            args.update({
-                "local_rank": local_rank,
-                "ddp_find_unused_parameters": False,
-                "ddp_backend": "nccl",
-                "ddp_bucket_cap_mb": 25,
-            })
-        
-        return TrainingArguments(**args)
+        return TrainingArguments(
+            output_dir=str(self.output_dir),
+            overwrite_output_dir=False,
+            learning_rate=self.training_config.learning_rate,
+            num_train_epochs=self.training_config.num_train_epochs,
+            per_device_train_batch_size=self.training_config.per_device_train_batch_size,
+            per_device_eval_batch_size=self.training_config.per_device_eval_batch_size,
+            gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
+            warmup_ratio=self.training_config.warmup_ratio,
+            weight_decay=self.training_config.weight_decay,
+            logging_dir=str(self.output_dir / "logs"),
+            logging_steps=self.training_config.logging_steps,
+            eval_strategy=self.training_config.eval_strategy,
+            eval_steps=self.training_config.eval_steps,
+            save_strategy=self.training_config.save_strategy,
+            save_steps=self.training_config.save_steps,
+            save_total_limit=3,
+            ddp_find_unused_parameters=False, # Qwen 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
+            load_best_model_at_end=True,
+            local_rank=int(os.getenv('LOCAL_RANK', -1)),
+            metric_for_best_model="eval_loss",
+            greater_is_better=False,
+            fp16=self.training_config.fp16,
+            bf16=self.training_config.bf16,
+            gradient_checkpointing=self.training_config.gradient_checkpointing,
+            dataloader_num_workers=self.training_config.dataloader_num_workers,
+            remove_unused_columns=self.training_config.remove_unused_columns,
+            seed=42,
+            data_seed=42,
+            report_to=[],
+        )
     
     def train(self):
         """Execute smart ToW fine-tuning"""
@@ -560,18 +553,7 @@ class ToWTrainer:
         )
         
         logger.info("Starting smart training...")
-        # 체크포인트 복원 활성화 (bf16 호환성 문제 해결)
-        if last_checkpoint:
-            logger.info(f"체크포인트부터 재개: {last_checkpoint}")
-            try:
-                train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
-            except Exception as e:
-                logger.warning(f"체크포인트 복원 실패: {e}")
-                logger.info("처음부터 새로 시작합니다.")
-                train_result = trainer.train()
-        else:
-            logger.info("새로운 훈련을 시작합니다.")
-            train_result = trainer.train()
+        train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
         
         logger.info("Saving final model...")
         trainer.save_model()
@@ -592,7 +574,9 @@ def main():
     logger.info("ToW Training with Smart Text Handling")
 
     # 분산 훈련 설정 추가
-    local_rank = int(os.getenv('LOCAL_RANK', -1))
+    local_rank = -1
+    if "LOCAL_RANK" in os.environ:
+        local_rank = int(os.environ["LOCAL_RANK"])
 
     if local_rank != -1:
         torch.cuda.set_device(local_rank)

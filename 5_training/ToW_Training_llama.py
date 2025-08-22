@@ -5,7 +5,14 @@ ToW Training with Smart Text Handling - Fixed Version
 - Adaptive max length based on data analysis
 - ToW token preservation
 - Smart chunking for long texts
-- torchrun --nproc_per_node=[사용할 GPU 개수] ToW_Training_llama.py
+
+# 사용 가능한 CUDA 모듈 확인
+# CUDA 모듈 로드 (가장 최신 버전)
+# 환경변수 확인
+module avail cuda
+module load cuda-12.6.1-gcc-12.1.0
+echo $CUDA_HOME
+torchrun --nproc_per_node=2 ToW_Training_qwen.py
 """
 
 import os
@@ -114,9 +121,10 @@ class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
-        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
+        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json",
+        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite.json"
     ])
-    output_base_dir: str = "ToW_Models"
+    output_base_dir: str = "ToW_Models_2"
     
     # Training hyperparameters
     learning_rate: float = 5e-5  # This will be a fallback
@@ -152,30 +160,11 @@ class ToWTrainingConfig:
 
 
 MODEL_CONFIGS = [
-    # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     use_quantization=True,
-    #     learning_rate=2e-5  # Stable learning rate for Qwen
-    # ),
     ModelConfig(
         name="Llama-3.1-8B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
         use_quantization=True,
-        learning_rate=5e-6  # Lower learning rate for stability
     ),
-    # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     use_quantization=True,
-    #     learning_rate=5e-6  # Lower learning rate for stability
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     use_quantization=True,
-    #     learning_rate=5e-6  # Lower learning rate for stability
-    # ),
 ]
 
 

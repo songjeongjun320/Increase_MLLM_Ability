@@ -122,7 +122,8 @@ class ToWTrainingConfig:
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
         "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
-        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite.json"
+        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part1.json"
+        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part2.json"
     ])
     output_base_dir: str = "ToW_Models_2"
     

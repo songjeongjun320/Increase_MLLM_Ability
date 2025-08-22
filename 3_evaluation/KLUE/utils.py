@@ -95,7 +95,7 @@ class ModelLoader:
                     torch_dtype=self.config.torch_dtype,
                     device_map="auto",
                     trust_remote_code=True,
-                    attn_implementation="flash_attention_2" if torch.cuda.is_available() else None
+                    # attn_implementation="flash_attention_2" if torch.cuda.is_available() else None  # Disabled due to missing flash_attn
                 )
                 logger.info("✅ Base model loaded successfully")
                 

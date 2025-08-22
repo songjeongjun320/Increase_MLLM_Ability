@@ -78,17 +78,29 @@ def run_task_evaluation(task_key: str, output_dir: str) -> bool:
     
     try:
         # Run the task script
+        logger.info(f"🔄 Executing command: {sys.executable} {script_path}")
         result = subprocess.run([
             sys.executable, script_path
         ], capture_output=True, text=True, timeout=3600*2)  # 2 hour timeout
         
+        # Always show the output for debugging
+        if result.stdout:
+            logger.info(f"📤 STDOUT from {task_config['name']}:")
+            for line in result.stdout.split('\n')[-50:]:  # Show last 50 lines
+                if line.strip():
+                    logger.info(f"    {line}")
+        
+        if result.stderr:
+            logger.error(f"🚨 STDERR from {task_config['name']}:")
+            for line in result.stderr.split('\n')[-20:]:  # Show last 20 error lines
+                if line.strip():
+                    logger.error(f"    {line}")
+        
         if result.returncode == 0:
-            logger.info(f"✅ {task_config['name']} evaluation completed successfully")
+            logger.info(f"✅ {task_config['name']} evaluation completed successfully (return code: 0)")
             return True
         else:
-            logger.error(f"❌ {task_config['name']} evaluation failed:")
-            logger.error(f"STDOUT: {result.stdout}")
-            logger.error(f"STDERR: {result.stderr}")
+            logger.error(f"❌ {task_config['name']} evaluation failed with return code: {result.returncode}")
             return False
             
     except subprocess.TimeoutExpired:

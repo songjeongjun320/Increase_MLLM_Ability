@@ -78,7 +78,7 @@ MODEL_CONFIGS = [
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BASE_OUTPUT_DIR = "klue_evaluation_results"
-DATA_DIR = "../klue_all_tasks_json"
+DATA_DIR = "./klue_all_tasks_json"
 
 # KLUE Task Configuration
 KLUE_TASKS = {

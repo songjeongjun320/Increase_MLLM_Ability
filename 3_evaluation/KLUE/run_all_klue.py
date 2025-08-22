@@ -77,11 +77,42 @@ def run_task_evaluation(task_key: str, output_dir: str) -> bool:
     logger.info(f"Running {task_config['name']} evaluation...")
     
     try:
-        # Run the task script
+        # Run the task script with real-time output
         logger.info(f"🔄 Executing command: {sys.executable} {script_path}")
-        result = subprocess.run([
-            sys.executable, script_path
-        ], capture_output=True, text=True, timeout=3600*2)  # 2 hour timeout
+        logger.info(f"⏳ Starting subprocess - output will appear in real-time...")
+        
+        # Use Popen for real-time output
+        import subprocess
+        process = subprocess.Popen(
+            [sys.executable, script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Combine stdout and stderr
+            universal_newlines=True,
+            bufsize=1  # Line buffered
+        )
+        
+        # Print output in real-time
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                line = line.strip()
+                output_lines.append(line)
+                logger.info(f"    {line}")  # Print with indentation
+        
+        # Wait for completion and get return code
+        return_code = process.wait()
+        
+        # Create result object for compatibility
+        class Result:
+            def __init__(self, returncode, stdout_lines):
+                self.returncode = returncode
+                self.stdout = '\n'.join(stdout_lines)
+                self.stderr = ""
+        
+        result = Result(return_code, output_lines)
         
         # Always show the output for debugging
         if result.stdout:

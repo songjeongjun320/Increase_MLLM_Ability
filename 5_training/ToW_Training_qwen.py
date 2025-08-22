@@ -5,7 +5,6 @@ ToW Training with Smart Text Handling - Fixed Version
 - Adaptive max length based on data analysis
 - ToW token preservation
 - Smart chunking for long texts
-- torchrun --nproc_per_node=2 ToW_Training_qwen.py
 
 # 사용 가능한 CUDA 모듈 확인
 # CUDA 모듈 로드 (가장 최신 버전)
@@ -13,6 +12,7 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
+torchrun --nproc_per_node=2 ToW_Training_qwen.py
 """
 
 import os
@@ -46,14 +46,18 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 class JsonLoggingCallback(TrainerCallback):
     """Callback to log metrics to a JSON file."""
-
+    
     def __init__(self, log_file):
         self.log_file = log_file
-        # Clear the log file at the beginning of training
-        with open(self.log_file, 'w') as f:
-            f.write("[\n")
-        self.first_log = True
-
+        # Check if the file exists and only open for appending if it does
+        if os.path.exists(self.log_file):
+            self.first_log = False
+        else:
+            # Clear the log file at the beginning of training (start new array)
+            with open(self.log_file, 'w') as f:
+                f.write("[\n")
+            self.first_log = True
+    
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is not None:
             # Append logs to the JSON file
@@ -125,11 +129,11 @@ class ToWTrainingConfig:
     output_base_dir: str = "ToW_Models"
 
     # Training hyperparameters
-    learning_rate: float = 5e-5  # Increased learning rate
+    learning_rate: float = 1e-5  # Decreased learning rate for stability
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 16
+    per_device_train_batch_size: int = 16  # Increased batch size for more stability
     per_device_eval_batch_size: int = 16
-    gradient_accumulation_steps: int = 16  # Increased accumulation steps
+    gradient_accumulation_steps: int = 2  # Reduced accumulation steps for quicker updates
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -139,23 +143,22 @@ class ToWTrainingConfig:
 
     # Default settings
     max_sequence_length: int = 1024
-    warmup_ratio: float = 0.2  # Increased warmup ratio
-    weight_decay: float = 0.05  # Lower weight decay
+    warmup_ratio: float = 0.05  # Decreased warmup ratio for smoother start
+    weight_decay: float = 0.01  # Lower weight decay for stability
 
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 200  # Decreased evaluation frequency
+    eval_steps: int = 500  # Evaluation frequency
     save_strategy: str = "steps"
-    save_steps: int = 200  # Decreased save frequency
-    logging_steps: int = 500  # Decreased logging frequency
+    save_steps: int = 500  # Save frequency
+    logging_steps: int = 500  # Logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 4  # Increased workers for faster data loading
     remove_unused_columns: bool = True
     fp16: bool = True  # Enable fp16 for faster training
-    bf16: bool = False
-    gradient_checkpointing: bool = False  # Disable gradient checkpointing for speed
-
+    bf16: bool = False  # Disabled bf16 for simplicity
+    gradient_checkpointing: bool = False  # Disabled gradient checkpointing for stability
 
 MODEL_CONFIGS = [
     ModelConfig(

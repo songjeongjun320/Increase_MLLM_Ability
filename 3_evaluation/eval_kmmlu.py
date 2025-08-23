@@ -752,10 +752,20 @@ def main():
         if os.path.exists(results_filepath):
             try:
                 with open(results_filepath, 'r', encoding='utf-8') as f:
-                    # Helper function to handle non-serializable types if needed during load, though less common
                     result_data = json.load(f)
-                    all_results.append(result_data)
-                logger.info(f"Aggregated results from {config.name}")
+                    # Extract only the key summary metrics
+                    summary = {
+                        "model_name": result_data.get("model_config", {}).get("name"),
+                        "test_items": result_data.get("test_items"),
+                        "valid_predictions": result_data.get("valid_predictions"),
+                        "correct_predictions": result_data.get("correct_predictions"),
+                        "errors_or_failures": result_data.get("errors_or_failures"),
+                        "items_skipped": result_data.get("items_skipped"),
+                        "accuracy_standard": result_data.get("accuracy_standard (correct / valid_predictions)"),
+                        "accuracy_strict": result_data.get("accuracy_strict (correct / total_test_items)"),
+                    }
+                    all_results.append(summary)
+                logger.info(f"Aggregated summary for {config.name}")
             except Exception as e:
                 logger.error(f"Failed to read or parse results file {results_filepath}: {e}")
         else:

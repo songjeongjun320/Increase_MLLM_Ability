@@ -551,6 +551,24 @@ class ToWTrainer:
         trainer.save_model()
         tokenizer.save_pretrained(str(self.output_dir))
         
+        logger.info("Saving training parameters...")
+        model_params = self.model_config.__dict__.copy()
+        if 'torch_dtype' in model_params:
+            model_params['torch_dtype'] = str(model_params['torch_dtype'])
+
+        all_params = {
+            "model_config": model_params,
+            "training_config": self.training_config.__dict__,
+            "environment_config": {
+                "gpus_used": torch.cuda.device_count() if torch.cuda.is_available() else 0
+            }
+        }
+        
+        params_path = self.output_dir / "training_parameters.json"
+        with open(params_path, 'w', encoding='utf-8') as f:
+            json.dump(all_params, f, indent=2, ensure_ascii=False)
+        logger.info(f"Training parameters saved to {params_path}")
+        
         with open(self.output_dir / "training_results.json", 'w') as f:
             json.dump(train_result.metrics, f, indent=2)
         

@@ -152,10 +152,10 @@ class ToWTrainingConfig:
 
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 250  # Evaluation frequency
+    eval_steps: int = 500  # Evaluation frequency
     save_strategy: str = "steps"
-    save_steps: int = 250  # Save frequency
-    logging_steps: int = 250  # Logging frequency
+    save_steps: int = 500  # Save frequency
+    logging_steps: int = 500  # Logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8  # Increased workers for faster data loading

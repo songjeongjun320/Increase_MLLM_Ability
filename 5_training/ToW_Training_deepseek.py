@@ -149,10 +149,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 250
+    eval_steps: int = 500
     save_strategy: str = "steps"
-    save_steps: int = 250
-    logging_steps: int = 250
+    save_steps: int = 500
+    logging_steps: int = 500
     early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8

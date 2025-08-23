@@ -26,34 +26,34 @@ class ModelConfig:
 
 # Model configurations
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.1-8B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-0528-Qwen3-8B",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+    #     use_quantization=False
+    # ),
 
     # TOW Trained Models
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="Mistral-8B-Instruct-2410-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
@@ -62,7 +62,7 @@ MODEL_CONFIGS = [
     ),
     ModelConfig(
         name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3:1_8B_Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
         adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
         use_quantization=False
     ),

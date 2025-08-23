@@ -114,8 +114,33 @@ class ModelLoader:
             if self.config.adapter_path:
                 logger.info(f"🔧 Loading adapter from: {self.config.adapter_path}")
                 try:
+                    # Load adapter tokenizer to check vocabulary size
+                    adapter_tokenizer = AutoTokenizer.from_pretrained(
+                        self.config.adapter_path,
+                        trust_remote_code=True
+                    )
+                    
+                    # Check if vocabulary sizes differ
+                    base_vocab_size = len(self.tokenizer)
+                    adapter_vocab_size = len(adapter_tokenizer)
+                    
+                    logger.info(f"📊 Base model vocab size: {base_vocab_size}")
+                    logger.info(f"📊 Adapter vocab size: {adapter_vocab_size}")
+                    
+                    # Resize model embeddings if needed BEFORE loading adapter
+                    if adapter_vocab_size > base_vocab_size:
+                        logger.info(f"🔧 Resizing model embeddings from {base_vocab_size} to {adapter_vocab_size}")
+                        self.model.resize_token_embeddings(adapter_vocab_size)
+                        logger.info("✅ Model embeddings resized")
+                        
+                        # Update tokenizer to match adapter
+                        self.tokenizer = adapter_tokenizer
+                        logger.info("✅ Tokenizer updated to adapter version")
+                    
+                    # Now load the PEFT adapter
                     self.model = PeftModel.from_pretrained(self.model, self.config.adapter_path)
                     logger.info("✅ Adapter loaded successfully")
+                    
                 except Exception as e:
                     error_msg = f"❌ Failed to load adapter: {str(e)}"
                     logger.error(error_msg)

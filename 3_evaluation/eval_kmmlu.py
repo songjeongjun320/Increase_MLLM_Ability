@@ -418,12 +418,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             trust_remote_code=True # Necessary for some models
         )
 
-        # 3. Resize model embeddings to match the tokenizer's vocabulary size BEFORE loading the adapter.
-        if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-            logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
-            model.resize_token_embeddings(len(tokenizer))
-
-        # 4. Load the LoRA adapter onto the correctly-sized base model.
+        # 3. Load the LoRA adapter with proper tokenizer handling
         if config.adapter_path:
             absolute_adapter_path = os.path.abspath(config.adapter_path)
             logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
@@ -432,6 +427,35 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 raise FileNotFoundError(f"Adapter path not found: {absolute_adapter_path}")
             
             try:
+                # Load adapter tokenizer to check vocabulary size
+                adapter_tokenizer = AutoTokenizer.from_pretrained(
+                    absolute_adapter_path,
+                    trust_remote_code=True,
+                    padding_side='left'
+                )
+                
+                # Check if vocabulary sizes differ
+                base_vocab_size = len(tokenizer)
+                adapter_vocab_size = len(adapter_tokenizer)
+                
+                logger.info(f"Base model vocab size: {base_vocab_size}")
+                logger.info(f"Adapter vocab size: {adapter_vocab_size}")
+                
+                # Resize model embeddings if needed BEFORE loading adapter
+                if adapter_vocab_size > base_vocab_size:
+                    logger.info(f"Resizing model embeddings from {base_vocab_size} to {adapter_vocab_size}")
+                    model.resize_token_embeddings(adapter_vocab_size)
+                    logger.info("Model embeddings resized")
+                    
+                    # Update tokenizer to match adapter
+                    tokenizer = adapter_tokenizer
+                    logger.info("Tokenizer updated to adapter version")
+                elif len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                    # Standard resize if no adapter vocab size change
+                    logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+                    model.resize_token_embeddings(len(tokenizer))
+                
+                # Now load the PEFT adapter
                 model = PeftModel.from_pretrained(model, absolute_adapter_path)
                 logger.info("Successfully loaded LoRA adapter.")
                 # Optional: Merge the adapter for faster inference
@@ -442,6 +466,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 raise e
         else:
             logger.info("No LoRA adapter path specified. Using the base model directly.")
+            # Standard resize for base model only
+            if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+                model.resize_token_embeddings(len(tokenizer))
         # === END: LoRA Adapter Loading Logic ===
 
         # Handle tokenizer pad token ID config *after* model load

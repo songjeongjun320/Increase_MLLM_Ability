@@ -12,3 +12,4 @@
 2025-08-23 15:51:55,560 - INFO - [__main__] - Starting GSM8K inference loop...
 2025-08-23 15:51:55,560 - INFO - [__main__] - Dataset size: 1319
 2025-08-23 16:09:07,433 - INFO - [__main__] - Progress (Qwen2.5-7B-Instruct): 100/1319, Acc: 45.00% (45/100), Errors/Skipped: 0
+2025-08-23 16:26:20,625 - INFO - [__main__] - Progress (Qwen2.5-7B-Instruct): 200/1319, Acc: 44.00% (88/200), Errors/Skipped: 0

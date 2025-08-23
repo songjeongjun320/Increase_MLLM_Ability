@@ -48,5 +48,7 @@ klue_tc_results/
 __pycache__
 
 # RESULT FILES
-mmlu_*
-kmmlu_*
+mmlu_baseline*
+mmlu_tow_model*
+kmmlu_baseline*
+kmmlu_tow_model*

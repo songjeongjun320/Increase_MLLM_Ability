@@ -22,46 +22,46 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     use_quantization=False # Adjust based on VRAM
-    # ),
+    ModelConfig(
+        name="Qwen2.5-7B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Mistral-8B-Instruct-2410",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Llama-3.1-8B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        use_quantization=False # Adjust based on VRAM
+    ),
     
     # TOW Trained Model
-    # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Mistral-8B-Instruct-2410-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Llama-3.1-8B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        use_quantization=False
+    ),
     ModelConfig(
         name="Qwen2.5-7B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
@@ -549,6 +549,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
         accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+        accuracy_strict = (correct_predictions / len(test_data) * 100) if len(test_data) > 0 else 0
 
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
@@ -582,7 +583,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         logger.info(f"Valid Predictions (Answer Extracted): {total_predictions}")
         logger.info(f"Correct Predictions: {correct_predictions}")
         logger.info(f"Errors or Skipped Items: {errors_or_skipped}")
-        logger.info(f"Final 5-shot Accuracy: {accuracy:.2f}%")
+        logger.info(f"Final 5-shot Accuracy (Standard - Correct/Valid): {accuracy:.2f}%")
+        logger.info(f"Final 5-shot Accuracy (Strict - Correct/Total): {accuracy_strict:.2f}%")
 
         # --- Save Results ---
         config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
@@ -596,7 +598,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             "valid_predictions": total_predictions,
             "correct_predictions": correct_predictions,
             "errors_or_skipped": errors_or_skipped,
-            "accuracy": accuracy,
+            "accuracy_standard (correct / valid_predictions)": accuracy,
+            "accuracy_strict (correct / total_test_items)": accuracy_strict,
             "subjects_with_dev_examples": list(dev_data.keys()),
             "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
             "details": results_details
@@ -663,6 +666,33 @@ def main():
         print("-" * 80)
 
     logger.info("All evaluations complete.")
+
+    # --- Aggregate all results into a single file ---
+    logger.info("Aggregating results from all models into a single file...")
+    all_results = []
+    for config in MODEL_CONFIGS:
+        results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}.json")
+        if os.path.exists(results_filepath):
+            try:
+                with open(results_filepath, 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                    all_results.append(result_data)
+                logger.info(f"Aggregated results from {config.name}")
+            except Exception as e:
+                logger.error(f"Failed to read or parse results file {results_filepath}: {e}")
+        else:
+            logger.warning(f"Could not find results file for model {config.name} at {results_filepath}")
+    
+    if all_results:
+        final_results_path = os.path.join(BASE_OUTPUT_DIR, "final_results.json")
+        try:
+            with open(final_results_path, 'w', encoding='utf-8') as f:
+                json.dump(all_results, f, indent=2, ensure_ascii=False)
+            logger.info(f"All model results have been aggregated into {final_results_path}")
+        except Exception as e:
+            logger.error(f"Failed to save aggregated results to {final_results_path}: {e}")
+    else:
+        logger.warning("No result files were found to aggregate.")
 
 
 if __name__ == "__main__":

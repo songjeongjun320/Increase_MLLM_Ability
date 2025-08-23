@@ -594,14 +594,16 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
 
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
-        accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
         # Recalculate totals based on loop results
         total_processed_loop = len(results_details)
         valid_pred_loop = sum(1 for r in results_details if r['predicted_answer'] is not None and r['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed", "ERROR - Inference Failed"])
         correct_pred_loop = sum(1 for r in results_details if r['is_correct'])
         errors_loop = sum(1 for r in results_details if r['predicted_answer'] is None and r['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed"])
         skipped_loop = sum(1 for r in results_details if r['model_raw_output'].startswith("SKIPPED"))
-        accuracy_loop = (correct_pred_loop / valid_pred_loop * 100) if valid_pred_loop > 0 else 0
+        
+        # Calculate two types of accuracy
+        accuracy_standard = (correct_pred_loop / valid_pred_loop * 100) if valid_pred_loop > 0 else 0  # correct / valid_predictions
+        accuracy_strict = (correct_pred_loop / total_processed_loop * 100) if total_processed_loop > 0 else 0  # correct / total_test_items (including skipped/errors)
 
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
@@ -638,7 +640,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         logger.info(f"Correct Predictions: {correct_pred_loop}")
         logger.info(f"Errors (Inference/Extraction Failures): {errors_loop}")
         logger.info(f"Items Skipped (Invalid GT/Prompt): {skipped_loop}")
-        logger.info(f"Final 5-shot Korean MMLU Accuracy: {accuracy_loop:.2f}%")
+        logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard:.2f}%")
+        logger.info(f"Accuracy Strict (correct / total_test_items): {accuracy_strict:.2f}%")
 
         # --- Save Results ---
         final_summary = {
@@ -653,7 +656,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             "correct_predictions": correct_pred_loop,
             "errors_or_failures": errors_loop,
             "items_skipped": skipped_loop,
-            "accuracy": accuracy_loop,
+            "accuracy_standard (correct / valid_predictions)": accuracy_standard,
+            "accuracy_strict (correct / total_test_items)": accuracy_strict,
             "subjects_with_dev_examples": list(dev_data.keys()),
             "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
             "details": results_details # Include detailed results

@@ -99,7 +99,7 @@ MODEL_CONFIGS = [
 
 # --- General Configuration ---
 DATASET_PATH = "../DB/MMLU/MMLU_origin.json"  # Full MMLU dataset with 57 subjects
-BASE_OUTPUT_DIR = "evaluation_results_mmlu_5shot_tow_model" # 5-shot evaluation results
+BASE_OUTPUT_DIR = "evaluation_results_mmlu_5shot_tow_model2" # 5-shot evaluation results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -523,7 +523,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
-        accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+        
+        # Calculate two types of accuracy
+        accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0  # correct / valid_predictions
+        accuracy_strict = (correct_predictions / len(test_data) * 100) if len(test_data) > 0 else 0  # correct / total_test_items (including skipped/errors)
 
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
@@ -557,7 +560,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         logger.info(f"Valid Predictions (Answer Extracted): {total_predictions}")
         logger.info(f"Correct Predictions: {correct_predictions}")
         logger.info(f"Errors or Skipped Items: {errors_or_skipped}")
-        logger.info(f"Final 5-shot Accuracy: {accuracy:.2f}%")
+        logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard:.2f}%")
+        logger.info(f"Accuracy Strict (correct / total_test_items): {accuracy_strict:.2f}%")
 
         # --- Save Results ---
         config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
@@ -571,7 +575,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             "valid_predictions": total_predictions,
             "correct_predictions": correct_predictions,
             "errors_or_skipped": errors_or_skipped,
-            "accuracy": accuracy,
+            "accuracy_standard (correct / valid_predictions)": accuracy_standard,
+            "accuracy_strict (correct / total_test_items)": accuracy_strict,
             "subjects_with_dev_examples": list(dev_data.keys()),
             "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
             "details": results_details

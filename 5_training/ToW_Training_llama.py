@@ -113,7 +113,6 @@ class ModelConfig:
     model_id: str
     use_quantization: bool = False
     torch_dtype: torch.dtype = field(default=torch.float16)
-    learning_rate: float = 2e-5  # Add learning_rate to ModelConfig
 
 
 @dataclass
@@ -128,7 +127,7 @@ class ToWTrainingConfig:
     output_base_dir: str = "ToW_Models_2"
     
     # Training hyperparameters
-    learning_rate: float = 5e-5  # This will be a fallback
+    learning_rate: float = 2e-5  # This will be a fallback
     num_train_epochs: int = 10
     per_device_train_batch_size: int = 16
     per_device_eval_batch_size: int = 16
@@ -451,14 +450,10 @@ class ToWTrainer:
     
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
-        # Use the learning rate from the specific model_config, or fall back to the training_config
-        lr = self.model_config.learning_rate if self.model_config.learning_rate else self.training_config.learning_rate
-        logger.info(f"Using model-specific learning rate: {lr}")
-
         return TrainingArguments(
             output_dir=str(self.output_dir),
             overwrite_output_dir=False,
-            learning_rate=lr,
+            learning_rate=self.training_config.learning_rate,
             num_train_epochs=self.training_config.num_train_epochs,
             per_device_train_batch_size=self.training_config.per_device_train_batch_size,
             per_device_eval_batch_size=self.training_config.per_device_eval_batch_size,

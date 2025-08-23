@@ -18,7 +18,6 @@ class ModelConfig:
     model_id: str                         # Hugging Face model identifier
     adapter_path: str = None              # Path to the LoRA adapter
     use_quantization: bool = True         # Default to quantization, especially for larger models
-    # Default dtype, can be overridden per model if needed
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [

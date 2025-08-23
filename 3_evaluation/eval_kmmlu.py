@@ -81,12 +81,12 @@ MODEL_CONFIGS = [
     #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Mistral-8B-Instruct-2410-ToW",
     #     use_quantization=False
     # ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.1-8B-Instruct-ToW",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Llama-3.1-8B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.1-8B-Instruct-ToW",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="DeepSeek-R1-0528-Qwen3-8B-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
@@ -97,7 +97,7 @@ MODEL_CONFIGS = [
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
 DATASET_PATH = "../DB/MMLU/MMLU_KO_Openai.json"  # Full Korean MMLU dataset with 57 subjects
-BASE_OUTPUT_DIR = "evaluation_results_kmmlu_5shot_tow_model" # Base dir for ALL model results
+BASE_OUTPUT_DIR = "evaluation_results_kmmlu_5shot_tow_model2" # Base dir for ALL model results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 

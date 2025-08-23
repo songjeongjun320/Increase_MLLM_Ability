@@ -118,6 +118,124 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- GSM8K 8-shot CoT Examples ---
+GSM8K_8SHOT_COT_EXAMPLES = """Question: There are 15 trees in the grove. Grove workers will plant trees in the grove today. After they are done, there will be 21 trees. How many trees did the grove workers plant today?
+Let's think step by step.
+There are 15 trees originally.
+Then there were 21 trees after some more were planted.
+So there must have been 21 - 15 = 6.
+The answer is 6.
+
+Question: If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?
+Let's think step by step.
+There are originally 3 cars.
+2 more cars arrive.
+3 + 2 = 5.
+The answer is 5.
+
+Question: Leah had 32 chocolates and her sister had 42. If they ate 35, how many pieces do they have left in total?
+Let's think step by step.
+Originally, Leah had 32 chocolates.
+Her sister had 42.
+So in total they had 32 + 42 = 74.
+After eating 35, they had 74 - 35 = 39.
+The answer is 39.
+
+Question: Jason had 20 lollipops. He gave Denny some lollipops. Now Jason has 12 lollipops. How many lollipops did Jason give to Denny?
+Let's think step by step.
+Jason started with 20 lollipops.
+Then he had 12 after giving some to Denny.
+So he gave Denny 20 - 12 = 8.
+The answer is 8.
+
+Question: Shawn has five toys. For Christmas, he got two toys each from his mom and dad. How many toys does he have now?
+Let's think step by step.
+Shawn started with 5 toys.
+If he got 2 toys each from his mom and dad, then that is 2 * 2 = 4 more toys.
+5 + 4 = 9.
+The answer is 9.
+
+Question: There were nine computers in the server room. Five more computers were installed each day, from monday to thursday. How many computers are now in the server room?
+Let's think step by step.
+There were originally 9 computers.
+For each of 4 days, 5 more computers were added.
+So 5 * 4 = 20 computers were added.
+9 + 20 = 29.
+The answer is 29.
+
+Question: Michael had 58 golf balls. On tuesday, he lost 23 golf balls. On wednesday, he lost 2 more. How many golf balls did he have at the end of wednesday?
+Let's think step by step.
+Michael started with 58 golf balls.
+After losing 23 on tuesday, he had 58 - 23 = 35.
+After losing 2 more on wednesday, he had 35 - 2 = 33 golf balls.
+The answer is 33.
+
+Question: Olivia has $23. She bought five bagels for $3 each. How much money does she have left?
+Let's think step by step.
+Olivia had 23 dollars.
+5 bagels for 3 dollars each will be 5 * 3 = 15 dollars.
+So she has 23 - 15 = 8 dollars left.
+The answer is 8."""
+
+# --- GSM8K 8-shot Korean CoT Examples ---
+GSM8K_8SHOT_KOR_COT_EXAMPLES = """질문: 숲에 15그루의 나무가 있습니다. 숲 관리인들이 오늘 숲에 나무를 심을 예정입니다. 작업이 끝나면 21그루의 나무가 있을 것입니다. 숲 관리인들이 오늘 몇 그루의 나무를 심었나요?
+단계적으로 생각해봅시다.
+원래 15그루의 나무가 있었습니다.
+나무를 더 심은 후에는 21그루가 되었습니다.
+따라서 21 - 15 = 6그루를 심었습니다.
+답: 6
+
+질문: 주차장에 3대의 차가 있고 2대의 차가 더 도착했다면, 주차장에는 몇 대의 차가 있나요?
+단계적으로 생각해봅시다.
+원래 3대의 차가 있었습니다.
+2대의 차가 더 도착했습니다.
+3 + 2 = 5입니다.
+답: 5
+
+질문: Leah는 32개의 초콜릿을 가지고 있었고 그녀의 여동생은 42개를 가지고 있었습니다. 그들이 35개를 먹었다면, 총 몇 개가 남았나요?
+단계적으로 생각해봅시다.
+원래 Leah는 32개의 초콜릿을 가지고 있었습니다.
+그녀의 여동생은 42개를 가지고 있었습니다.
+따라서 총합은 32 + 42 = 74개였습니다.
+35개를 먹은 후에는 74 - 35 = 39개가 남았습니다.
+답: 39
+
+질문: Jason은 20개의 막대사탕을 가지고 있었습니다. 그는 Denny에게 몇 개의 막대사탕을 주었습니다. 이제 Jason은 12개의 막대사탕을 가지고 있습니다. Jason이 Denny에게 몇 개의 막대사탕을 주었나요?
+단계적으로 생각해봅시다.
+Jason은 처음에 20개의 막대사탕을 가지고 있었습니다.
+Denny에게 몇 개를 준 후에는 12개가 남았습니다.
+따라서 Denny에게 20 - 12 = 8개를 주었습니다.
+답: 8
+
+질문: Shawn은 5개의 장난감을 가지고 있습니다. 크리스마스에 그는 엄마와 아빠로부터 각각 2개씩의 장난감을 받았습니다. 이제 그는 몇 개의 장난감을 가지고 있나요?
+단계적으로 생각해봅시다.
+Shawn은 처음에 5개의 장난감을 가지고 있었습니다.
+엄마와 아빠로부터 각각 2개씩 받았다면, 그것은 2 * 2 = 4개의 추가 장난감입니다.
+5 + 4 = 9입니다.
+답: 9
+
+질문: 서버실에 9대의 컴퓨터가 있었습니다. 월요일부터 목요일까지 매일 5대씩 더 설치되었습니다. 이제 서버실에는 몇 대의 컴퓨터가 있나요?
+단계적으로 생각해봅시다.
+원래 9대의 컴퓨터가 있었습니다.
+4일 동안 매일 5대씩 추가되었습니다.
+따라서 5 * 4 = 20대의 컴퓨터가 추가되었습니다.
+9 + 20 = 29입니다.
+답: 29
+
+질문: Michael은 58개의 골프공을 가지고 있었습니다. 화요일에 그는 23개의 골프공을 잃어버렸습니다. 수요일에는 2개를 더 잃어버렸습니다. 수요일 끝에 그는 몇 개의 골프공을 가지고 있었나요?
+단계적으로 생각해봅시다.
+Michael은 처음에 58개의 골프공을 가지고 있었습니다.
+화요일에 23개를 잃어버린 후, 그는 58 - 23 = 35개를 가지고 있었습니다.
+수요일에 2개를 더 잃어버린 후, 그는 35 - 2 = 33개의 골프공을 가지고 있었습니다.
+답: 33
+
+질문: Olivia는 23달러를 가지고 있습니다. 그녀는 개당 3달러인 베이글 5개를 샀습니다. 그녀에게 얼마가 남았나요?
+단계적으로 생각해봅시다.
+Olivia는 23달러를 가지고 있었습니다.
+개당 3달러인 베이글 5개는 5 * 3 = 15달러입니다.
+따라서 그녀에게는 23 - 15 = 8달러가 남았습니다.
+답: 8"""
+
 # --- Helper Functions ---
 def load_gsm8k_data(filepath):
     """Load GSM8K dataset from JSON file"""
@@ -141,34 +259,48 @@ def load_gsm8k_data(filepath):
         return None
 
 def create_gsm8k_prompt(item):
-    """Create GSM8K evaluation prompt"""
+    """Create GSM8K 8-shot CoT evaluation prompt following standard methodology"""
     question = item.get("question", "")
+    original = item.get("original", "")
+    
     if not question:
         logger.warning(f"No question found in item: {item}")
         return None
     
-    # Korean GSM8K prompt template with step-by-step instruction
-    prompt = f"""다음 수학 문제를 단계별로 풀어보세요. 마지막에 최종 답을 숫자로 제시하세요.
+    # Check if this is a Korean question (has both question and original fields, and they're different)
+    is_korean = original and question != original
+    
+    if is_korean:
+        # Use Korean 8-shot Chain-of-Thought prompt for Korean questions
+        prompt = f"""{GSM8K_8SHOT_KOR_COT_EXAMPLES}
 
-문제: {question}
+질문: {question}
+단계적으로 생각해봅시다."""
+    else:
+        # Use English 8-shot Chain-of-Thought prompt for English questions
+        prompt = f"""{GSM8K_8SHOT_COT_EXAMPLES}
 
-풀이:"""
+Question: {question}
+Let's think step by step."""
     
     return prompt
 
 def extract_numerical_answer(model_output):
     """
     Extract numerical answer from model output
-    Looks for patterns like "답: 18", "정답: 18.0", "Answer: 18" etc.
+    Prioritizes standard GSM8K CoT format "The answer is [number]"
+    Also handles Korean patterns like "답: 18", "정답: 18.0", etc.
     """
     # Clean the output
     cleaned_output = model_output.strip()
     
-    # Patterns to match numerical answers
+    # Patterns to match numerical answers - prioritize Korean and English standard formats
     patterns = [
-        r'(?:답|정답|Answer)[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 답: 18, 정답: 18.0
-        r'(?:답|정답|Answer)\s*(?:은|는|is)?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 답은 18
-        r'(?:따라서|그러므로|그러므로|그래서|결론적으로|최종적으로|Hence|Therefore)\s*(?:답|정답|answer)?[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 따라서 답: 18
+        r'답[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Korean format: "답: 18" (most common in our examples)
+        r'The answer is\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Standard English GSM8K format: "The answer is 18"
+        r'(?:정답|Answer)[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 정답: 18, Answer: 18
+        r'(?:답|정답|Answer)\s*(?:은|는|is)?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 답은 18, 정답은 18
+        r'(?:따라서|그러므로|그래서|결론적으로|최종적으로|Hence|Therefore)\s*(?:답|정답|answer)?[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 따라서 답: 18
         r'([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?)(?:\s*(?:입니다|이다|\.|\s*$))',  # 18 달러입니다
         r'(?:총|합계|전체|Total)\s*[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 총: 18
         r'=\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)(?:\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?))?(?:\s*$)',  # = 18

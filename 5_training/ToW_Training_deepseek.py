@@ -133,7 +133,7 @@ class ToWTrainingConfig:
     per_device_train_batch_size: int = 16  # Increased batch size
     per_device_eval_batch_size: int = 16  # Increased eval batch size
     gradient_accumulation_steps: int = 4  # Adjusted for larger batch size
-    lr_scheduler_type: str = "cosine"  # <-- 제안: 학습률 스케줄러 추가
+    lr_scheduler_type: str = "cosine" 
 
     
     # Smart text handling

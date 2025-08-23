@@ -136,6 +136,8 @@ class ToWTrainingConfig:
     per_device_train_batch_size: int = 16  # Increased batch size for more stability
     per_device_eval_batch_size: int = 16
     gradient_accumulation_steps: int = 4  # Reduced accumulation steps for quicker updates
+    lr_scheduler_type: str = "cosine" 
+
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -463,6 +465,7 @@ class ToWTrainer:
             gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
             warmup_ratio=self.training_config.warmup_ratio,
             weight_decay=self.training_config.weight_decay,
+            lr_scheduler_type=self.training_config.lr_scheduler_type,
             logging_dir=str(self.output_dir / "logs"),
             logging_steps=self.training_config.logging_steps,
             eval_strategy=self.training_config.eval_strategy,

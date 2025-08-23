@@ -48,4 +48,5 @@ klue_tc_results/
 __pycache__
 
 # RESULT FILES
-evaluation_results_*
+mmlu_*
+kmmlu_*

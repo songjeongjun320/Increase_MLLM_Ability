@@ -1,0 +1,14 @@
+2025-08-23 15:51:40,656 - INFO - [__main__] - --- Starting GSM8K Evaluation for Model: Qwen2.5-7B-Instruct (/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct) ---
+2025-08-23 15:51:40,656 - INFO - [__main__] - Output directory: gsm8k_hrm8k_zeroshot_results/Qwen2.5-7B-Instruct
+2025-08-23 15:51:40,656 - INFO - [__main__] - Results will be saved to: gsm8k_hrm8k_zeroshot_results/Qwen2.5-7B-Instruct/results_Qwen2.5-7B-Instruct.json
+2025-08-23 15:51:40,656 - INFO - [__main__] - Raw generations will be saved to: gsm8k_hrm8k_zeroshot_results/Qwen2.5-7B-Instruct/raw_generations_Qwen2.5-7B-Instruct.json
+2025-08-23 15:51:40,656 - INFO - [__main__] - Using Device: cuda, DType: torch.bfloat16
+2025-08-23 15:51:40,656 - INFO - [__main__] - Quantization: Disabled
+2025-08-23 15:51:40,656 - INFO - [__main__] - Loading tokenizer from: /scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct
+2025-08-23 15:51:40,871 - INFO - [__main__] - Loading model /scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct...
+2025-08-23 15:51:55,528 - INFO - [__main__] - Resizing model token embeddings from 152064 to 151665
+2025-08-23 15:51:55,559 - INFO - [__main__] - No LoRA adapter path specified. Using base model directly.
+2025-08-23 15:51:55,560 - INFO - [__main__] - Model and tokenizer loaded successfully.
+2025-08-23 15:51:55,560 - INFO - [__main__] - Starting GSM8K inference loop...
+2025-08-23 15:51:55,560 - INFO - [__main__] - Dataset size: 1319
+2025-08-23 16:09:07,433 - INFO - [__main__] - Progress (Qwen2.5-7B-Instruct): 100/1319, Acc: 45.00% (45/100), Errors/Skipped: 0

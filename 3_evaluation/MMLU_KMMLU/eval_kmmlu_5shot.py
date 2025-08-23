@@ -96,7 +96,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
-DATASET_PATH = "../DB/MMLU/MMLU_KO_Openai.json"  # Full Korean MMLU dataset with 57 subjects
+DATASET_PATH = "../../DB/MMLU/MMLU_origin.json"
 BASE_OUTPUT_DIR = "kmmlu_tow_model2_5shot" # Base dir for ALL model results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"

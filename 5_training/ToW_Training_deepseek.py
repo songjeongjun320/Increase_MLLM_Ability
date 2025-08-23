@@ -120,8 +120,8 @@ class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
-        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
-        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part1.json"
+        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json",
+        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part1.json",
         "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part2.json"
     ])
     output_base_dir: str = "ToW_Models_2"
@@ -133,6 +133,8 @@ class ToWTrainingConfig:
     per_device_train_batch_size: int = 16  # Increased batch size
     per_device_eval_batch_size: int = 16  # Increased eval batch size
     gradient_accumulation_steps: int = 4  # Adjusted for larger batch size
+    lr_scheduler_type: str = "cosine"  # <-- 제안: 학습률 스케줄러 추가
+
     
     # Smart text handling
     adaptive_max_length: bool = True
@@ -153,7 +155,7 @@ class ToWTrainingConfig:
     logging_steps: int = 250
     early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 0
+    dataloader_num_workers: int = 4
     remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True
@@ -461,6 +463,7 @@ class ToWTrainer:
             gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
             warmup_ratio=self.training_config.warmup_ratio,
             weight_decay=self.training_config.weight_decay,
+            lr_scheduler_type=self.training_config.lr_scheduler_type,
             logging_dir=str(self.output_dir / "logs"),
             logging_steps=self.training_config.logging_steps,
             eval_strategy=self.training_config.eval_strategy,

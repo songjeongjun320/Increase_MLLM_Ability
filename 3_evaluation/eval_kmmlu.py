@@ -21,52 +21,52 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        use_quantization=False # Adjust based on VRAM
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.1-8B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-0528-Qwen3-8B",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+    #     use_quantization=False # Adjust based on VRAM
+    # ),
     
     # TOW Trained Model
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.1-8B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+    #     use_quantization=False
+    # ),
 
     # TOW Model 2
     # ModelConfig(
@@ -81,18 +81,18 @@ MODEL_CONFIGS = [
     #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Mistral-8B-Instruct-2410-ToW",
     #     use_quantization=False
     # ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.1-8B-Instruct-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Llama-3.1-8B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.1-8B-Instruct-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        use_quantization=False
+    ),
 ]
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
@@ -444,7 +444,12 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             trust_remote_code=True # Necessary for some models
         )
 
-        # 3. Load the LoRA adapter with proper tokenizer handling
+        # 3. Resize model embeddings to match the tokenizer's vocabulary size BEFORE loading the adapter.
+        if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+            logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+            model.resize_token_embeddings(len(tokenizer))
+
+        # 4. Load the LoRA adapter onto the correctly-sized base model.
         if config.adapter_path:
             absolute_adapter_path = os.path.abspath(config.adapter_path)
             logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
@@ -453,35 +458,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 raise FileNotFoundError(f"Adapter path not found: {absolute_adapter_path}")
             
             try:
-                # Load adapter tokenizer to check vocabulary size
-                adapter_tokenizer = AutoTokenizer.from_pretrained(
-                    absolute_adapter_path,
-                    trust_remote_code=True,
-                    padding_side='left'
-                )
-                
-                # Check if vocabulary sizes differ
-                base_vocab_size = len(tokenizer)
-                adapter_vocab_size = len(adapter_tokenizer)
-                
-                logger.info(f"Base model vocab size: {base_vocab_size}")
-                logger.info(f"Adapter vocab size: {adapter_vocab_size}")
-                
-                # Resize model embeddings if needed BEFORE loading adapter
-                if adapter_vocab_size > base_vocab_size:
-                    logger.info(f"Resizing model embeddings from {base_vocab_size} to {adapter_vocab_size}")
-                    model.resize_token_embeddings(adapter_vocab_size)
-                    logger.info("Model embeddings resized")
-                    
-                    # Update tokenizer to match adapter
-                    tokenizer = adapter_tokenizer
-                    logger.info("Tokenizer updated to adapter version")
-                elif len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-                    # Standard resize if no adapter vocab size change
-                    logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
-                    model.resize_token_embeddings(len(tokenizer))
-                
-                # Now load the PEFT adapter
                 model = PeftModel.from_pretrained(model, absolute_adapter_path)
                 logger.info("Successfully loaded LoRA adapter.")
                 # Optional: Merge the adapter for faster inference
@@ -492,10 +468,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 raise e
         else:
             logger.info("No LoRA adapter path specified. Using the base model directly.")
-            # Standard resize for base model only
-            if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-                logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
-                model.resize_token_embeddings(len(tokenizer))
         # === END: LoRA Adapter Loading Logic ===
 
         # Handle tokenizer pad token ID config *after* model load
@@ -630,8 +602,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         errors_loop = sum(1 for r in results_details if r['predicted_answer'] is None and r['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed"])
         skipped_loop = sum(1 for r in results_details if r['model_raw_output'].startswith("SKIPPED"))
         accuracy_loop = (correct_pred_loop / valid_pred_loop * 100) if valid_pred_loop > 0 else 0
-        accuracy_strict_loop = (correct_pred_loop / len(test_data) * 100) if len(test_data) > 0 else 0
-
 
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
@@ -668,8 +638,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         logger.info(f"Correct Predictions: {correct_pred_loop}")
         logger.info(f"Errors (Inference/Extraction Failures): {errors_loop}")
         logger.info(f"Items Skipped (Invalid GT/Prompt): {skipped_loop}")
-        logger.info(f"Final 5-shot Korean MMLU Accuracy (Standard - Correct/Valid): {accuracy_loop:.2f}%")
-        logger.info(f"Final 5-shot Korean MMLU Accuracy (Strict - Correct/Total): {accuracy_strict_loop:.2f}%")
+        logger.info(f"Final 5-shot Korean MMLU Accuracy: {accuracy_loop:.2f}%")
 
         # --- Save Results ---
         final_summary = {
@@ -684,8 +653,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             "correct_predictions": correct_pred_loop,
             "errors_or_failures": errors_loop,
             "items_skipped": skipped_loop,
-            "accuracy_standard (correct / valid_predictions)": accuracy_loop,
-            "accuracy_strict (correct / total_test_items)": accuracy_strict_loop,
+            "accuracy": accuracy_loop,
             "subjects_with_dev_examples": list(dev_data.keys()),
             "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
             "details": results_details # Include detailed results
@@ -743,48 +711,6 @@ def main():
          print("-" * 60) # Add visual separator in console
 
     logger.info("All model evaluations complete.")
-
-    # --- Aggregate all results into a single file ---
-    logger.info("Aggregating results from all models into a single file...")
-    all_results = []
-    for config in MODEL_CONFIGS:
-        results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}.json")
-        if os.path.exists(results_filepath):
-            try:
-                with open(results_filepath, 'r', encoding='utf-8') as f:
-                    result_data = json.load(f)
-                    # Extract only the key summary metrics
-                    summary = {
-                        "model_name": result_data.get("model_config", {}).get("name"),
-                        "test_items": result_data.get("test_items"),
-                        "valid_predictions": result_data.get("valid_predictions"),
-                        "correct_predictions": result_data.get("correct_predictions"),
-                        "errors_or_failures": result_data.get("errors_or_failures"),
-                        "items_skipped": result_data.get("items_skipped"),
-                        "accuracy_standard": result_data.get("accuracy_standard (correct / valid_predictions)"),
-                        "accuracy_strict": result_data.get("accuracy_strict (correct / total_test_items)"),
-                    }
-                    all_results.append(summary)
-                logger.info(f"Aggregated summary for {config.name}")
-            except Exception as e:
-                logger.error(f"Failed to read or parse results file {results_filepath}: {e}")
-        else:
-            logger.warning(f"Could not find results file for model {config.name} at {results_filepath}")
-
-    if all_results:
-        final_results_path = os.path.join(BASE_OUTPUT_DIR, "final_results.json")
-        try:
-            with open(final_results_path, 'w', encoding='utf-8') as f:
-                def default_serializer(o):
-                    if isinstance(o, torch.dtype):
-                        return str(o)
-                    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
-                json.dump(all_results, f, indent=2, ensure_ascii=False, default=default_serializer)
-            logger.info(f"All model results have been aggregated into {final_results_path}")
-        except Exception as e:
-            logger.error(f"Failed to save aggregated results to {final_results_path}: {e}")
-    else:
-        logger.warning("No result files were found to aggregate.")
 
 
 if __name__ == "__main__":

@@ -125,15 +125,17 @@ class ToWTrainingConfig:
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
         "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json"
+        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part1.json"
+        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part2.json"
     ])
-    output_base_dir: str = "ToW_Models"
+    output_base_dir: str = "ToW_Models_2"
 
     # Training hyperparameters
     learning_rate: float = 1e-5  # Decreased learning rate for stability
     num_train_epochs: int = 10  # Increased epochs for more training time
     per_device_train_batch_size: int = 16  # Increased batch size for more stability
     per_device_eval_batch_size: int = 16
-    gradient_accumulation_steps: int = 2  # Reduced accumulation steps for quicker updates
+    gradient_accumulation_steps: int = 4  # Reduced accumulation steps for quicker updates
 
     # Smart text handling
     adaptive_max_length: bool = True
@@ -148,10 +150,10 @@ class ToWTrainingConfig:
 
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 500  # Evaluation frequency
+    eval_steps: int = 250  # Evaluation frequency
     save_strategy: str = "steps"
-    save_steps: int = 500  # Save frequency
-    logging_steps: int = 500  # Logging frequency
+    save_steps: int = 250  # Save frequency
+    logging_steps: int = 250  # Logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 4  # Increased workers for faster data loading

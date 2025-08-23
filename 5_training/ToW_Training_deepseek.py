@@ -132,7 +132,7 @@ class ToWTrainingConfig:
     num_train_epochs: int = 10  # Increased to 10 epochs
     per_device_train_batch_size: int = 16  # Increased batch size
     per_device_eval_batch_size: int = 16  # Increased eval batch size
-    gradient_accumulation_steps: int = 2  # Adjusted for larger batch size
+    gradient_accumulation_steps: int = 4  # Adjusted for larger batch size
     
     # Smart text handling
     adaptive_max_length: bool = True
@@ -147,10 +147,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 100
+    eval_steps: int = 250
     save_strategy: str = "steps"
-    save_steps: int = 100
-    logging_steps: int = 100
+    save_steps: int = 250
+    logging_steps: int = 250
     early_stopping_patience: int = 5  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 0

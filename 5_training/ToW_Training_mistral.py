@@ -129,9 +129,9 @@ class ToWTrainingConfig:
     
     # Training hyperparameters
     learning_rate: float = 2e-5  # This will be a fallback
-    num_train_epochs: int = 3
-    per_device_train_batch_size: int = 8
-    per_device_eval_batch_size: int = 8
+    num_train_epochs: int = 10
+    per_device_train_batch_size: int = 16
+    per_device_eval_batch_size: int = 16
     gradient_accumulation_steps: int = 4
     
     # Smart text handling
@@ -147,10 +147,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 100
+    eval_steps: int = 250
     save_strategy: str = "steps"
-    save_steps: int = 100
-    logging_steps: int = 100
+    save_steps: int = 250
+    logging_steps: int = 250
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 0

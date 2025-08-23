@@ -158,10 +158,10 @@ class ToWTrainingConfig:
     logging_steps: int = 250  # Logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 4  # Increased workers for faster data loading
+    dataloader_num_workers: int = 8  # Increased workers for faster data loading
     remove_unused_columns: bool = True
-    fp16: bool = True  # Enable fp16 for faster training
-    bf16: bool = False  # Disabled bf16 for simplicity
+    fp16: bool = False
+    bf16: bool = True
     gradient_checkpointing: bool = False  # Disabled gradient checkpointing for stability
 
 MODEL_CONFIGS = [

@@ -155,7 +155,7 @@ class ToWTrainingConfig:
     logging_steps: int = 250
     early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 4
+    dataloader_num_workers: int = 8
     remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True

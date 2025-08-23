@@ -156,8 +156,8 @@ class ToWTrainingConfig:
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8
     remove_unused_columns: bool = True
-    fp16: bool = True
-    bf16: bool = False
+    fp16: bool = False
+    bf16: bool = True
     gradient_checkpointing: bool = False
 
 

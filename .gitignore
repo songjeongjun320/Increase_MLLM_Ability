@@ -45,3 +45,6 @@ klue_tc_results/
 
 
 __pycache__
+
+# RESULT FILES
+evaluation_results_*

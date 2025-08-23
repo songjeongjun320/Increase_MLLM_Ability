@@ -128,7 +128,8 @@ class ToWTrainingConfig:
     output_base_dir: str = "ToW_Models_2"
     
     # Training hyperparameters
-    learning_rate: float = 5e-6  # Slightly higher learning rate
+    learning_rate: float = 1e-6  # Slightly higher learning rate
+    max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased to 10 epochs
     per_device_train_batch_size: int = 16  # Increased batch size
     per_device_eval_batch_size: int = 16  # Increased eval batch size
@@ -142,7 +143,7 @@ class ToWTrainingConfig:
     
     # Default settings
     max_sequence_length: int = 1024
-    warmup_ratio: float = 0.15  # Slightly higher warmup ratio for smoother learning
+    warmup_ratio: float = 0.1  # Slightly higher warmup ratio for smoother learning
     weight_decay: float = 0.1
     
     # Other settings
@@ -151,7 +152,7 @@ class ToWTrainingConfig:
     save_strategy: str = "steps"
     save_steps: int = 250
     logging_steps: int = 250
-    early_stopping_patience: int = 5  # Increased early stopping patience to prevent premature stopping
+    early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 0
     remove_unused_columns: bool = True

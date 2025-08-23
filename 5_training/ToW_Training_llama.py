@@ -128,6 +128,7 @@ class ToWTrainingConfig:
     
     # Training hyperparameters
     learning_rate: float = 2e-5  # This will be a fallback
+    max_grad_norm = 1.0
     num_train_epochs: int = 10
     per_device_train_batch_size: int = 16
     per_device_eval_batch_size: int = 16
@@ -463,6 +464,7 @@ class ToWTrainer:
             warmup_ratio=self.training_config.warmup_ratio,
             weight_decay=self.training_config.weight_decay,
             lr_scheduler_type=self.training_config.lr_scheduler_type,
+            max_grad_norm=self.training_config.max_grad_norm,
             logging_dir=str(self.output_dir / "logs"),
             logging_steps=self.training_config.logging_steps,
             eval_strategy=self.training_config.eval_strategy,

@@ -30,10 +30,10 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig, HarmCa
 PROJECT_ID = "gen-lang-client-0996841973"
 LOCATION = "us-central1"
 
-GEMINI_MODEL_ID = "gemini-2.0-flash-lite"
+GEMINI_MODEL_ID = "gemini-2.0-flash"
 
-INPUT_JSON_PATH = "./org_data/kornli_kobest-kostrategyqa.json"
-OUTPUT_JSON_PATH = "./gold_labels/kornli_kobest-kostrategyqa_next_word_prediction_gemini_2.0-flash-lite.json"
+INPUT_JSON_PATH = "./extracted_data/extract_over_19token.json"
+OUTPUT_JSON_PATH = "./gold_labels_extracted_data_kr_prompt/extract_over_19token_next_word_prediction_gemini_2.0-flash.json"
 
 # =================================================================
 # 수정 3: 배치 크기 및 저장 주기 설정 추가
@@ -49,54 +49,71 @@ def create_prompt(sentence: str) -> str:
     모델이 예측하기 가장 어려운 단어를 JSON 형식으로 출력하도록 유도하는
     상세한 Few-shot 프롬프트를 생성합니다.
     """
-    # (프롬프트 내용은 질문과 동일하므로 생략)
-    return f"""You are a language prediction expert. Your task is to find the single most unpredictable or surprising word in a given Korean sentence. This word is often a proper noun, a specific number, or a key piece of information that cannot be easily guessed.
-
-Analyze the sentence and output your answer in a JSON format with a single key "unpredictable_word". Don't choose proper noun such as name, date, time and number. Don't choose a first word of the sentence.
-
+    return f"""
+당신의 임무는 주어진 한국어 문장 내에서 가장 **"핵심적인(key)" 단어**들을 식별하는 것입니다.
+"핵심적인" 단어란, 주변 문맥만으로는 쉽게 추측할 수 없는 단어를 의미합니다. 이런 단어는 종종 새롭고 놀라운 정보를 도입하거나, 문장의 의미나 방향에 있어 중요한 전환점을 만듭니다.
 ---
+
+## 엄격한 규칙
+단어를 선택할 때는 아래의 규칙들을 반드시 따라야 합니다.
+1.  **핵심 원칙:**
+    *   선택된 단어는 놀라움을 주어야 하지만, **일단 읽고 나면 말이 되어야 합니다.**
+    *   즉, 앞선 문맥이 그 단어를 추측하는 데 필요한 단서의 일부는 제공하지만, 전부는 아니어야 합니다.
+2.  **선택 기준:**
+    *   문맥적으로 놀라움을 주는 단어를 선택해야 합니다.
+3.  **제외 규칙:**
+    *   **고유명사** (예: 이름, 장소, 지역, 브랜드, 날짜, 시간, 요일, 월, 년)는 선택하면 안 됩니다.
+    *   문장의 **첫 번째 단어**는 선택하면 안 됩니다.
+    *   **숫자**는 선택하면 안 됩니다.
+4.  **인접성 규칙:**
+    *   선택된 단어들은 문장 내에서 서로 바로 옆에 붙어 있으면 안 됩니다.
+    *   두 개의 선택된 단어 사이에는 최소 한 개 이상의 다른 단어가 있어야 합니다.
+5.  **수량:**
+    *   선택하는 단어의 개수는 문장의 길이나 복잡성에 따라 달라질 수 있습니다.
+---
+
+## 출력 형식
+*   당신의 출력물은 반드시 **`"key_word"`**라는 단일 키를 가진 **JSON 형식**이어야 합니다.
+*   **단일 단어 선택 시:** 값(value)은 **문자열(string)**이어야 합니다.
+---
+
 Example 1:
-Sentence: "심청효행대상은 가천문화재단 설립자인 이길여 가천길재단 회장이 지난 1999년에 고전소설 ‘심청전’의 배경인 인천광역시 옹진군 백령면에 심청동상을 제작, 기증한 것을 계기로 제정되었다."
-JSON Output:
-{{
-"unpredictable_word": "배경인"
-}}
-
----
-
-Example 2:
 Sentence: "숙소 예약한 시간까지 택시 타고 숙소에 도착하고 싶은데 삼청각에서 출발할 겁니다."
 JSON Output:
 {{
-"unpredictable_word": "도착하고"
+  "key_word": "도착하고"
 }}
 
 ---
+Example 2:
+Sentence: "심청효행대상은 가천문화재단 설립자인 이길여 가천길재단 회장이 지난 1999년에 고전소설 ‘심청전’의 배경인 인천광역시 옹진군 백령면에 심청동상을 제작, 기증한 것을 계기로 제정되었다."
+JSON Output:
+```json
+{{
+  "key_word": ["회장이", "기증한"]
+}}
+```
+---
 
 Example 3:
-Sentence: "추천해주시는 곳으로 가볼게요. 목요일에 갈건데 저희가 10명이거든요. 4일 예약이 가능할까요?"
+Sentence: "C 여학교에서 교원 겸 기숙사 사감 노릇을 하는 B 여사라면 딱장대요 독신주의자요 찰진 야소군으로 유명하다.\n사십에 가까운 노처녀인 그는 주근깨투성이 얼굴이 처녀다운 맛이란 약에 쓰려도 찾을 수 없을 뿐인가, 시들고 거칠고 마르고 누렇게 뜬 품이 곰팡 슬은 굴비를 생각나게 한다.\n여러 겹주름이 잡힌 훨렁 벗겨진 이마라든지, 숱이 적어서 법대로 쪽지거나 틀어 올리지를 못하고 엉성하게 그냥 빗어넘긴 머리꼬리가 뒤통수에 염소 똥만 하게 붙은 것이라든지, 벌써 늙어가는 자취를 감출 길이 없었다.\n
 JSON Output:
+```json
 {{
-"unpredictable_word": "가능할까요"
+  "key_word": ["독신주의자요", "얼굴이", "적어서"]
 }}
+```
 
 ---
 
 Example 4:
-Sentence: "C 여학교에서 교원 겸 기숙사 사감 노릇을 하는 B 여사라면 딱장대요 독신주의자요 찰진 야소군으로 유명하다.\n사십에 가까운 노처녀인 그는 주근깨투성이 얼굴이 처녀다운 맛이란 약에 쓰려도 찾을 수 없을 뿐인가, 시들고 거칠고 마르고 누렇게 뜬 품이 곰팡 슬은 굴비를 생각나게 한다.\n여러 겹주름이 잡힌 훨렁 벗겨진 이마라든지, 숱이 적어서 법대로 쪽지거나 틀어 올리지를 못하고 엉성하게 그냥 빗어넘긴 머리꼬리가 뒤통수에 염소 똥만 하게 붙은 것이라든지, 벌써 늙어가는 자취를 감출 길이 없었다.\n뾰족한 입을 앙다물고 돋보기 너머로 쌀쌀한 눈이 노릴 때엔 기숙생들이 오싹하고 몸서리를 치리만큼 그는 엄격하고 매서웠다.\n이 B 여사가 질겁을 하다시피 싫어하고 미워하는 것은 소위 '러브레터'였다.\n여학교 기숙사라면 으레 그런 편지가 많이 오는 것이지만 학교로도 유명하고 또 아름다운 여학생이 많은 탓인지 모르되 하루에도 몇 장씩 죽느니 사느니 하는 사랑 타령이 날아들어 왔었다.\n기숙생에게 오는 사신을 일일이 검토하는 터이니까 그따위 편지도 물론 B 여사의 손에 떨어진다.\n달짝지근한 사연을 보는 족족 그는 더할 수 없이 흥분되어서 얼굴이 붉으락푸르락, 편지 든 손이 발발 떨리도록 성을 낸다.\n아무 까닭 없이 그런 편지를 받은 학생이야말로 큰 재변이었다.\n하학하기가 무섭게 그 학생은 사감실로 불리어 간다.\n분해서 못 견디겠다는 사람 모양으로 쌔근쌔근하며 방안을 왔다 갔다 하던 그는, 들어오는 학생을 잡아먹을 듯이 노리면서 한 걸음 두 걸음 코가 맞닿을 만큼 바싹 다가들어서 딱 마주 선다."
+Sentence: "웬 영문인지 알지 못하면서도 선생의 기색을 살피고 겁부터 집어먹은 학생은 한동안 어쩔 줄 모르다가 간신히 모기만 한 소리로,\n"저를 부르셨어요?"\n하고 묻는다.\n"그래 불렀다. 왜!"\n팍 무는 듯이 한마디 하고 나서 매우 못마땅한 것처럼 교의를 우당퉁탕 당겨서 철썩 주저앉았다가 그저 서 있는 걸 보면,\n"장승이냐? 왜 앉지를 못해!"\n하고 또 소리를 빽 지르는 법이었다.\n스승과 제자는 조그마한 책상 하나를 새에 두고 마주 앉는다.\n앉은 뒤에도,\n"네 죄상을 네가 알지!"
 JSON Output:
-{{
-"unpredictable_word": "얼굴이"
-}}
-
----
-
-Example 5:
-Sentence: "웬 영문인지 알지 못하면서도 선생의 기색을 살피고 겁부터 집어먹은 학생은 한동안 어쩔 줄 모르다가 간신히 모기만 한 소리로,\n"저를 부르셨어요?"\n하고 묻는다.\n"그래 불렀다. 왜!"\n팍 무는 듯이 한마디 하고 나서 매우 못마땅한 것처럼 교의를 우당퉁탕 당겨서 철썩 주저앉았다가 그저 서 있는 걸 보면,\n"장승이냐? 왜 앉지를 못해!"\n하고 또 소리를 빽 지르는 법이었다.\n스승과 제자는 조그마한 책상 하나를 새에 두고 마주 앉는다.\n앉은 뒤에도,\n"네 죄상을 네가 알지!"\n하는 것처럼 아무 말 없이 눈살로 쏘기만 하다가 한참 만에야 그 편지를 끄집어내어 학생의 코앞에 동댕이치며,\n"이건 누구한테 오는 거냐?"\n하고, 문초를 시작한다.\n앞장에 제 이름이 쓰였는지라,\n"저한테 온 것이에요."\n하고, 대답하지 않을 수 없다.\n그러면 발신인이 누구인 것을 재차 묻는다.\n그런 편지의 항용으로 발신인의 성명이 똑똑지 않기 때문에 주저주저하다가 자세히 알 수 없다고 내 대일 양이면,\n"너한테 오는 것을 네가 모른단 말이냐?"\n고, 불호령을 내린 뒤에 또 사연을 읽어 보라 하여 무심한 학생이 나직나직하나마 꿀 같은 구절을 입술에 올리면, B 여사의 역정은 더욱 심해져서 어느 놈의 소위인 것을 기어이 알려 한다.\n기실 보지도 듣지도 못한 남성의 한 노릇이요, 자기에게는 아무 죄도 없는 것을 변명하여도 곧이듣지를 않는다.\n바른대로 아뢰어야 망정이지 그렇지 않으면 퇴학을 시킨다는 둥, 제 이름도 모르는 여자에게 편지할 리가 만무하다는 둥, 필연 행실이 부정한 일이 있으리라는 둥…"
-JSON Output:
-{{
-"unpredictable_word": "집어먹은"
-}}
+```json
+{{{{
+"key_word": ["집어먹은", "부르셨어요", "못마땅한", "못해", "제자는"]
+}}}}
+```
 ---
 
 Now, analyze this sentence:
@@ -109,7 +126,7 @@ JSON Output:"""
 async def generate_with_backoff(model, prompt, generation_config):
     """지수 백오프를 사용하여 API를 호출하고, 실패 시 재시도합니다."""
     max_retries = 5
-    base_delay = 2  # 초
+    base_delay = 1.5  # 초
 
     for i in range(max_retries):
         try:
@@ -177,7 +194,7 @@ async def generate_prediction_dataset_async():
     
     generation_config = GenerationConfig(
         temperature=0.0,
-        max_output_tokens=100
+        max_output_tokens=2048
     )
 
     # =================================================================
@@ -209,6 +226,7 @@ async def generate_prediction_dataset_async():
     except FileNotFoundError:
         logging.error(f"입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
         return
+
 
     # 이미 처리된 데이터를 제외
     data_to_process = [item for item in all_data if item.get('id') not in processed_ids]
@@ -256,42 +274,60 @@ async def generate_prediction_dataset_async():
 
                 try:
                     raw_output = response.text
-                    predicted_word = None
+                    predicted_words = None  # 단일 단어 또는 리스트를 받을 변수
                     
-                    json_match = re.search(r'{\s*"unpredictable_word":\s*".*?"\s*}', raw_output, re.DOTALL)
+                    # 수정: 배열과 문자열을 모두 포함할 수 있는 더 유연한 정규식
+                    json_match = re.search(r'\{\s*"key_word":\s*(\[.*?\]|".*?")\s*\}', raw_output, re.DOTALL)
+                    
                     if json_match:
-                        json_str = json_match.group(0)
-                        parsed_json = json.loads(json_str)
-                        predicted_word = parsed_json.get("unpredictable_word")
+                        # 그룹 1에 있는 값 (배열 또는 문자열)을 포함하여 전체 JSON을 재구성
+                        json_str = f'{{"key_word": {json_match.group(1)}}}'
+                        try:
+                            parsed_json = json.loads(json_str)
+                            predicted_words = parsed_json.get("key_word")
+                        except json.JSONDecodeError:
+                            logging.warning(f"JSON 파싱 실패. ID: {item.get('id')}, Matched string: {json_str}")
+                            error_count += 1
+                            continue
 
-                    if not predicted_word:
-                        logging.warning(f"파싱 실패. ID: {item.get('id')}, 응답에서 'unpredictable_word'를 찾을 수 없음. Raw Output: {raw_output}")
+                    if not predicted_words:
+                        logging.warning(f"파싱 실패. ID: {item.get('id')}, 응답에서 'key_word'를 찾을 수 없음. Raw Output: {raw_output}")
                         error_count += 1
                         continue
 
                     original_sentence = item['sentence']
-                    if predicted_word in original_sentence:
-                        index = original_sentence.find(predicted_word) # find가 더 안전
+                    
+                    # 예측된 단어가 리스트가 아니면 리스트로 변환하여 일관성 유지
+                    if not isinstance(predicted_words, list):
+                        predicted_words = [predicted_words]
+
+                    # 문장 안에 실제로 존재하는 유효한 단어만 필터링
+                    valid_words = [word for word in predicted_words if isinstance(word, str) and word in original_sentence]
+
+                    if valid_words:
+                        # 첫 번째 유효한 단어를 기준으로 컨텍스트 생성
+                        first_word = valid_words[0]
+                        index = original_sentence.find(first_word)
                         context = original_sentence[:index].strip()
-                        gold_label = predicted_word
 
                         if not context:
-                            logging.warning(f"컨텍스트 없음. ID: {item.get('id')}, Predicted: '{predicted_word}', Sentence: '{original_sentence}'")
+                            logging.warning(f"컨텍스트 없음. ID: {item.get('id')}, First Word: '{first_word}', Sentence: '{original_sentence}'")
                             error_count += 1
                             continue
 
+                        # 하나의 객체로 결과 저장
                         new_item = {
                             'id': item['id'],
                             'original_sentence': original_sentence,
                             'context': context,
-                            'gold_label': gold_label
+                            'gold_label': valid_words # gold_label에 단어 리스트 저장
                         }
                         results.append(new_item)
                     else:
-                        logging.warning(f"예측 단어 없음. ID: {item.get('id')}, Predicted: '{predicted_word}', Sentence: '{original_sentence}'")
+                        logging.warning(f"유효한 예측 단어 없음. ID: {item.get('id')}, Predicted: '{predicted_words}', Sentence: '{original_sentence}'")
                         error_count += 1
                         continue
-
+                
                 except (json.JSONDecodeError, ValueError, TypeError) as e:
                     error_type = type(e).__name__
                     # 수정: raw_output이 없을 수 있으므로 예외 'e'를 직접 로깅
@@ -312,6 +348,8 @@ async def generate_prediction_dataset_async():
             # 주기적 저장 로직
             if len(results) - last_save_count >= SAVE_INTERVAL:
                 logging.info(f"중간 저장: 총 {len(results)}개의 결과를 파일에 저장합니다. (이번 실행에서 {processed_count_this_run}개 처리)")
+                # 추가: 저장하기 전에 디렉터리가 있는지 확인하고 없으면 생성
+                os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
                 with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
                     json.dump(results, f, ensure_ascii=False, indent=2)
                 last_save_count = len(results)
@@ -330,6 +368,8 @@ async def generate_prediction_dataset_async():
         logging.info(f"  - 이번 실행에서 오류 또는 건너뛴 문장: {error_count}")
         
         logging.info(f"  - '{OUTPUT_JSON_PATH}' 파일에 최종 결과를 저장합니다.")
+        # 추가: 저장하기 전에 디렉터리가 있는지 확인하고 없으면 생성
+        os.makedirs(os.path.dirname(OUTPUT_JSON_PATH), exist_ok=True)
         with open(OUTPUT_JSON_PATH, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         logging.info("저장 완료.")

@@ -144,15 +144,30 @@ def create_5shot_prompt(item, examples, dataset_type="arc"):
     
     return "\n".join(prompt_parts)
 
-def extract_answer_first_token(model_output):
+def extract_answer_robust(model_output: str) -> str:
     """
-    Extract answer from model output using first token approach.
+    Extracts the final answer (A, B, C, D) from the model's full output.
+    It looks for explicit answer declarations to avoid accidental matches in the reasoning part.
     """
-    cleaned_output = model_output.strip().upper()
-    for char in cleaned_output:
-        if char in ['A', 'B', 'C', 'D']:
-            return char
-    return None
+    # 1. 가장 강력한 패턴: "the answer is A", "So the answer is B", etc.
+    # 문장 끝에 마침표(.)가 있든 없든, 괄호가 있든 없든 처리
+    pattern = r"(?:the\s*(?:correct|final)?\s*answer\s*is|따라서 답은)\s*\(?([A-D])\)?"
+    matches = re.findall(pattern, model_output, re.IGNORECASE)
+    if matches:
+        return matches[-1].upper()  # 여러 번 등장하면 가장 마지막 것을 선택
+
+    # 2. 차선책 패턴: "Option A is correct", "선택지 B가 정답"
+    pattern2 = r"(?:Option|선택지)\s+([A-D])\s*(?:is correct|가 정답)"
+    matches2 = re.findall(pattern2, model_output, re.IGNORECASE)
+    if matches2:
+        return matches2[-1].upper()
+
+    # 3. 최후의 수단: 모델이 단 하나의 알파벳만 출력한 경우를 대비
+    cleaned_output = model_output.strip()
+    if cleaned_output in ['A', 'B', 'C', 'D']:
+        return cleaned_output
+
+    return None  # 모든 패턴을 찾지 못하면 실패
 
 def load_arc_data(filepath):
     """Loads ARC data from a JSON file."""
@@ -320,7 +335,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
 
                     for j, (item, ground_truth, gen_text) in enumerate(zip(valid_items_in_batch, ground_truths, decoded_outputs)):
                         generated_text_log = gen_text.strip()
-                        model_answer_log = extract_answer_first_token(generated_text_log)
+                        model_answer_log = extract_answer_robust(generated_text_log)
                         is_correct_log = False
 
                         if model_answer_log:

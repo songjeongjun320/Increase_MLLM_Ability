@@ -226,10 +226,10 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     
     return "\n".join(prompt_parts)
 
-def extract_answer_first_token(model_output):
+def extract_final_answer(model_output):
     """
-    Extract answer from model output using multiple strategies.
-    Prioritizes patterns that appear later in the text (final answer).
+    Extract the final answer (A or B) from model output using multiple strategies.
+    Prioritizes patterns that appear later in the text to capture the final conclusion.
     """
     if not model_output:
         return None
@@ -334,7 +334,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             # Decode the full sequence (prompt + generation)
             full_text = tokenizer.decode(sequence, skip_special_tokens=True).strip()
             
-            extracted_answer = extract_answer_first_token(generated_text)
+            extracted_answer = extract_final_answer(generated_text)
             
             batch_results.append({
                 'index': batch_indices[i],
@@ -368,7 +368,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                 # Decode the full sequence (prompt + generation)
                 full_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
                 
-                extracted_answer = extract_answer_first_token(generated_text)
+                extracted_answer = extract_final_answer(generated_text)
                 
                 individual_results.append({
                     'index': idx,

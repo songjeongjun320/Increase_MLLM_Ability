@@ -73,7 +73,7 @@ MODEL_CONFIGS = [
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_Ko.json"
 BASE_OUTPUT_DIR = "mmlu_prox_5shot"
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 MAX_NEW_TOKENS = 256
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -135,18 +135,18 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
     },
     {
         "question": "What is the derivative of f(x) = x³ + 2x² - 5x + 3?",
-        "option_0": "3x² + 4x - 5",
+        "option_0": "3x + 4",
         "option_1": "x² + 2x - 5",
         "option_2": "3x² + 4x + 5", 
         "option_3": "x³ + 4x - 5",
-        "option_4": "3x + 4",
+        "option_4": "3x² + 4x - 5",
         "option_5": "6x + 4",
         "option_6": "3x² - 5",
         "option_7": "x² + 4x",
         "option_8": "3x² + 2x - 5",
         "option_9": "Cannot be determined",
-        "answer": "A",
-        "answer_index": 0
+        "answer": "E",
+        "answer_index": 4
     },
     {
         "question": "Which economic theory suggests that government spending can stimulate economic growth during recessions?",
@@ -169,17 +169,17 @@ KOREAN_FEW_SHOT_EXAMPLES = [
     {
         "question": "DNA 복제에 관한 다음 설명 중 올바른 것은?",
         "option_0": "DNA 복제는 3'에서 5' 방향으로 일어난다",
-        "option_1": "DNA 복제는 반보존적이다",
+        "option_1": "DNA 복제는 불연속적이다",
         "option_2": "DNA 복제는 유사분열 동안에만 일어난다",
         "option_3": "DNA 복제는 동일한 사본을 만든다",
         "option_4": "DNA 복제는 보존적이다",
         "option_5": "DNA 복제는 양방향으로 일어난다",
-        "option_6": "DNA 복제는 불연속적이다",
+        "option_6": "DNA 복제는 반보존적이다",
         "option_7": "위의 모든 것",
         "option_8": "위의 것 중 없음",
         "option_9": "DNA 복제는 연속적이다",
-        "answer": "B",
-        "answer_index": 1
+        "answer": "G",
+        "answer_index": 6
     },
     {
         "question": "진핵세포에서 미토콘드리아의 주요 기능은 무엇인가?",
@@ -199,17 +199,17 @@ KOREAN_FEW_SHOT_EXAMPLES = [
     {
         "question": "운동하는 물체가 계속 운동하려는 경향을 설명하는 물리학 원리는?",
         "option_0": "뉴턴의 제2법칙",
-        "option_1": "뉴턴의 제1법칙",
+        "option_1": "후크의 법칙",
         "option_2": "뉴턴의 제3법칙",
         "option_3": "에너지 보존 법칙",
         "option_4": "운동량 보존 법칙",
         "option_5": "베르누이의 원리",
         "option_6": "아르키메데스의 원리",
         "option_7": "파스칼의 원리",
-        "option_8": "후크의 법칙",
+        "option_8": "뉴턴의 제1법칙",
         "option_9": "쿨롱의 법칙",
-        "answer": "B",
-        "answer_index": 1
+        "answer": "I",
+        "answer_index": 8
     },
     {
         "question": "f(x) = x³ + 2x² - 5x + 3의 도함수는?",
@@ -229,17 +229,17 @@ KOREAN_FEW_SHOT_EXAMPLES = [
     {
         "question": "경기 침체기에 정부 지출이 경제 성장을 촉진할 수 있다고 주장하는 경제 이론은?",
         "option_0": "통화주의",
-        "option_1": "케인즈 경제학",
+        "option_1": "오스트리아 경제학",
         "option_2": "공급 경제학",
-        "option_3": "오스트리아 경제학",
+        "option_3": "케인즈 경제학",
         "option_4": "고전 경제학",
         "option_5": "행동 경제학",
         "option_6": "신고전 경제학",
         "option_7": "시카고 학파 경제학",
         "option_8": "포스트 케인즈 경제학",
         "option_9": "제도 경제학",
-        "answer": "B",
-        "answer_index": 1
+        "answer": "D",
+        "answer_index": 3
     }
 ]
 
@@ -496,7 +496,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         # Load Model and Tokenizer
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, padding_side='left', cache_dir=CACHE_DIR)
         
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token

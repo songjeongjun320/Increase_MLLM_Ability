@@ -481,13 +481,24 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
 
         logger.info(f"Ko-PIQA evaluation completed: {all_results['ko_piqa']['correct']}/{all_results['ko_piqa']['total']}")
 
-        # Calculate accuracies
-        piqa_accuracy = (all_results["piqa"]["correct"] / all_results["piqa"]["total"] * 100) if all_results["piqa"]["total"] > 0 else 0
-        ko_piqa_accuracy = (all_results["ko_piqa"]["correct"] / all_results["ko_piqa"]["total"] * 100) if all_results["ko_piqa"]["total"] > 0 else 0
+        # Calculate accuracies - both standard and strict
+        # Standard accuracy: based on valid predictions only
+        piqa_accuracy_standard = (all_results["piqa"]["correct"] / all_results["piqa"]["total"] * 100) if all_results["piqa"]["total"] > 0 else 0
+        ko_piqa_accuracy_standard = (all_results["ko_piqa"]["correct"] / all_results["ko_piqa"]["total"] * 100) if all_results["ko_piqa"]["total"] > 0 else 0
+        
+        # Strict accuracy: based on total dataset including errors/skips
+        piqa_accuracy_strict = (all_results["piqa"]["correct"] / len(piqa_data) * 100) if len(piqa_data) > 0 else 0
+        ko_piqa_accuracy_strict = (all_results["ko_piqa"]["correct"] / len(ko_piqa_data) * 100) if len(ko_piqa_data) > 0 else 0
+        
+        # Calculate error/skip counts
+        piqa_errors_skipped = len(piqa_data) - all_results["piqa"]["total"]
+        ko_piqa_errors_skipped = len(ko_piqa_data) - all_results["ko_piqa"]["total"]
 
         logger.info(f"--- Final Results for {config.name} ---")
-        logger.info(f"PIQA Accuracy: {piqa_accuracy:.2f}% ({all_results['piqa']['correct']}/{all_results['piqa']['total']})")
-        logger.info(f"Ko-PIQA Accuracy: {ko_piqa_accuracy:.2f}% ({all_results['ko_piqa']['correct']}/{all_results['ko_piqa']['total']})")
+        logger.info(f"PIQA Standard Accuracy: {piqa_accuracy_standard:.2f}% ({all_results['piqa']['correct']}/{all_results['piqa']['total']})")
+        logger.info(f"PIQA Strict Accuracy: {piqa_accuracy_strict:.2f}% ({all_results['piqa']['correct']}/{len(piqa_data)}) [Errors/Skipped: {piqa_errors_skipped}]")
+        logger.info(f"Ko-PIQA Standard Accuracy: {ko_piqa_accuracy_standard:.2f}% ({all_results['ko_piqa']['correct']}/{all_results['ko_piqa']['total']})")
+        logger.info(f"Ko-PIQA Strict Accuracy: {ko_piqa_accuracy_strict:.2f}% ({all_results['ko_piqa']['correct']}/{len(ko_piqa_data)}) [Errors/Skipped: {ko_piqa_errors_skipped}]")
 
         # Save Results
         final_summary = {
@@ -495,17 +506,21 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
             "evaluation_type": "5-shot PIQA/Ko-PIQA",
             "evaluation_date": datetime.now().isoformat(),
             "piqa_results": {
-                "accuracy": piqa_accuracy,
+                "accuracy_standard": piqa_accuracy_standard,
+                "accuracy_strict": piqa_accuracy_strict,
                 "correct_predictions": all_results["piqa"]["correct"],
                 "total_predictions": all_results["piqa"]["total"],
                 "total_items": len(piqa_data),
+                "errors_or_skipped": piqa_errors_skipped,
                 "details": all_results["piqa"]["details"]
             },
             "ko_piqa_results": {
-                "accuracy": ko_piqa_accuracy,
+                "accuracy_standard": ko_piqa_accuracy_standard,
+                "accuracy_strict": ko_piqa_accuracy_strict,
                 "correct_predictions": all_results["ko_piqa"]["correct"],
                 "total_predictions": all_results["ko_piqa"]["total"],
                 "total_items": len(ko_piqa_data),
+                "errors_or_skipped": ko_piqa_errors_skipped,
                 "details": all_results["ko_piqa"]["details"]
             }
         }
@@ -523,24 +538,36 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
 
         return {
             "model_name": config.name,
-            "piqa_accuracy": piqa_accuracy,
-            "ko_piqa_accuracy": ko_piqa_accuracy,
+            "piqa_accuracy_standard": piqa_accuracy_standard,
+            "piqa_accuracy_strict": piqa_accuracy_strict,
+            "ko_piqa_accuracy_standard": ko_piqa_accuracy_standard,
+            "ko_piqa_accuracy_strict": ko_piqa_accuracy_strict,
             "piqa_correct": all_results["piqa"]["correct"],
             "piqa_total": all_results["piqa"]["total"],
+            "piqa_total_items": len(piqa_data),
+            "piqa_errors_skipped": piqa_errors_skipped,
             "ko_piqa_correct": all_results["ko_piqa"]["correct"],
-            "ko_piqa_total": all_results["ko_piqa"]["total"]
+            "ko_piqa_total": all_results["ko_piqa"]["total"],
+            "ko_piqa_total_items": len(ko_piqa_data),
+            "ko_piqa_errors_skipped": ko_piqa_errors_skipped
         }
 
     except Exception as e:
         logger.exception(f"Critical error during evaluation for {config.name}: {e}")
         return {
             "model_name": config.name,
-            "piqa_accuracy": 0.0,
-            "ko_piqa_accuracy": 0.0,
+            "piqa_accuracy_standard": 0.0,
+            "piqa_accuracy_strict": 0.0,
+            "ko_piqa_accuracy_standard": 0.0,
+            "ko_piqa_accuracy_strict": 0.0,
             "piqa_correct": 0,
             "piqa_total": 0,
+            "piqa_total_items": len(piqa_data) if 'piqa_data' in locals() else 0,
+            "piqa_errors_skipped": len(piqa_data) if 'piqa_data' in locals() else 0,
             "ko_piqa_correct": 0,
             "ko_piqa_total": 0,
+            "ko_piqa_total_items": len(ko_piqa_data) if 'ko_piqa_data' in locals() else 0,
+            "ko_piqa_errors_skipped": len(ko_piqa_data) if 'ko_piqa_data' in locals() else 0,
             "error": str(e)
         }
     finally:
@@ -586,10 +613,14 @@ def main():
         },
         "model_results": all_model_results,
         "summary_statistics": {
-            "best_piqa_model": max(all_model_results, key=lambda x: x.get("piqa_accuracy", 0))["model_name"] if all_model_results else "N/A",
-            "best_ko_piqa_model": max(all_model_results, key=lambda x: x.get("ko_piqa_accuracy", 0))["model_name"] if all_model_results else "N/A",
-            "average_piqa_accuracy": sum(x.get("piqa_accuracy", 0) for x in all_model_results) / len(all_model_results) if all_model_results else 0,
-            "average_ko_piqa_accuracy": sum(x.get("ko_piqa_accuracy", 0) for x in all_model_results) / len(all_model_results) if all_model_results else 0
+            "best_piqa_model_standard": max(all_model_results, key=lambda x: x.get("piqa_accuracy_standard", 0))["model_name"] if all_model_results else "N/A",
+            "best_piqa_model_strict": max(all_model_results, key=lambda x: x.get("piqa_accuracy_strict", 0))["model_name"] if all_model_results else "N/A",
+            "best_ko_piqa_model_standard": max(all_model_results, key=lambda x: x.get("ko_piqa_accuracy_standard", 0))["model_name"] if all_model_results else "N/A",
+            "best_ko_piqa_model_strict": max(all_model_results, key=lambda x: x.get("ko_piqa_accuracy_strict", 0))["model_name"] if all_model_results else "N/A",
+            "average_piqa_accuracy_standard": sum(x.get("piqa_accuracy_standard", 0) for x in all_model_results) / len(all_model_results) if all_model_results else 0,
+            "average_piqa_accuracy_strict": sum(x.get("piqa_accuracy_strict", 0) for x in all_model_results) / len(all_model_results) if all_model_results else 0,
+            "average_ko_piqa_accuracy_standard": sum(x.get("ko_piqa_accuracy_standard", 0) for x in all_model_results) / len(all_model_results) if all_model_results else 0,
+            "average_ko_piqa_accuracy_strict": sum(x.get("ko_piqa_accuracy_strict", 0) for x in all_model_results) / len(all_model_results) if all_model_results else 0
         }
     }
 
@@ -601,7 +632,9 @@ def main():
     logger.info(f"Evaluation complete. Summary saved to: {summary_filepath}")
     logger.info("=== FINAL SUMMARY ===")
     for result in all_model_results:
-        logger.info(f"{result['model_name']}: PIQA {result.get('piqa_accuracy', 0):.2f}%, Ko-PIQA {result.get('ko_piqa_accuracy', 0):.2f}%")
+        logger.info(f"{result['model_name']}:")
+        logger.info(f"  PIQA Standard: {result.get('piqa_accuracy_standard', 0):.2f}% | Strict: {result.get('piqa_accuracy_strict', 0):.2f}%")
+        logger.info(f"  Ko-PIQA Standard: {result.get('ko_piqa_accuracy_standard', 0):.2f}% | Strict: {result.get('ko_piqa_accuracy_strict', 0):.2f}%")
 
 if __name__ == "__main__":
     main()

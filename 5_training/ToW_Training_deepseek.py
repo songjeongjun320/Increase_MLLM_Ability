@@ -130,8 +130,8 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # Slightly higher learning rate
     max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased to 10 epochs
-    per_device_train_batch_size: int = 8  # Increased batch size
-    per_device_eval_batch_size: int = 8  # Increased eval batch size
+    per_device_train_batch_size: int = 16  # Increased batch size
+    per_device_eval_batch_size: int = 2  # Increased eval batch size
     gradient_accumulation_steps: int = 4  # Adjusted for larger batch size
     lr_scheduler_type: str = "cosine" 
 
@@ -149,10 +149,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 500
+    eval_steps: int = 250
     save_strategy: str = "steps"
-    save_steps: int = 500
-    logging_steps: int = 500
+    save_steps: int = 250
+    logging_steps: int = 250
     early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8

@@ -100,7 +100,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_origin.json"
 BASE_OUTPUT_DIR = "mmlu_tow_model1_zeroshot" # 0-shot evaluation results
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 

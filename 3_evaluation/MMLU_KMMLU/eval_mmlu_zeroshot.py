@@ -43,30 +43,30 @@ MODEL_CONFIGS = [
     ),
 
     # TOW Trained Model
-    # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-7B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Mistral-8B-Instruct-2410-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Llama-3.1-8B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        use_quantization=False
+    ),
 
 
     # TOW Model 2
@@ -99,7 +99,7 @@ MODEL_CONFIGS = [
 
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_origin.json"
-BASE_OUTPUT_DIR = "mmlu_tow_model1_zeroshot" # 0-shot evaluation results
+BASE_OUTPUT_DIR = "mmlu_model1_zeroshot" # 0-shot evaluation results
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -242,7 +242,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     padding_side='left',  # <--- 이 라인을 추가하세요!
                     trust_remote_code=True # Qwen 등 일부 모델은 이 옵션이 필요할 수 있습니다.
                 )  
-                      
+
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 

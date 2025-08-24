@@ -109,7 +109,7 @@ DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
 BASE_OUTPUT_DIR = "gsm8k_hrm8k_zeroshot_results"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 
 # --- Logging Setup ---
 logging.basicConfig(

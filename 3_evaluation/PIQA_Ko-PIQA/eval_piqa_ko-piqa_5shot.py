@@ -387,7 +387,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
 
         # Evaluate PIQA (English)
         logger.info("Starting PIQA (English) evaluation...")
-        for i in range(0, len(piqa_data), BATCH_SIZE):
+        for i in tqdm(range(0, len(piqa_data), BATCH_SIZE), desc="Evaluating PIQA (English)"):
             batch_data = piqa_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
@@ -435,7 +435,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
 
         # Evaluate Ko-PIQA (Korean)
         logger.info("Starting Ko-PIQA (Korean) evaluation...")
-        for i in range(0, len(ko_piqa_data), BATCH_SIZE):
+        for i in tqdm(range(0, len(ko_piqa_data), BATCH_SIZE), desc="Evaluating Ko-PIQA (Korean)"):
             batch_data = ko_piqa_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []

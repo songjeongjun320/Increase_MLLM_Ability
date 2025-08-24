@@ -11,6 +11,15 @@ import gc
 import sys
 from datetime import datetime
 
+# Import performance analyzer
+try:
+    import sys
+    sys.path.append('../')
+    from performance_analyzer import create_enhanced_summary
+except ImportError:
+    logger.warning("Performance analyzer not available. Using basic summary.")
+    create_enhanced_summary = None
+
 # --- Model Configuration ---
 @dataclass
 class ModelConfig:
@@ -74,7 +83,7 @@ MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_Ko.json"
 BASE_OUTPUT_DIR = "mmlu_prox_5shot"
 BATCH_SIZE = 8
-MAX_NEW_TOKENS = 256
+MAX_NEW_TOKENS = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -269,9 +278,9 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
         prompt_parts.append(f"Question: {question}")
         prompt_parts.extend(options)
         if language == "ko":
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {correct_answer}입니다.")
+            prompt_parts.append(f"Answer: {correct_answer}")
         else:
-            prompt_parts.append(f"Response: Let's think step by step. [thinking process] So the answer is {correct_answer}.")
+            prompt_parts.append(f"Answer: {correct_answer}")
         prompt_parts.append("")
     
     # Add the test question
@@ -287,71 +296,47 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
-        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
+        prompt_parts.append("Answer:")
     else:
-        prompt_parts.append("You should ONLY choose the letters from the options as your final answer.")
-        prompt_parts.append("Response: Let's think step by step.")
+        prompt_parts.append("Answer:")
     
     return "\n".join(prompt_parts)
 
 def extract_answer_first_token(model_output):
     """
-    Extract answer from model output using multiple strategies.
+    Extract answer from model output using first token approach.
     Supports A-J for 10 options.
-    Prioritizes patterns that appear later in the text (final answer).
     """
     if not model_output:
         return None
         
     cleaned_output = model_output.strip().upper()
     valid_answers = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
-    import re
     
-    # Strategy 1: Look for "ANSWER:" or "ANSWER IS" patterns (most reliable for final answer)
-    final_answer_patterns = [
-        r'(?:ANSWER\s*:?\s*|ANSWER\s+IS\s*:?\s*|THE\s+ANSWER\s+IS\s*:?\s*)([A-J])(?:\b|\.|$)',
-        r'(?:THEREFORE\s*,?\s*|SO\s*,?\s*|THUS\s*,?\s*)(?:THE\s+ANSWER\s+IS\s*)?([A-J])(?:\b|\.|$)',
-        r'(?:FINAL\s+ANSWER\s*:?\s*|CONCLUSION\s*:?\s*)([A-J])(?:\b|\.|$)'
-    ]
-    
-    for pattern in final_answer_patterns:
-        matches = list(re.finditer(pattern, cleaned_output))
-        if matches:
-            # Return the last match (most likely to be final answer)
-            return matches[-1].group(1)
-    
-    # Strategy 2: Look for parentheses pattern, prioritizing later occurrences
-    paren_matches = list(re.finditer(r'\(([A-J])\)', cleaned_output))
-    if paren_matches:
-        return paren_matches[-1].group(1)
-    
-    # Strategy 3: Look for standalone A-J at word boundaries, prioritizing later ones
-    standalone_matches = list(re.finditer(r'\b([A-J])\b', cleaned_output))
-    if standalone_matches:
-        return standalone_matches[-1].group(1)
-    
-    # Strategy 4: Look for "option X" or "choice X" patterns
-    option_matches = list(re.finditer(r'(?:OPTION|CHOICE)\s*([A-J])', cleaned_output))
-    if option_matches:
-        return option_matches[-1].group(1)
-    
-    # Strategy 5: Look for sentence-ending patterns
-    sentence_end_matches = list(re.finditer(r'([A-J])(?:\.|!|\?|$)', cleaned_output))
-    if sentence_end_matches:
-        return sentence_end_matches[-1].group(1)
-    
-    # Strategy 6: First character if it's A-J (only if very short output)
-    if len(cleaned_output) <= 3 and cleaned_output and cleaned_output[0] in valid_answers:
+    # First, look for immediate A-J at the start
+    if cleaned_output and cleaned_output[0] in valid_answers:
         return cleaned_output[0]
     
-    # Strategy 7: Last resort - find the last A-J in the text
-    last_answer = None
+    # Look for patterns like "A.", "(A)", "A)" etc.
+    import re
+    patterns = [
+        r'^\s*([A-J])[\.\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([A-J])\)?\s*$',    # (A) or A with optional parentheses
+        r'Answer\s*:?\s*([A-J])',    # Answer: A
+        r'^([A-J])'                  # Just A, B, C, etc. at start
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, cleaned_output)
+        if match:
+            return match.group(1)
+    
+    # Look for first letter that is A-J anywhere in the output
     for char in cleaned_output:
         if char in valid_answers:
-            last_answer = char
+            return char
     
-    return last_answer
+    return None
 
 def load_jsonl_dataset(filepath):
     """Loads dataset from a JSONL file."""
@@ -395,7 +380,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **batch_inputs,
-                max_new_tokens=MAX_NEW_TOKENS,  # Allow reasoning process
+                max_new_tokens=MAX_NEW_TOKENS,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
@@ -435,7 +420,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                 with torch.no_grad():
                     outputs = model.generate(
                         **inputs,
-                        max_new_tokens=MAX_NEW_TOKENS,  # Allow reasoning process
+                        max_new_tokens=MAX_NEW_TOKENS,
                         pad_token_id=tokenizer.pad_token_id,
                         eos_token_id=tokenizer.eos_token_id,
                         do_sample=False,
@@ -496,7 +481,12 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         # Load Model and Tokenizer
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
+        tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_load_path, 
+                    cache_dir=CACHE_DIR,
+                    padding_side='left',
+                    trust_remote_code=True
+                )
         
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -774,10 +764,52 @@ def main():
         }
     }
 
-    # Save summary as SUMMARY.json
-    summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
-    with open(summary_filepath, 'w', encoding='utf-8') as f:
-        json.dump(summary_data, f, indent=2, ensure_ascii=False)
+    # Enhanced summary with performance analysis
+    if create_enhanced_summary:
+        # Prepare model results for analysis
+        model_results_for_analysis = []
+        for result in all_model_results:
+            if 'error' not in result:
+                # Create combined accuracy metric for analysis
+                en_accuracy = result.get('mmlu_prox_en_accuracy_strict', 0)
+                ko_accuracy = result.get('mmlu_prox_ko_accuracy_strict', 0)
+                combined_accuracy = (en_accuracy + ko_accuracy) / 2
+                
+                analysis_result = {
+                    "model_name": result["model_name"],
+                    "accuracy_strict": combined_accuracy,
+                    "mmlu_prox_en_accuracy": en_accuracy,
+                    "mmlu_prox_ko_accuracy": ko_accuracy,
+                    "correct_predictions": result.get('mmlu_prox_en_correct', 0) + result.get('mmlu_prox_ko_correct', 0),
+                    "total_items": result.get('mmlu_prox_en_total_items', 0) + result.get('mmlu_prox_ko_total_items', 0)
+                }
+                model_results_for_analysis.append(analysis_result)
+        
+        enhanced_summary = create_enhanced_summary(
+            model_results=model_results_for_analysis,
+            evaluation_info=summary_data["evaluation_info"],
+            primary_metric="accuracy_strict",
+            subject_metric=None  # MMLU_ProX doesn't have subject breakdown
+        )
+        
+        # Merge with original summary data
+        enhanced_summary["original_detailed_results"] = summary_data
+        
+        summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
+        with open(summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
+            
+        # Log key insights
+        perf_analysis = enhanced_summary["performance_analysis"]
+        logger.info(f"🏆 Best performing model: {perf_analysis['best_model']}")
+        logger.info(f"📊 Average combined accuracy: {perf_analysis['average_score']:.2f}%")
+        logger.info(f"📈 Performance gap: {perf_analysis['performance_gap']:.2f}%p")
+        
+    else:
+        # Fallback to basic summary
+        summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
+        with open(summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
 
     logger.info(f"Evaluation complete. Summary saved to: {summary_filepath}")
     logger.info("=== FINAL SUMMARY ===")

@@ -18,6 +18,16 @@ from dataclasses import dataclass, field
 import gc
 import sys
 from pathlib import Path
+from datetime import datetime
+
+# Import performance analyzer
+try:
+    import sys
+    sys.path.append('../')
+    from performance_analyzer import create_enhanced_summary
+except ImportError:
+    logger.warning("Performance analyzer not available. Using basic summary.")
+    create_enhanced_summary = None
 
 # --- Model Configuration ---
 @dataclass
@@ -674,9 +684,60 @@ def create_final_summary(all_results: list, base_output_dir: str):
     
     final_json_path = os.path.join(base_output_dir, "final_gsm8k_results.json")
     try:
-        with open(final_json_path, 'w', encoding='utf-8') as f:
-            json.dump(final_summary, f, indent=2, ensure_ascii=False)
-        logger.info(f"Final summary saved to {final_json_path}")
+        # Enhanced summary with performance analysis
+        if create_enhanced_summary and final_results_korean and final_results_english:
+            evaluation_info = {
+                "evaluation_type": "GSM8K (HRM8K Korean and English Separate Evaluation)",
+                "evaluation_date": datetime.now().isoformat(),
+                "dataset_path": DATASET_PATH,
+                "total_models_evaluated": len(final_results_korean)
+            }
+            
+            # Analyze Korean results
+            korean_enhanced = create_enhanced_summary(
+                model_results=final_results_korean,
+                evaluation_info=evaluation_info,
+                primary_metric="accuracy_strict",
+                subject_metric=None  # GSM8K doesn't have subject breakdown
+            )
+            
+            # Analyze English results
+            english_enhanced = create_enhanced_summary(
+                model_results=final_results_english,
+                evaluation_info=evaluation_info,
+                primary_metric="accuracy_strict",
+                subject_metric=None
+            )
+            
+            # Combine analyses
+            enhanced_summary = {
+                "evaluation_info": evaluation_info,
+                "korean_analysis": korean_enhanced,
+                "english_analysis": english_enhanced,
+                "original_summary": final_summary,
+                "language_comparison": {
+                    "korean_avg_score": korean_enhanced["performance_analysis"]["average_score"],
+                    "english_avg_score": english_enhanced["performance_analysis"]["average_score"],
+                    "korean_best_model": korean_enhanced["performance_analysis"]["best_model"],
+                    "english_best_model": english_enhanced["performance_analysis"]["best_model"],
+                    "performance_difference": english_enhanced["performance_analysis"]["average_score"] - korean_enhanced["performance_analysis"]["average_score"]
+                }
+            }
+            
+            with open(final_json_path, 'w', encoding='utf-8') as f:
+                json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
+                
+            # Log key insights
+            logger.info(f"🏆 Best Korean model: {korean_enhanced['performance_analysis']['best_model']} ({korean_enhanced['performance_analysis']['average_score']:.2f}%)")
+            logger.info(f"🏆 Best English model: {english_enhanced['performance_analysis']['best_model']} ({english_enhanced['performance_analysis']['average_score']:.2f}%)")
+            logger.info(f"📈 Language performance gap: {abs(enhanced_summary['language_comparison']['performance_difference']):.2f}%p")
+            
+        else:
+            # Fallback to basic summary
+            with open(final_json_path, 'w', encoding='utf-8') as f:
+                json.dump(final_summary, f, indent=2, ensure_ascii=False)
+                
+        logger.info(f"Summary saved to {final_json_path}")
         
         # Also create separate CSV files for Korean and English results
         korean_csv_path = os.path.join(base_output_dir, "gsm8k_results_korean.csv")

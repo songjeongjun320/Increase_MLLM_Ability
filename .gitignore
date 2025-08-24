@@ -53,3 +53,4 @@ mmlu_tow_model*
 kmmlu_baseline*
 kmmlu_tow_model*
 arc_tow_*
+gsm8k_hrm8k_*

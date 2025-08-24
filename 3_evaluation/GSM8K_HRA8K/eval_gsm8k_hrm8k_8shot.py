@@ -417,7 +417,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                     with torch.no_grad():
                         outputs = model.generate(
                             **inputs,
-                            max_new_tokens=512,
+                            max_new_tokens=256,
                             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
                             eos_token_id=tokenizer.eos_token_id,
                             do_sample=False,

@@ -130,9 +130,9 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
-    per_device_train_batch_size: int = 16
-    per_device_eval_batch_size: int = 16
-    gradient_accumulation_steps: int = 4
+    per_device_train_batch_size: int = 8
+    per_device_eval_batch_size: int = 8
+    gradient_accumulation_steps: int = 8
     lr_scheduler_type: str = "cosine" 
 
     

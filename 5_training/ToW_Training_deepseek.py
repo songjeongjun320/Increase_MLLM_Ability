@@ -12,7 +12,7 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-torchrun --nproc_per_node=2 ToW_Training_deepseek.py
+torchrun --nproc_per_node=4 ToW_Training_deepseek.py
 """
 
 import os
@@ -130,9 +130,9 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # Slightly higher learning rate
     max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased to 10 epochs
-    per_device_train_batch_size: int = 4  # Increased batch size
-    per_device_eval_batch_size: int = 4  # Increased eval batch size
-    gradient_accumulation_steps: int = 16  # Adjusted for larger batch size
+    per_device_train_batch_size: int = 16  # Increased batch size
+    per_device_eval_batch_size: int = 16  # Increased eval batch size
+    gradient_accumulation_steps: int = 4  # Adjusted for larger batch size
     lr_scheduler_type: str = "cosine" 
 
     
@@ -155,7 +155,7 @@ class ToWTrainingConfig:
     logging_steps: int = 500
     early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 4
+    dataloader_num_workers: int = 8
     remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True

@@ -109,6 +109,7 @@ DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
 BASE_OUTPUT_DIR = "gsm8k_hrm8k_zeroshot_results"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
+BATCH_SIZE = 8
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -343,41 +344,57 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info("Starting GSM8K inference loop...")
         logger.info(f"Dataset size: {len(gsm8k_data)}")
 
-        for i, item in enumerate(tqdm(gsm8k_data, desc=f"Evaluating {config.name} (GSM8K)")):
-            ground_truth = item.get("answer", None)
+        num_batches = (len(gsm8k_data) + BATCH_SIZE - 1) // BATCH_SIZE
+        for i in tqdm(range(num_batches), desc=f"Evaluating {config.name} (GSM8K, batch size {BATCH_SIZE})"):
+            batch_start = i * BATCH_SIZE
+            batch_end = batch_start + BATCH_SIZE
+            batch = gsm8k_data[batch_start:batch_end]
             
-            # Create prompt
-            prompt = create_gsm8k_prompt(item)
-            
-            # Default values
-            generated_text_log = "SKIPPED"
-            model_answer_log = None
-            is_correct_log = False
+            prompts = []
+            ground_truths = []
+            valid_items_in_batch = []
 
-            if ground_truth is None:
-                logger.warning(f"Item {i}: Invalid/missing ground truth. Skipping.")
-                errors_or_skipped += 1
-                generated_text_log = "SKIPPED - Invalid Ground Truth"
-            elif prompt is None:
-                logger.warning(f"Item {i}: Failed to create prompt. Skipping.")
-                errors_or_skipped += 1
-                generated_text_log = "SKIPPED - Prompt Creation Failed"
-            else:
-                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=2048).to(DEVICE)
+            for item in batch:
+                ground_truth = item.get("answer", None)
+                if ground_truth is None:
+                    logger.warning(f"Item with no ground truth found: {item.get('question', 'N/A')}. Skipping.")
+                    errors_or_skipped += 1
+                    continue
+                
+                prompt = create_gsm8k_prompt(item)
+                if prompt is None:
+                    logger.warning(f"Failed to create prompt for item: {item.get('question', 'N/A')}. Skipping.")
+                    errors_or_skipped += 1
+                    continue
 
-                try:
-                    with torch.no_grad():
-                        outputs = model.generate(
-                            **inputs,
-                            max_new_tokens=512,  # Allow more tokens for step-by-step reasoning
-                            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            do_sample=False,
-                            temperature=1.0,
-                        )
-                    output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
-                    generated_text_log = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+                prompts.append(prompt)
+                ground_truths.append(ground_truth)
+                valid_items_in_batch.append(item)
+
+            if not prompts:
+                continue
+
+            try:
+                inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
+                
+                with torch.no_grad():
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=512,
+                        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id,
+                        do_sample=False,
+                        temperature=1.0,
+                    )
+                
+                input_lengths = inputs['input_ids'].shape[1]
+                output_only_tokens = outputs[:, input_lengths:]
+                decoded_outputs = tokenizer.batch_decode(output_only_tokens, skip_special_tokens=True)
+
+                for j, (item, ground_truth, gen_text) in enumerate(zip(valid_items_in_batch, ground_truths, decoded_outputs)):
+                    generated_text_log = gen_text.strip()
                     model_answer_log = extract_numerical_answer(generated_text_log)
+                    is_correct_log = False
 
                     if model_answer_log is not None:
                         total_predictions += 1
@@ -385,38 +402,32 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                             correct_predictions += 1
                             is_correct_log = True
                     else:
-                        logger.warning(f"Item {i}: Failed to extract numerical answer from: '{generated_text_log[:100]}...'")
+                        logger.warning(f"Batch {i}, Item {j}: Failed to extract answer from: '{generated_text_log[:100]}...'")
                         errors_or_skipped += 1
                         generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
 
-                except Exception as e:
-                    logger.error(f"Item {i}: Inference error: {e}", exc_info=False)
-                    errors_or_skipped += 1
-                    generated_text_log = f"ERROR_INFERENCE: {str(e)[:100]}"
+                    current_item_index = batch_start + j
+                    results_details.append({
+                        "index": current_item_index,
+                        "question": item.get("question", ""),
+                        "ground_truth": ground_truth,
+                        "model_raw_output": generated_text_log,
+                        "extracted_answer": model_answer_log,
+                        "is_correct": is_correct_log
+                    })
 
-            # Store results
-            results_details.append({
-                "index": i,
-                "question": item.get("question", ""),
-                "ground_truth": ground_truth,
-                "model_raw_output": generated_text_log,
-                "extracted_answer": model_answer_log,
-                "is_correct": is_correct_log
-            })
+                    raw_generations_list.append({
+                        "index": current_item_index,
+                        "question": item.get("question", ""),
+                        "original": item.get("original", ""),
+                        "ground_truth": ground_truth,
+                        "raw_output": generated_text_log,
+                        "extracted_answer": model_answer_log
+                    })
 
-            raw_generations_list.append({
-                "index": i,
-                "question": item.get("question", ""),
-                "original": item.get("original", ""),
-                "ground_truth": ground_truth,
-                "raw_output": generated_text_log,
-                "extracted_answer": model_answer_log
-            })
-
-            # Progress logging
-            if (i + 1) % 100 == 0:
-                current_acc = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-                logger.info(f"Progress ({config.name}): {i + 1}/{len(gsm8k_data)}, Acc: {current_acc:.2f}% ({correct_predictions}/{total_predictions}), Errors/Skipped: {errors_or_skipped}")
+            except Exception as e:
+                logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
+                errors_or_skipped += len(prompts)
 
         # Final Results
         logger.info(f"Inference loop finished for {config.name}.")

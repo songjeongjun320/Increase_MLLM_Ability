@@ -75,6 +75,7 @@ KO_ARC_DATASET_PATH = "../../2_datasets/ARC-C_Ko-ARC/Ko-ARC.json"
 BASE_OUTPUT_DIR = "arc_tow_model1_5shot_maxtoken_256"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
+BATCH_SIZE = 8
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -264,34 +265,59 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             errors_or_skipped = 0
             results_details = []
             
-            for i, item in enumerate(tqdm(dataset, desc=f"Evaluating {config.name} on {dataset_name} (5-shot)")):
-                ground_truth = get_ground_truth(item)
+            # Batch processing loop
+            num_batches = (len(dataset) + BATCH_SIZE - 1) // BATCH_SIZE
+            for i in tqdm(range(num_batches), desc=f"Evaluating {config.name} on {dataset_name} (5-shot, batch size {BATCH_SIZE})"):
+                batch_start = i * BATCH_SIZE
+                batch_end = batch_start + BATCH_SIZE
+                batch = dataset[batch_start:batch_end]
                 
-                # Select 5 examples for few-shot prompting
-                examples = select_examples(dataset, item, num_examples=5)
-                prompt = create_5shot_prompt(item, examples, dataset_type)
-                
-                generated_text_log = "SKIPPED"
-                model_answer_log = None
-                is_correct_log = False
+                prompts = []
+                ground_truths = []
+                valid_items_in_batch = []
 
-                if ground_truth is None or prompt is None:
-                    errors_or_skipped += 1
-                    generated_text_log = "SKIPPED - Invalid Ground Truth or Prompt"
-                else:
-                    inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=4096).to(DEVICE)
-                    try:
-                        with torch.no_grad():
-                            outputs = model.generate(
-                                **inputs,
-                                max_new_tokens=256,
-                                pad_token_id=tokenizer.pad_token_id,
-                                eos_token_id=tokenizer.eos_token_id,
-                                do_sample=False,
-                            )
-                        output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
-                        generated_text_log = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+                for item in batch:
+                    ground_truth = get_ground_truth(item)
+                    if ground_truth is None:
+                        errors_or_skipped += 1
+                        # Log skipped item if needed
+                        continue
+
+                    examples = select_examples(dataset, item, num_examples=5)
+                    prompt = create_5shot_prompt(item, examples, dataset_type)
+                    prompts.append(prompt)
+                    ground_truths.append(ground_truth)
+                    valid_items_in_batch.append(item)
+
+                if not prompts:
+                    continue
+
+                try:
+                    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+                    
+                    with torch.no_grad():
+                        outputs = model.generate(
+                            **inputs,
+                            max_new_tokens=256,
+                            pad_token_id=tokenizer.pad_token_id,
+                            eos_token_id=tokenizer.eos_token_id,
+                            do_sample=False,
+                        )
+                    
+                    generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+                    
+                    input_lengths = inputs['input_ids'].shape[1]
+                    # The generated text includes the prompt, so we need to remove it.
+                    # Be careful with batch_decode, it might handle prompts differently.
+                    # A safer way is to decode only the generated part.
+                    output_only_tokens = outputs[:, input_lengths:]
+                    decoded_outputs = tokenizer.batch_decode(output_only_tokens, skip_special_tokens=True)
+
+
+                    for j, (item, ground_truth, gen_text) in enumerate(zip(valid_items_in_batch, ground_truths, decoded_outputs)):
+                        generated_text_log = gen_text.strip()
                         model_answer_log = extract_answer_first_token(generated_text_log)
+                        is_correct_log = False
 
                         if model_answer_log:
                             total_predictions += 1
@@ -301,28 +327,30 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         else:
                             errors_or_skipped += 1
                             generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
-                    except Exception as e:
-                        logger.error(f"Item {i}: Inference error: {e}", exc_info=False)
-                        errors_or_skipped += 1
-                        generated_text_log = f"ERROR_INFERENCE: {str(e)[:100]}"
 
-                results_details.append({
-                    "index": i, 
-                    "id": item.get("id", ""),
-                    "ground_truth": ground_truth, 
-                    "model_raw_output": generated_text_log,
-                    "predicted_answer": model_answer_log, 
-                    "is_correct": is_correct_log
-                })
-                
-                raw_generations_list.append({
-                    "dataset": dataset_name,
-                    "index": i, 
-                    "id": item.get("id", ""),
-                    "ground_truth": ground_truth,
-                    "raw_output": generated_text_log, 
-                    "extracted_answer": model_answer_log
-                })
+                        current_item_index = batch_start + j # or find a better way to get original index
+                        results_details.append({
+                            "index": current_item_index, 
+                            "id": item.get("id", ""),
+                            "ground_truth": ground_truth, 
+                            "model_raw_output": generated_text_log,
+                            "predicted_answer": model_answer_log, 
+                            "is_correct": is_correct_log
+                        })
+                        
+                        raw_generations_list.append({
+                            "dataset": dataset_name,
+                            "index": current_item_index, 
+                            "id": item.get("id", ""),
+                            "ground_truth": ground_truth,
+                            "raw_output": generated_text_log, 
+                            "extracted_answer": model_answer_log
+                        })
+
+                except Exception as e:
+                    logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
+                    errors_or_skipped += len(prompts)
+
             
             # Calculate accuracy
             accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0

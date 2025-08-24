@@ -99,6 +99,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
 BASE_OUTPUT_DIR = "kmmlu_tow_model1_zeroshot" # 0-shot evaluation results
+BATCH_SIZE = 8
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -183,6 +184,43 @@ def get_ground_truth_korean(item):
         return answer
     return None
 
+# --- Batch Processing Function ---
+def process_batch(model, tokenizer, batch_prompts, batch_indices):
+    """Processes a batch of prompts efficiently."""
+    try:
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=2048
+        ).to(DEVICE)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                do_sample=False,
+            )
+        
+        batch_results = []
+        input_length = inputs['input_ids'].shape[1]
+        for i, sequence in enumerate(outputs):
+            output_tokens = sequence[input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            extracted_answer = extract_korean_answer_first_token(generated_text)
+            batch_results.append({
+                'index': batch_indices[i],
+                'raw_output': generated_text,
+                'extracted_answer': extracted_answer
+            })
+        return batch_results
+    except Exception as e:
+        logger.error(f"Batch processing error: {e}", exc_info=False)
+        return [{'index': idx, 'raw_output': f"ERROR: {str(e)[:100]}", 'extracted_answer': None} for idx in batch_indices]
+
 # --- Single Model Evaluation Function with 0-shot Prompting ---
 def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_output_dir: str):
     """
@@ -224,38 +262,64 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
         results_details, raw_generations_list = [], []
 
         test_data = kmmlu_data
-        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (0-shot Korean, errors: 0)", total=len(test_data))
-        for i, item in pbar:
-            ground_truth = get_ground_truth_korean(item)
-            prompt = create_0shot_korean_prompt(item)
-            
-            model_answer_log, is_correct_log = None, False
-            if ground_truth is None or prompt is None:
-                errors_or_skipped += 1
-                generated_text_log = "SKIPPED"
-            else:
-                inputs = tokenizer(prompt, return_tensors="pt", max_length=2048, truncation=True).to(DEVICE)
-                try:
-                    with torch.no_grad():
-                        outputs = model.generate(**inputs, max_new_tokens=1, pad_token_id=tokenizer.pad_token_id, do_sample=False)
-                    generated_text_log = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True).strip()
-                    model_answer_log = extract_korean_answer_first_token(generated_text_log)
-                    
-                    if model_answer_log:
-                        total_predictions += 1
-                        if model_answer_log == ground_truth:
-                            correct_predictions += 1
-                            is_correct_log = True
-                    else:
-                        errors_or_skipped += 1
-                except Exception as e:
-                    errors_or_skipped += 1
-                    generated_text_log = f"ERROR: {e}"
+        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (0-shot Korean, errors: 0)")
+        for i in pbar:
+            batch_data = test_data[i:i+BATCH_SIZE]
+            batch_prompts = []
+            batch_indices = []
+            batch_ground_truths = []
 
-            results_details.append({"index": i, "ground_truth": ground_truth, "model_raw_output": generated_text_log, "predicted_answer": model_answer_log, "is_correct": is_correct_log})
-            raw_generations_list.append({"index": i, "subject": item.get("Subject"), "ground_truth": ground_truth, "raw_output": generated_text_log, "extracted_answer": model_answer_log})
+            for j, item in enumerate(batch_data):
+                current_index = i + j
+                ground_truth = get_ground_truth_korean(item)
+                prompt = create_0shot_korean_prompt(item)
+                
+                if ground_truth is None or prompt is None:
+                    errors_or_skipped += 1
+                    results_details.append({
+                        "index": current_index, "ground_truth": ground_truth, "model_raw_output": "SKIPPED",
+                        "predicted_answer": None, "is_correct": False
+                    })
+                    raw_generations_list.append({
+                        "index": current_index, "subject": item.get("Subject"), "ground_truth": ground_truth,
+                        "raw_output": "SKIPPED", "extracted_answer": None
+                    })
+                    continue
+
+                batch_prompts.append(prompt)
+                batch_indices.append(current_index)
+                batch_ground_truths.append(ground_truth)
+
+            if not batch_prompts:
+                continue
             
-            # Update progress bar with current error count
+            batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
+
+            for result, ground_truth in zip(batch_results, batch_ground_truths):
+                generated_text_log = result['raw_output']
+                model_answer_log = result['extracted_answer']
+                is_correct_log = False
+
+                if model_answer_log:
+                    total_predictions += 1
+                    if model_answer_log == ground_truth:
+                        correct_predictions += 1
+                        is_correct_log = True
+                else:
+                    errors_or_skipped += 1
+                    if not generated_text_log.startswith("ERROR"):
+                         generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+
+                results_details.append({
+                    "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,
+                    "predicted_answer": model_answer_log, "is_correct": is_correct_log
+                })
+                original_item = test_data[result['index']]
+                raw_generations_list.append({
+                    "index": result['index'], "subject": original_item.get("Subject"), "ground_truth": ground_truth,
+                    "raw_output": generated_text_log, "extracted_answer": model_answer_log
+                })
+
             pbar.set_description(f"Evaluating {config.name} (0-shot Korean, errors: {errors_or_skipped})")
 
         accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
@@ -295,6 +359,9 @@ def main():
     kmmlu_data = load_kmmlu_data(DATASET_PATH)
     if not kmmlu_data: return
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
+
+    all_results_summary = [] # For consolidated summary
+
     for config in MODEL_CONFIGS:
         model_dir = os.path.join(BASE_OUTPUT_DIR, config.name)
         os.makedirs(model_dir, exist_ok=True)
@@ -302,7 +369,6 @@ def main():
 
     # --- Create a consolidated summary of all model results ---
     logger.info("--- Generating Consolidated Summary for KMMLU ---")
-    all_results_summary = []
     for config in MODEL_CONFIGS:
         results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}_0shot_korean.json")
         if os.path.exists(results_filepath):

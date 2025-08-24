@@ -114,9 +114,9 @@ def create_5shot_prompt(item, examples, dataset_type="arc"):
         prompt_parts.append(f"C. {choices[2]}")
         prompt_parts.append(f"D. {choices[3]}")
         if dataset_type == "arc":
-            prompt_parts.append(f"Answer: {answer}")
+            prompt_parts.append(f"Response: Let's think step by step. [thinking process] So the answer is {answer}.")
         else:  # ko-arc
-            prompt_parts.append(f"정답: {answer}")
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {answer}입니다.")
         prompt_parts.append("")
     
     # Add test question
@@ -133,11 +133,14 @@ def create_5shot_prompt(item, examples, dataset_type="arc"):
     prompt_parts.append(f"B. {test_choices[1]}")
     prompt_parts.append(f"C. {test_choices[2]}")
     prompt_parts.append(f"D. {test_choices[3]}")
+    prompt_parts.append("")
     
     if dataset_type == "arc":
-        prompt_parts.append("Answer:")
+        prompt_parts.append("You should ONLY choose the letters from the options as your final answer.")
+        prompt_parts.append("Response: Let's think step by step.")
     else:  # ko-arc
-        prompt_parts.append("정답:")
+        prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
     
     return "\n".join(prompt_parts)
 

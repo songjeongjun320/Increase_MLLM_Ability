@@ -142,26 +142,10 @@ def load_gsm8k_data(filepath):
         logger.error(f"Error loading data: {e}")
         return None
 
-def create_gsm8k_prompt(item):
+def create_gsm8k_prompt(text, is_korean=False):
     """Create GSM8K 0-shot CoT evaluation prompt"""
-    question = item.get("question", "")
-    original = item.get("original", "")
-    
-    if not question:
-        logger.warning(f"No question found in item: {item}")
-        return None
-    
-    # Check if this is a Korean question (has both question and original fields, and they're different)
-    is_korean = original and question != original
-    
-    if is_korean:
-        # Use Korean 0-shot Chain-of-Thought prompt for Korean questions
-        prompt = f"""질문: {question}
-단계적으로 생각해봅시다."""
-    else:
-        # Use English 0-shot Chain-of-Thought prompt for English questions
-        prompt = f"""Question: {question}
-Let's think step by step."""
+    prompt = f"""Question: {text}
+Answer: Let's think step by step."""
     
     return prompt
 
@@ -174,9 +158,10 @@ def extract_numerical_answer(model_output):
     # Clean the output
     cleaned_output = model_output.strip()
     
-    # Patterns to match numerical answers - prioritize Korean and English standard formats
+    # Patterns to match numerical answers - prioritize #### format first
     patterns = [
-        r'답[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Korean format: "답: 18" (most common in our examples)
+        r'####\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # New #### format: "#### 18" (highest priority)
+        r'답[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Korean format: "답: 18"
         r'The answer is\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Standard English GSM8K format: "The answer is 18"
         r'(?:정답|Answer)[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 정답: 18, Answer: 18
         r'(?:답|정답|Answer)\s*(?:은|는|is)?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 답은 18, 정답은 18
@@ -336,131 +321,195 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info("Model and tokenizer loaded successfully.")
 
         # Run Evaluation
-        correct_predictions = 0
-        total_predictions = 0
-        errors_or_skipped = 0
-        results_details = []
+        correct_predictions_korean = 0
+        total_predictions_korean = 0
+        errors_or_skipped_korean = 0
+        results_details_korean = []
+        
+        correct_predictions_english = 0
+        total_predictions_english = 0
+        errors_or_skipped_english = 0
+        results_details_english = []
 
         logger.info("Starting GSM8K inference loop...")
         logger.info(f"Dataset size: {len(gsm8k_data)}")
 
-        num_batches = (len(gsm8k_data) + BATCH_SIZE - 1) // BATCH_SIZE
-        pbar = tqdm(range(num_batches), desc=f"Evaluating {config.name} (GSM8K, errors: 0)")
-        for i in pbar:
-            batch_start = i * BATCH_SIZE
-            batch_end = batch_start + BATCH_SIZE
-            batch = gsm8k_data[batch_start:batch_end]
-            
-            prompts = []
-            ground_truths = []
-            valid_items_in_batch = []
-
-            for item in batch:
-                ground_truth = item.get("answer", None)
-                if ground_truth is None:
-                    logger.warning(f"Item with no ground truth found: {item.get('question', 'N/A')}. Skipping.")
-                    errors_or_skipped += 1
-                    continue
-                
-                prompt = create_gsm8k_prompt(item)
-                if prompt is None:
-                    logger.warning(f"Failed to create prompt for item: {item.get('question', 'N/A')}. Skipping.")
-                    errors_or_skipped += 1
-                    continue
-
-                prompts.append(prompt)
-                ground_truths.append(ground_truth)
-                valid_items_in_batch.append(item)
-
-            if not prompts:
+        # Process each item for both Korean and English versions
+        for idx, item in enumerate(tqdm(gsm8k_data, desc=f"Evaluating {config.name} (GSM8K)")):
+            ground_truth = item.get("answer", None)
+            if ground_truth is None:
+                logger.warning(f"Item with no ground truth found at index {idx}. Skipping.")
+                errors_or_skipped_korean += 1
+                errors_or_skipped_english += 1
                 continue
 
-            try:
-                inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
-                
-                with torch.no_grad():
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=512,
-                        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                        eos_token_id=tokenizer.eos_token_id,
-                        do_sample=False,
-                        temperature=1.0,
-                    )
-                
-                input_lengths = inputs['input_ids'].shape[1]
-                output_only_tokens = outputs[:, input_lengths:]
-                decoded_outputs = tokenizer.batch_decode(output_only_tokens, skip_special_tokens=True)
+            question = item.get("question", "")
+            original = item.get("original", "")
+            
+            # Check if we have both Korean and English versions
+            has_korean = question and original and question != original
+            
+            # Process Korean version (translated question)
+            if has_korean:
+                try:
+                    korean_prompt = create_gsm8k_prompt(question, is_korean=True)
+                    inputs = tokenizer(korean_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
+                    
+                    with torch.no_grad():
+                        outputs = model.generate(
+                            **inputs,
+                            max_new_tokens=512,
+                            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                            eos_token_id=tokenizer.eos_token_id,
+                            do_sample=False,
+                            temperature=1.0,
+                        )
+                    
+                    input_lengths = inputs['input_ids'].shape[1]
+                    output_only_tokens = outputs[:, input_lengths:]
+                    korean_gen_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+                    
+                    korean_answer = extract_numerical_answer(korean_gen_text)
+                    is_correct_korean = False
 
-                for j, (item, ground_truth, gen_text) in enumerate(zip(valid_items_in_batch, ground_truths, decoded_outputs)):
-                    generated_text_log = gen_text.strip()
-                    model_answer_log = extract_numerical_answer(generated_text_log)
-                    is_correct_log = False
-
-                    if model_answer_log is not None:
-                        total_predictions += 1
-                        if check_numerical_match(model_answer_log, ground_truth):
-                            correct_predictions += 1
-                            is_correct_log = True
+                    if korean_answer is not None:
+                        total_predictions_korean += 1
+                        if check_numerical_match(korean_answer, ground_truth):
+                            correct_predictions_korean += 1
+                            is_correct_korean = True
                     else:
-                        logger.warning(f"Batch {i}, Item {j}: Failed to extract answer from: '{generated_text_log[:100]}...'")
-                        errors_or_skipped += 1
-                        generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+                        logger.warning(f"Korean - Item {idx}: Failed to extract answer from: '{korean_gen_text[:100]}...'")
+                        errors_or_skipped_korean += 1
+                        korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
 
-                    current_item_index = batch_start + j
-                    results_details.append({
-                        "index": current_item_index,
-                        "question": item.get("question", ""),
+                    results_details_korean.append({
+                        "index": idx,
+                        "question": question,
                         "ground_truth": ground_truth,
-                        "model_raw_output": generated_text_log,
-                        "extracted_answer": model_answer_log,
-                        "is_correct": is_correct_log
+                        "model_raw_output": korean_gen_text,
+                        "extracted_answer": korean_answer,
+                        "is_correct": is_correct_korean
                     })
 
                     raw_generations_list.append({
-                        "index": current_item_index,
-                        "question": item.get("question", ""),
-                        "original": item.get("original", ""),
+                        "index": idx,
+                        "language": "Korean",
+                        "question": question,
+                        "original": original,
                         "ground_truth": ground_truth,
-                        "raw_output": generated_text_log,
-                        "extracted_answer": model_answer_log
+                        "raw_output": korean_gen_text,
+                        "extracted_answer": korean_answer
                     })
 
-            except Exception as e:
-                logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
-                errors_or_skipped += len(prompts)
-            
-            # Update progress bar with current error count
-            pbar.set_description(f"Evaluating {config.name} (GSM8K, errors: {errors_or_skipped})")
+                except Exception as e:
+                    logger.error(f"Korean - Item {idx}: Inference error: {e}")
+                    errors_or_skipped_korean += 1
+
+            # Process English version (original question)  
+            if original:
+                try:
+                    english_prompt = create_gsm8k_prompt(original, is_korean=False)
+                    inputs = tokenizer(english_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
+                    
+                    with torch.no_grad():
+                        outputs = model.generate(
+                            **inputs,
+                            max_new_tokens=512,
+                            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                            eos_token_id=tokenizer.eos_token_id,
+                            do_sample=False,
+                            temperature=1.0,
+                        )
+                    
+                    input_lengths = inputs['input_ids'].shape[1]
+                    output_only_tokens = outputs[:, input_lengths:]
+                    english_gen_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+                    
+                    english_answer = extract_numerical_answer(english_gen_text)
+                    is_correct_english = False
+
+                    if english_answer is not None:
+                        total_predictions_english += 1
+                        if check_numerical_match(english_answer, ground_truth):
+                            correct_predictions_english += 1
+                            is_correct_english = True
+                    else:
+                        logger.warning(f"English - Item {idx}: Failed to extract answer from: '{english_gen_text[:100]}...'")
+                        errors_or_skipped_english += 1
+                        english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
+
+                    results_details_english.append({
+                        "index": idx,
+                        "question": original,
+                        "ground_truth": ground_truth,
+                        "model_raw_output": english_gen_text,
+                        "extracted_answer": english_answer,
+                        "is_correct": is_correct_english
+                    })
+
+                    raw_generations_list.append({
+                        "index": idx,
+                        "language": "English",
+                        "question": question,
+                        "original": original,
+                        "ground_truth": ground_truth,
+                        "raw_output": english_gen_text,
+                        "extracted_answer": english_answer
+                    })
+
+                except Exception as e:
+                    logger.error(f"English - Item {idx}: Inference error: {e}")
+                    errors_or_skipped_english += 1
 
         # Final Results
         logger.info(f"Inference loop finished for {config.name}.")
         
-        # Calculate accuracies
-        accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-        accuracy_strict = (correct_predictions / len(gsm8k_data) * 100) if len(gsm8k_data) > 0 else 0
+        # Calculate accuracies for Korean
+        accuracy_standard_korean = (correct_predictions_korean / total_predictions_korean * 100) if total_predictions_korean > 0 else 0
+        accuracy_strict_korean = (correct_predictions_korean / len(gsm8k_data) * 100) if len(gsm8k_data) > 0 else 0
+
+        # Calculate accuracies for English
+        accuracy_standard_english = (correct_predictions_english / total_predictions_english * 100) if total_predictions_english > 0 else 0
+        accuracy_strict_english = (correct_predictions_english / len(gsm8k_data) * 100) if len(gsm8k_data) > 0 else 0
 
         logger.info(f"--- GSM8K Results for {config.name} ({config.model_id}) ---")
         logger.info(f"Total Questions: {len(gsm8k_data)}")
-        logger.info(f"Valid Predictions (Answer Extracted): {total_predictions}")
-        logger.info(f"Correct Predictions: {correct_predictions}")
-        logger.info(f"Errors or Skipped Items: {errors_or_skipped}")
-        logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard:.2f}%")
-        logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict:.2f}%")
+        logger.info(f"=== Korean Results ===")
+        logger.info(f"Valid Predictions (Answer Extracted): {total_predictions_korean}")
+        logger.info(f"Correct Predictions: {correct_predictions_korean}")
+        logger.info(f"Errors or Skipped Items: {errors_or_skipped_korean}")
+        logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard_korean:.2f}%")
+        logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict_korean:.2f}%")
+        logger.info(f"=== English Results ===")
+        logger.info(f"Valid Predictions (Answer Extracted): {total_predictions_english}")
+        logger.info(f"Correct Predictions: {correct_predictions_english}")
+        logger.info(f"Errors or Skipped Items: {errors_or_skipped_english}")
+        logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard_english:.2f}%")
+        logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict_english:.2f}%")
 
         # Save Results
         config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
         final_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
-            "evaluation_type": "GSM8K (HRM8K Korean)",
+            "evaluation_type": "GSM8K (HRM8K Korean and English Separate)",
             "total_questions": len(gsm8k_data),
-            "valid_predictions": total_predictions,
-            "correct_predictions": correct_predictions,
-            "errors_or_skipped": errors_or_skipped,
-            "accuracy_standard (correct / valid_predictions)": accuracy_standard,
-            "accuracy_strict (correct / total_questions)": accuracy_strict,
-            "details": results_details
+            "korean_results": {
+                "valid_predictions": total_predictions_korean,
+                "correct_predictions": correct_predictions_korean,
+                "errors_or_skipped": errors_or_skipped_korean,
+                "accuracy_standard": accuracy_standard_korean,
+                "accuracy_strict": accuracy_strict_korean,
+                "details": results_details_korean
+            },
+            "english_results": {
+                "valid_predictions": total_predictions_english,
+                "correct_predictions": correct_predictions_english,
+                "errors_or_skipped": errors_or_skipped_english,
+                "accuracy_standard": accuracy_standard_english,
+                "accuracy_strict": accuracy_strict_english,
+                "details": results_details_english
+            }
         }
 
         try:
@@ -507,40 +556,61 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
 def create_final_summary(all_results: list, base_output_dir: str):
     """Create final summary JSON with all model results"""
-    final_results = []
+    final_results_korean = []
+    final_results_english = []
     
     for result in all_results:
         if result is not None:
-            model_summary = {
+            # Korean results
+            korean_summary = {
                 "model_name": result["model_config"]["name"],
                 "model_id": result["model_config"]["model_id"],
                 "adapter_path": result["model_config"].get("adapter_path", None),
                 "total_questions": result["total_questions"],
-                "correct_predictions": result["correct_predictions"],
-                "valid_predictions": result["valid_predictions"],
-                "errors_or_skipped": result["errors_or_skipped"],
-                "accuracy_standard": result["accuracy_standard (correct / valid_predictions)"],
-                "accuracy_strict": result["accuracy_strict (correct / total_questions)"],
+                "correct_predictions": result["korean_results"]["correct_predictions"],
+                "valid_predictions": result["korean_results"]["valid_predictions"],
+                "errors_or_skipped": result["korean_results"]["errors_or_skipped"],
+                "accuracy_standard": result["korean_results"]["accuracy_standard"],
+                "accuracy_strict": result["korean_results"]["accuracy_strict"],
                 "evaluation_date": result.get("evaluation_date", "N/A")
             }
-            final_results.append(model_summary)
+            final_results_korean.append(korean_summary)
+            
+            # English results
+            english_summary = {
+                "model_name": result["model_config"]["name"],
+                "model_id": result["model_config"]["model_id"],
+                "adapter_path": result["model_config"].get("adapter_path", None),
+                "total_questions": result["total_questions"],
+                "correct_predictions": result["english_results"]["correct_predictions"],
+                "valid_predictions": result["english_results"]["valid_predictions"],
+                "errors_or_skipped": result["english_results"]["errors_or_skipped"],
+                "accuracy_standard": result["english_results"]["accuracy_standard"],
+                "accuracy_strict": result["english_results"]["accuracy_strict"],
+                "evaluation_date": result.get("evaluation_date", "N/A")
+            }
+            final_results_english.append(english_summary)
     
     # Sort by accuracy (strict) descending
-    final_results.sort(key=lambda x: x["accuracy_strict"], reverse=True)
+    final_results_korean.sort(key=lambda x: x["accuracy_strict"], reverse=True)
+    final_results_english.sort(key=lambda x: x["accuracy_strict"], reverse=True)
     
     final_summary = {
-        "evaluation_type": "GSM8K (HRM8K Korean Mathematical Reasoning)",
+        "evaluation_type": "GSM8K (HRM8K Korean and English Separate Evaluation)",
         "dataset_info": {
-            "name": "GSM8K-test (Korean translated)",
+            "name": "GSM8K-test (Korean translated and English original)",
             "path": DATASET_PATH,
-            "total_questions": final_results[0]["total_questions"] if final_results else 0
+            "total_questions": final_results_korean[0]["total_questions"] if final_results_korean else 0
         },
         "evaluation_summary": {
-            "models_evaluated": len(final_results),
-            "best_model": final_results[0]["model_name"] if final_results else "N/A",
-            "best_accuracy": final_results[0]["accuracy_strict"] if final_results else 0.0
+            "models_evaluated": len(final_results_korean),
+            "best_model_korean": final_results_korean[0]["model_name"] if final_results_korean else "N/A",
+            "best_accuracy_korean": final_results_korean[0]["accuracy_strict"] if final_results_korean else 0.0,
+            "best_model_english": final_results_english[0]["model_name"] if final_results_english else "N/A",
+            "best_accuracy_english": final_results_english[0]["accuracy_strict"] if final_results_english else 0.0
         },
-        "detailed_results": final_results
+        "korean_results": final_results_korean,
+        "english_results": final_results_english
     }
     
     final_json_path = os.path.join(base_output_dir, "final_gsm8k_results.json")
@@ -549,13 +619,20 @@ def create_final_summary(all_results: list, base_output_dir: str):
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         logger.info(f"Final summary saved to {final_json_path}")
         
-        # Also create a simple CSV for easy viewing
-        csv_path = os.path.join(base_output_dir, "gsm8k_results_summary.csv")
-        with open(csv_path, 'w', encoding='utf-8') as f:
+        # Also create separate CSV files for Korean and English results
+        korean_csv_path = os.path.join(base_output_dir, "gsm8k_results_korean.csv")
+        with open(korean_csv_path, 'w', encoding='utf-8') as f:
             f.write("Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total\n")
-            for result in final_results:
+            for result in final_results_korean:
                 f.write(f"{result['model_name']},{result['accuracy_standard']:.2f},{result['accuracy_strict']:.2f},{result['correct_predictions']},{result['valid_predictions']},{result['total_questions']}\n")
-        logger.info(f"CSV summary saved to {csv_path}")
+        logger.info(f"Korean CSV summary saved to {korean_csv_path}")
+        
+        english_csv_path = os.path.join(base_output_dir, "gsm8k_results_english.csv")
+        with open(english_csv_path, 'w', encoding='utf-8') as f:
+            f.write("Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total\n")
+            for result in final_results_english:
+                f.write(f"{result['model_name']},{result['accuracy_standard']:.2f},{result['accuracy_strict']:.2f},{result['correct_predictions']},{result['valid_predictions']},{result['total_questions']}\n")
+        logger.info(f"English CSV summary saved to {english_csv_path}")
         
     except Exception as e:
         logger.error(f"Failed to save final summary: {e}")

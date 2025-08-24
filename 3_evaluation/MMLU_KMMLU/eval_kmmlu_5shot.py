@@ -234,7 +234,7 @@ def create_5shot_korean_prompt(test_item, dev_examples):
         prompt_parts.append(f"C. {choice_c}")
         prompt_parts.append(f"D. {choice_d}")
         
-        prompt_parts.append(f"정답: {answer_letter}")
+        prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {answer_letter}입니다.")
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
@@ -251,8 +251,10 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     prompt_parts.append(f"B. {test_choice_b}")
     prompt_parts.append(f"C. {test_choice_c}")
     prompt_parts.append(f"D. {test_choice_d}")
+    prompt_parts.append("")
     
-    prompt_parts.append("정답:")
+    prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
+    prompt_parts.append("응답: 단계적으로 생각해봅시다.")
     
     return "\n".join(prompt_parts)
 

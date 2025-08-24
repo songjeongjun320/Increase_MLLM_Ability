@@ -268,7 +268,10 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
         
         prompt_parts.append(f"Question: {question}")
         prompt_parts.extend(options)
-        prompt_parts.append(f"Answer: {correct_answer}")
+        if language == "ko":
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {correct_answer}입니다.")
+        else:
+            prompt_parts.append(f"Response: Let's think step by step. [thinking process] So the answer is {correct_answer}.")
         prompt_parts.append("")
     
     # Add the test question
@@ -281,7 +284,14 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     
     prompt_parts.append(f"Question: {question}")
     prompt_parts.extend(options)
-    prompt_parts.append("Answer:")
+    prompt_parts.append("")
+    
+    if language == "ko":
+        prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
+    else:
+        prompt_parts.append("You should ONLY choose the letters from the options as your final answer.")
+        prompt_parts.append("Response: Let's think step by step.")
     
     return "\n".join(prompt_parts)
 

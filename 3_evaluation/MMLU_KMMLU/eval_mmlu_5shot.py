@@ -101,6 +101,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_origin.json"
 BASE_OUTPUT_DIR = "mmlu_tow_model2_5shot" # 5-shot evaluation results
+BATCH_SIZE = 8
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -313,6 +314,42 @@ def extract_answer_legacy(model_output, prompt): # prompt 인자 유지 (미래 
          return match_phrase.group(1)
     return None
 
+# --- Batch Processing Function ---
+def process_batch(model, tokenizer, batch_prompts, batch_indices):
+    """Processes a batch of prompts efficiently."""
+    try:
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=2048
+        ).to(DEVICE)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                do_sample=False,
+            )
+        
+        batch_results = []
+        input_length = inputs['input_ids'].shape[1]
+        for i, sequence in enumerate(outputs):
+            output_tokens = sequence[input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            extracted_answer = extract_answer_first_token(generated_text, tokenizer)
+            batch_results.append({
+                'index': batch_indices[i],
+                'raw_output': generated_text,
+                'extracted_answer': extracted_answer
+            })
+        return batch_results
+    except Exception as e:
+        logger.error(f"Batch processing error: {e}", exc_info=False)
+        return [{'index': idx, 'raw_output': f"ERROR: {str(e)[:100]}", 'extracted_answer': None} for idx in batch_indices]
 
 # --- Single Model Evaluation Function with 5-shot Prompting ---
 def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_output_dir: str):
@@ -442,89 +479,72 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
         logger.info("Starting 5-shot inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
-        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (5-shot, errors: 0)", total=len(test_data))
-        for i, item in pbar:
-            item_index_for_log = item.get("index", i) # 데이터에 index 필드가 있다면 사용
-            ground_truth = get_ground_truth_origin(item)
-            
-            # Get development examples for this subject
-            subject = item.get("subject", "unknown")
-            dev_examples = dev_data.get(subject, [])
-            
-            if not dev_examples:
-                logger.warning(f"No development examples available for subject: {subject}")
-                prompt = None
-            else:
-                prompt = create_5shot_prompt(item, dev_examples)
+        
+        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (5-shot, errors: 0)")
+        for i in pbar:
+            batch_data = test_data[i:i+BATCH_SIZE]
+            batch_prompts = []
+            batch_indices = []
+            batch_ground_truths = []
+            batch_original_items = []
 
-            # 기본값 설정
-            generated_text_log = "SKIPPED"
-            model_answer_log = None
-            is_correct_log = False
+            for j, item in enumerate(batch_data):
+                current_index = i + j
+                item_index_for_log = item.get("index", current_index)
+                ground_truth = get_ground_truth_origin(item)
+                subject = item.get("subject", "unknown")
+                dev_examples = dev_data.get(subject, [])
+                
+                prompt = create_5shot_prompt(item, dev_examples) if dev_examples else None
 
-            if ground_truth is None:
-                logger.warning(f"Item {item_index_for_log}: Invalid/missing ground truth (answer: {item.get('answer', 'N/A')}). Skipping.")
-                errors_or_skipped += 1
-                generated_text_log = "SKIPPED - Invalid Ground Truth"
-            elif prompt is None:
-                logger.warning(f"Item {item_index_for_log}: Failed to create prompt (check question/choices). Skipping.")
-                errors_or_skipped += 1
-                generated_text_log = "SKIPPED - Prompt Creation Failed"
-            else:
-                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=2048).to(DEVICE) # max_length 추가
+                if ground_truth is None or prompt is None:
+                    errors_or_skipped += 1
+                    output_reason = "SKIPPED - Invalid Ground Truth" if ground_truth is None else "SKIPPED - Prompt Creation Failed"
+                    results_details.append({
+                        "index": item_index_for_log, "ground_truth": ground_truth, "model_raw_output": output_reason,
+                        "predicted_answer": None, "is_correct": False
+                    })
+                    raw_generations_list.append({
+                        "index": item_index_for_log, "subject": subject, "ground_truth": ground_truth,
+                        "raw_output": output_reason, "extracted_answer": None
+                    })
+                    continue
+                
+                batch_prompts.append(prompt)
+                batch_indices.append(item_index_for_log)
+                batch_ground_truths.append(ground_truth)
+                batch_original_items.append(item)
 
-                try:
-                    with torch.no_grad():
-                        outputs = model.generate(
-                            **inputs,
-                            max_new_tokens=1, # Generate only first token for standard MMLU evaluation
-                            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            do_sample=False,
-                            # early_stopping=True # Removed as it might stop too soon for some models
-                        )
-                    output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
-                    generated_text_log = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
-                    model_answer_log = extract_answer_first_token(generated_text_log, tokenizer)
+            if not batch_prompts:
+                continue
 
-                    if model_answer_log:
-                        total_predictions += 1
-                        if model_answer_log == ground_truth:
-                            correct_predictions += 1
-                            is_correct_log = True
-                    else:
-                        logger.warning(f"Item {item_index_for_log}: Failed to extract answer from output: '{generated_text_log[:100]}...'")
-                        errors_or_skipped += 1 # 답변 추출 실패도 오류로 카운트
+            batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
+
+            for result, ground_truth, original_item in zip(batch_results, batch_ground_truths, batch_original_items):
+                generated_text_log = result['raw_output']
+                model_answer_log = result['extracted_answer']
+                is_correct_log = False
+
+                if model_answer_log:
+                    total_predictions += 1
+                    if model_answer_log == ground_truth:
+                        correct_predictions += 1
+                        is_correct_log = True
+                else:
+                    errors_or_skipped += 1
+                    if not generated_text_log.startswith("ERROR"):
                         generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
 
+                results_details.append({
+                    "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,
+                    "predicted_answer": model_answer_log, "is_correct": is_correct_log
+                })
+                raw_generations_list.append({
+                    "index": result['index'], "subject": original_item.get("subject", "unknown"), "ground_truth": ground_truth,
+                    "raw_output": generated_text_log, "extracted_answer": model_answer_log
+                })
 
-                except Exception as e:
-                    logger.error(f"Item {item_index_for_log}: Inference error: {e}", exc_info=False)
-                    errors_or_skipped += 1
-                    generated_text_log = f"ERROR_INFERENCE: {str(e)[:100]}" # 오류 메시지 일부 저장
-
-            # 모든 경우에 대해 상세 결과 및 원본 생성 결과 기록
-            results_details.append({
-                "index": item_index_for_log,
-                "ground_truth": ground_truth,
-                "model_raw_output": generated_text_log,
-                "predicted_answer": model_answer_log,
-                "is_correct": is_correct_log
-            })
-            raw_generations_list.append({
-                "index": item_index_for_log,
-                "subject": item.get("subject", "unknown"),
-                "ground_truth": ground_truth,
-                "raw_output": generated_text_log,
-                "extracted_answer": model_answer_log
-            })
-            
-            # Update progress bar with current error count
             pbar.set_description(f"Evaluating {config.name} (5-shot, errors: {errors_or_skipped})")
-
-            if (i + 1) % 100 == 0:  # Report more frequently for smaller test sets
-                 current_acc = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-                 logger.info(f"Progress ({config.name}): {i + 1}/{len(test_data)}, Acc: {current_acc:.2f}% ({correct_predictions}/{total_predictions}), Errors/Skipped: {errors_or_skipped}")
 
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
@@ -649,6 +669,38 @@ def main():
 
     logger.info("All evaluations complete.")
 
+    # --- Create a consolidated summary of all model results ---
+    logger.info("--- Generating Consolidated Summary ---")
+    all_results_summary = []
+    for config in MODEL_CONFIGS:
+        results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}.json")
+        if os.path.exists(results_filepath):
+            try:
+                with open(results_filepath, 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                
+                summary = {
+                    "model_name": config.name,
+                    "accuracy_standard": result_data.get("accuracy_standard (correct / valid_predictions)"),
+                    "accuracy_strict": result_data.get("accuracy_strict (correct / total_test_items)"),
+                    "correct_predictions": result_data.get("correct_predictions"),
+                    "valid_predictions": result_data.get("valid_predictions"),
+                    "total_items": result_data.get("test_items")
+                }
+                all_results_summary.append(summary)
+            except Exception as e:
+                logger.error(f"Failed to read or parse result file for {config.name}: {e}")
+        else:
+            logger.warning(f"Result file not found for {config.name} at {results_filepath}")
+
+    if all_results_summary:
+        summary_filepath = os.path.join(BASE_OUTPUT_DIR, "summary.json")
+        try:
+            with open(summary_filepath, 'w', encoding='utf-8') as f:
+                json.dump(all_results_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Consolidated summary saved to {summary_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save consolidated summary: {e}")
 
 if __name__ == "__main__":
     logger.info(f"Python version: {sys.version}")

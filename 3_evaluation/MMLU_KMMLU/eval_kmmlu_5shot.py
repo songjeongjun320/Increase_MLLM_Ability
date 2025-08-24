@@ -98,6 +98,7 @@ MODEL_CONFIGS = [
 # --- General Configuration (Updated for 5-shot evaluation) ---
 DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
 BASE_OUTPUT_DIR = "kmmlu_tow_model2_5shot" # Base dir for ALL model results
+BATCH_SIZE = 8
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -367,6 +368,44 @@ def extract_answer_legacy(model_output, prompt):
     return None
 
 
+# --- Batch Processing Function ---
+def process_batch(model, tokenizer, batch_prompts, batch_indices):
+    """Processes a batch of prompts efficiently."""
+    try:
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=4096 # Increased max length for 5-shot
+        ).to(DEVICE)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                do_sample=False,
+            )
+        
+        batch_results = []
+        input_length = inputs['input_ids'].shape[1]
+        for i, sequence in enumerate(outputs):
+            output_tokens = sequence[input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            extracted_answer = extract_korean_answer_first_token(generated_text, tokenizer)
+            batch_results.append({
+                'index': batch_indices[i],
+                'raw_output': generated_text,
+                'extracted_answer': extracted_answer
+            })
+        return batch_results
+    except Exception as e:
+        logger.error(f"Batch processing error: {e}", exc_info=False)
+        return [{'index': idx, 'raw_output': f"ERROR: {str(e)[:100]}", 'extracted_answer': None} for idx in batch_indices]
+
+
 # --- Single Model Evaluation Function (Uses BASE_OUTPUT_DIR) ---
 
 def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir: str):
@@ -496,232 +535,178 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         logger.info("Starting inference loop...")
         logger.info("Starting 5-shot Korean MMLU inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
-        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (5-shot Korean, errors: 0)", total=len(test_data))
-        for i, item in pbar:
-            # Extract ground truth from Korean MMLU format (already in letter format)
-            ground_truth = item.get("Answer", None)  # Korean MMLU already has letter format (A, B, C, D)
+        
+        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (5-shot Korean, errors: 0)")
+        for i in pbar:
+            batch_data = test_data[i:i+BATCH_SIZE]
+            batch_prompts = []
+            batch_indices = []
+            batch_ground_truths = []
+            batch_original_items = []
             
-            # Validate ground truth
-            if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
-                ground_truth = None
-            
-            if not ground_truth:
-                logger.warning(f"Invalid/missing ground truth for item {i}. Skipping.")
-                errors += 1
-                results_details.append({
-                    "index": i,
-                    "ground_truth": ground_truth,
-                    "model_raw_output": "SKIPPED - Invalid Ground Truth",
-                    "predicted_answer": None,
-                    "is_correct": False
-                })
+            for j, item in enumerate(batch_data):
+                current_index = i + j
+                ground_truth = item.get("Answer", None)
+                if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
+                    errors += 1
+                    results_details.append({"index": current_index, "ground_truth": None, "model_raw_output": "SKIPPED - Invalid Ground Truth", "predicted_answer": None, "is_correct": False})
+                    continue
+                
+                subject = item.get("Subject", "unknown")
+                dev_examples = dev_data.get(subject, [])
+                prompt = create_5shot_korean_prompt(item, dev_examples) if dev_examples else None
+
+                if prompt is None:
+                    errors += 1
+                    results_details.append({"index": current_index, "ground_truth": ground_truth, "model_raw_output": "SKIPPED - Prompt Creation Failed", "predicted_answer": None, "is_correct": False})
+                    continue
+
+                batch_prompts.append(prompt)
+                batch_indices.append(current_index)
+                batch_ground_truths.append(ground_truth)
+                batch_original_items.append(item)
+
+            if not batch_prompts:
                 continue
-
-            # Get development examples for this subject
-            subject = item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field
-            dev_examples = dev_data.get(subject, [])
             
-            if not dev_examples:
-                logger.warning(f"No development examples available for subject: {subject}")
-                prompt = None
-            else:
-                prompt = create_5shot_korean_prompt(item, dev_examples)
-            if prompt is None:
-                logger.warning(f"Could not create prompt for item {i}. Skipping.")
-                errors += 1
-                results_details.append({
-                    "index": i,
-                    "ground_truth": ground_truth,
-                    "model_raw_output": "SKIPPED - Prompt Creation Failed",
-                    "predicted_answer": None,
-                    "is_correct": False
-                })
-                continue
+            batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
 
-            # Generate exactly one token for standard MMLU evaluation
-            max_gen_tokens = 1
-
-            inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=2048).to(DEVICE) # Added truncation
-
-            generated_text = "ERROR - Inference Failed" # Default in case of error
-            try:
-                with torch.no_grad():
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=max_gen_tokens, # Generate only first token for standard MMLU evaluation
-                        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                        eos_token_id=tokenizer.eos_token_id,
-                        do_sample=False, # Deterministic output
-                    )
-                # Decode only the newly generated tokens
-                output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
-                generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
-
-            except Exception as e:
-                logger.error(f"Inference error on item {i}: {e}")
-                errors += 1
-                model_answer = None # Mark as error
+            for result, ground_truth in zip(batch_results, batch_ground_truths):
+                model_answer = result['extracted_answer']
+                generated_text = result['raw_output']
                 is_correct = False
 
-            else: # If inference succeeded
-                # Extract answer using first-token approach
-                model_answer = extract_korean_answer_first_token(generated_text, tokenizer)
-
-                is_correct = False
                 if model_answer:
-                    total_predictions += 1 # Count as a valid prediction attempt
+                    total_predictions += 1
                     if model_answer == ground_truth:
                         correct_predictions += 1
                         is_correct = True
-                    # logger.debug(f"Item {i}: GT='{ground_truth}', Pred='{model_answer}', Raw='{generated_text}', Correct={is_correct}")
                 else:
-                    errors += 1 # Count as an error if extraction fails
-                    # logger.warning(f"Failed to extract answer for item {i}. Raw output: '{generated_text}'")
+                    errors += 1
+                    if not generated_text.startswith("ERROR"):
+                        generated_text = f"EXTRACTION_FAILED: {generated_text}"
 
-            results_details.append({
-                "index": i,
-                # "question": item.get("Question"), # Optional: Add back if needed
-                # "choices": {k: item.get(k) for k in ["A", "B", "C", "D"]}, # Optional
-                "ground_truth": ground_truth,
-                # "prompt": prompt, # Optional
-                "model_raw_output": generated_text,
-                "predicted_answer": model_answer,
-                "is_correct": is_correct
-            })
-            
-            # Update progress bar with current error count
+                results_details.append({
+                    "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text,
+                    "predicted_answer": model_answer, "is_correct": is_correct
+                })
+
             pbar.set_description(f"Evaluating {config.name} (5-shot Korean, errors: {errors})")
-
-            # Intermediate progress logging
-            if (i + 1) % 100 == 0: # Log every 100 items for smaller test sets
-                 current_acc = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-                 logger.info(f"Progress ({config.name}): {i + 1}/{len(test_data)}, Accuracy: {current_acc:.2f}% ({correct_predictions}/{total_predictions}), Errors: {errors}")
-
 
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
-        # Recalculate totals based on loop results
-        total_processed_loop = len(results_details)
-        valid_pred_loop = sum(1 for r in results_details if r['predicted_answer'] is not None and r['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed", "ERROR - Inference Failed"])
-        correct_pred_loop = sum(1 for r in results_details if r['is_correct'])
-        errors_loop = sum(1 for r in results_details if r['predicted_answer'] is None and r['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed"])
-        skipped_loop = sum(1 for r in results_details if r['model_raw_output'].startswith("SKIPPED"))
         
-        # Calculate two types of accuracy
-        accuracy_standard = (correct_pred_loop / valid_pred_loop * 100) if valid_pred_loop > 0 else 0  # correct / valid_predictions
-        accuracy_strict = (correct_pred_loop / total_processed_loop * 100) if total_processed_loop > 0 else 0  # correct / total_test_items (including skipped/errors)
+        total_processed = len(test_data)
+        accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+        accuracy_strict = (correct_predictions / total_processed * 100) if total_processed > 0 else 0
 
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
-        for i, item in enumerate(test_data):
+        for idx, item in enumerate(test_data):
             subject = item.get("Subject", "unknown")
-            result = results_details[i]
+            result = results_details[idx]
             
             if subject not in subject_stats:
-                subject_stats[subject] = {
-                    "total": 0,
-                    "correct": 0,
-                    "valid_predictions": 0,
-                    "accuracy": 0.0
-                }
+                subject_stats[subject] = {"total": 0, "correct": 0, "valid_predictions": 0, "accuracy": 0.0}
             
             subject_stats[subject]["total"] += 1
-            if result['predicted_answer'] is not None and result['model_raw_output'] not in ["SKIPPED - Invalid Ground Truth", "SKIPPED - Prompt Creation Failed", "ERROR - Inference Failed"]:
+            if result['predicted_answer'] is not None and not result['model_raw_output'].startswith(("SKIPPED", "ERROR")):
                 subject_stats[subject]["valid_predictions"] += 1
                 if result['is_correct']:
                     subject_stats[subject]["correct"] += 1
         
-        # Calculate accuracy for each subject
         for subject in subject_stats:
             if subject_stats[subject]["valid_predictions"] > 0:
                 subject_stats[subject]["accuracy"] = (subject_stats[subject]["correct"] / subject_stats[subject]["valid_predictions"]) * 100
 
-
         logger.info(f"--- 5-shot Korean MMLU Results for {config.name} ({config.model_id}) ---")
-        logger.info(f"Original Dataset Size: {len(mmlu_data)}")
-        logger.info(f"Test Items (after dev/test split): {len(test_data)}")
-        logger.info(f"Development Examples per Subject: 5")
-        logger.info(f"Items Processed (Attempted): {total_processed_loop}")
-        logger.info(f"Valid Predictions Made: {valid_pred_loop}")
-        logger.info(f"Correct Predictions: {correct_pred_loop}")
-        logger.info(f"Errors (Inference/Extraction Failures): {errors_loop}")
-        logger.info(f"Items Skipped (Invalid GT/Prompt): {skipped_loop}")
+        logger.info(f"Test Items: {total_processed}")
+        logger.info(f"Valid Predictions: {total_predictions}")
+        logger.info(f"Correct Predictions: {correct_predictions}")
+        logger.info(f"Errors or Skipped: {errors}")
         logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard:.2f}%")
         logger.info(f"Accuracy Strict (correct / total_test_items): {accuracy_strict:.2f}%")
 
         # --- Save Results ---
         final_summary = {
-            "model_config": config.__dict__, # Save config used
+            "model_config": {k: str(v) for k, v in config.__dict__.items()},
             "dataset_path": DATASET_PATH,
             "evaluation_type": "5-shot Korean MMLU",
-            "total_original_items": len(mmlu_data),
-            "dev_examples_per_subject": 5,
-            "test_items": len(test_data),
-            "items_processed": total_processed_loop,
-            "valid_predictions": valid_pred_loop,
-            "correct_predictions": correct_pred_loop,
-            "errors_or_failures": errors_loop,
-            "items_skipped": skipped_loop,
-            "accuracy_standard (correct / valid_predictions)": accuracy_standard,
-            "accuracy_strict (correct / total_test_items)": accuracy_strict,
-            "subjects_with_dev_examples": list(dev_data.keys()),
-            "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
-            "details": results_details # Include detailed results
+            "test_items": total_processed,
+            "valid_predictions": total_predictions,
+            "correct_predictions": correct_predictions,
+            "errors_or_skipped": errors,
+            "accuracy_standard": accuracy_standard,
+            "accuracy_strict": accuracy_strict,
+            "subject_wise_accuracy": subject_stats,
+            "details": results_details
         }
-        try:
-            with open(results_filepath, 'w', encoding='utf-8') as f:
-                # Handle non-serializable torch.dtype in config during dump
-                def default_serializer(o):
-                    if isinstance(o, torch.dtype):
-                        return str(o) # Convert dtype to string
-                    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
-
-                json.dump(final_summary, f, indent=2, ensure_ascii=False, default=default_serializer)
-            logger.info(f"Detailed results saved to {results_filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save results file {results_filepath}: {e}")
+        with open(results_filepath, 'w', encoding='utf-8') as f:
+            json.dump(final_summary, f, indent=2, ensure_ascii=False)
+        logger.info(f"Detailed results saved to {results_filepath}")
 
     except Exception as e:
-        logger.exception(f"An critical error occurred during evaluation for {config.name}: {e}") # Log full traceback
+        logger.exception(f"An critical error occurred during evaluation for {config.name}: {e}")
 
     finally:
-        # --- CRITICAL: Clean up resources ---
         logger.info(f"Cleaning up resources for {config.name}...")
-        del model
-        del tokenizer
-        gc.collect() # Explicitly call garbage collector
+        del model, tokenizer
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        logger.info(f"Resources cleaned up for {config.name}.")
-        # Remove the file handler for this model from the root logger
         if 'file_handler' in locals() and file_handler in root_logger.handlers:
              root_logger.removeHandler(file_handler)
              file_handler.close()
-             logger.debug(f"Removed file handler for {log_filepath}")
-
 
 # --- Main Execution Logic (Uses BASE_OUTPUT_DIR) ---
 def main():
-    # Ensure the base output directory exists
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
     logger.info(f"Base output directory: {BASE_OUTPUT_DIR}")
 
-    # Load data once
     mmlu_data = load_mmlu_data(DATASET_PATH)
     if mmlu_data is None:
-        logger.error("Could not load MMLU data. Exiting.")
         return
 
-    # Evaluate each model in the list
     for config in MODEL_CONFIGS:
          logger.info(f"\n===== Starting Evaluation for Model: {config.name} =====")
-         # Pass BASE_OUTPUT_DIR to the evaluation function
          evaluate_single_model(config, mmlu_data, BASE_OUTPUT_DIR)
          logger.info(f"===== Finished Evaluation for Model: {config.name} =====")
-         print("-" * 60) # Add visual separator in console
+         print("-" * 60)
 
     logger.info("All model evaluations complete.")
+    
+    # --- Create a consolidated summary of all model results ---
+    logger.info("--- Generating Consolidated Summary for KMMLU 5-shot ---")
+    all_results_summary = []
+    for config in MODEL_CONFIGS:
+        results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}.json")
+        if os.path.exists(results_filepath):
+            try:
+                with open(results_filepath, 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                
+                summary = {
+                    "model_name": config.name,
+                    "accuracy_standard": result_data.get("accuracy_standard"),
+                    "accuracy_strict": result_data.get("accuracy_strict"),
+                    "correct_predictions": result_data.get("correct_predictions"),
+                    "valid_predictions": result_data.get("valid_predictions"),
+                    "total_items": result_data.get("test_items")
+                }
+                all_results_summary.append(summary)
+            except Exception as e:
+                logger.error(f"Failed to read or parse result file for {config.name}: {e}")
+        else:
+            logger.warning(f"Result file not found for {config.name} at {results_filepath}")
 
+    if all_results_summary:
+        summary_filepath = os.path.join(BASE_OUTPUT_DIR, "summary.json")
+        try:
+            with open(summary_filepath, 'w', encoding='utf-8') as f:
+                json.dump(all_results_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Consolidated summary saved to {summary_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save consolidated summary: {e}")
 
 if __name__ == "__main__":
     main()

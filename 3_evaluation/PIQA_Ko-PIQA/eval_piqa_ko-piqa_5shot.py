@@ -218,13 +218,59 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
 
 def extract_answer_first_token(model_output):
     """
-    Extract answer from model output using first token approach.
+    Extract answer from model output using multiple strategies.
+    Prioritizes patterns that appear later in the text (final answer).
     """
+    if not model_output:
+        return None
+        
     cleaned_output = model_output.strip().upper()
+    import re
+    
+    # Strategy 1: Look for "ANSWER:" or "ANSWER IS" patterns (most reliable for final answer)
+    final_answer_patterns = [
+        r'(?:ANSWER\s*:?\s*|ANSWER\s+IS\s*:?\s*|THE\s+ANSWER\s+IS\s*:?\s*)([AB])(?:\b|\.|$)',
+        r'(?:THEREFORE\s*,?\s*|SO\s*,?\s*|THUS\s*,?\s*)(?:THE\s+ANSWER\s+IS\s*)?([AB])(?:\b|\.|$)',
+        r'(?:FINAL\s+ANSWER\s*:?\s*|CONCLUSION\s*:?\s*)([AB])(?:\b|\.|$)'
+    ]
+    
+    for pattern in final_answer_patterns:
+        matches = list(re.finditer(pattern, cleaned_output))
+        if matches:
+            # Return the last match (most likely to be final answer)
+            return matches[-1].group(1)
+    
+    # Strategy 2: Look for parentheses pattern, prioritizing later occurrences
+    paren_matches = list(re.finditer(r'\(([AB])\)', cleaned_output))
+    if paren_matches:
+        return paren_matches[-1].group(1)
+    
+    # Strategy 3: Look for standalone A or B at word boundaries, prioritizing later ones
+    standalone_matches = list(re.finditer(r'\b([AB])\b', cleaned_output))
+    if standalone_matches:
+        return standalone_matches[-1].group(1)
+    
+    # Strategy 4: Look for "option X" or "choice X" patterns
+    option_matches = list(re.finditer(r'(?:OPTION|CHOICE)\s*([AB])', cleaned_output))
+    if option_matches:
+        return option_matches[-1].group(1)
+    
+    # Strategy 5: Look for sentence-ending patterns
+    sentence_end_matches = list(re.finditer(r'([AB])(?:\.|!|\?|$)', cleaned_output))
+    if sentence_end_matches:
+        return sentence_end_matches[-1].group(1)
+    
+    # Strategy 6: First character if it's A or B (only if very short output)
+    if len(cleaned_output) <= 3 and cleaned_output and cleaned_output[0] in ['A', 'B']:
+        return cleaned_output[0]
+    
+    # Strategy 7: Last resort - find the last A or B in the text
+    last_answer = None
     for char in cleaned_output:
         if char in ['A', 'B']:
-            return char
-    return None
+            last_answer = char
+    
+    return last_answer
 
 def load_dataset(filepath):
     """Loads dataset from a JSON file."""
@@ -259,23 +305,31 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **batch_inputs,
-                max_new_tokens=1,  # We only need one token for A or B
+                max_new_tokens=MAX_NEW_TOKENS,  # Allow reasoning process
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
+                temperature=0.0,
+                top_p=1.0,
                 output_scores=True,
                 return_dict_in_generate=True
             )
         
         batch_results = []
         for i, (sequence, input_length) in enumerate(zip(outputs.sequences, batch_inputs['input_ids'].shape[1:])):
+            # Decode only the generated part
             output_tokens = sequence[input_length:]
             generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            
+            # Decode the full sequence (prompt + generation)
+            full_text = tokenizer.decode(sequence, skip_special_tokens=True).strip()
+            
             extracted_answer = extract_answer_first_token(generated_text)
             
             batch_results.append({
                 'index': batch_indices[i],
                 'raw_output': generated_text,
+                'full_generation': full_text,
                 'extracted_answer': extracted_answer
             })
         
@@ -291,18 +345,25 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                 with torch.no_grad():
                     outputs = model.generate(
                         **inputs,
-                        max_new_tokens=1,
+                        max_new_tokens=MAX_NEW_TOKENS,  # Allow reasoning process
                         pad_token_id=tokenizer.pad_token_id,
                         eos_token_id=tokenizer.eos_token_id,
                         do_sample=False,
+                        temperature=0.0,
                     )
+                # Decode only the generated part
                 output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
                 generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+                
+                # Decode the full sequence (prompt + generation)
+                full_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+                
                 extracted_answer = extract_answer_first_token(generated_text)
                 
                 individual_results.append({
                     'index': idx,
                     'raw_output': generated_text,
+                    'full_generation': full_text,
                     'extracted_answer': extracted_answer
                 })
             except Exception as individual_error:
@@ -310,6 +371,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                 individual_results.append({
                     'index': idx,
                     'raw_output': f"ERROR: {str(individual_error)[:100]}",
+                    'full_generation': f"ERROR: {str(individual_error)[:100]}",
                     'extracted_answer': None
                 })
         
@@ -428,6 +490,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                     "index": result['index'],
                     "ground_truth": ground_truth,
                     "raw_output": result['raw_output'],
+                    "full_generation": result.get('full_generation', result['raw_output']),
                     "extracted_answer": result['extracted_answer']
                 })
 
@@ -476,6 +539,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                     "index": result['index'],
                     "ground_truth": ground_truth,
                     "raw_output": result['raw_output'],
+                    "full_generation": result.get('full_generation', result['raw_output']),
                     "extracted_answer": result['extracted_answer']
                 })
 

@@ -21,26 +21,26 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-7B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Mistral-8B-Instruct-2410",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Llama-3.1-8B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-0528-Qwen3-8B",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+        use_quantization=False
+    ),
 
     # ToW Trained Models
     ModelConfig(
@@ -72,7 +72,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 ARC_DATASET_PATH = "../../2_datasets/ARC-C_Ko-ARC/ARC.json"
 KO_ARC_DATASET_PATH = "../../2_datasets/ARC-C_Ko-ARC/Ko-ARC.json"
-BASE_OUTPUT_DIR = "arc_tow_model1_5shot"
+BASE_OUTPUT_DIR = "arc_tow_model1_5shot_maxtoken_256"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -284,7 +284,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         with torch.no_grad():
                             outputs = model.generate(
                                 **inputs,
-                                max_new_tokens=1,
+                                max_new_tokens=256,
                                 pad_token_id=tokenizer.pad_token_id,
                                 eos_token_id=tokenizer.eos_token_id,
                                 do_sample=False,

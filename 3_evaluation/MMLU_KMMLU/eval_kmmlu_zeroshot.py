@@ -258,11 +258,26 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
             # Update progress bar with current error count
             pbar.set_description(f"Evaluating {config.name} (0-shot Korean, errors: {errors_or_skipped})")
 
-        accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-        logger.info(f"--- 0-shot KMMLU Results for {config.name} ---")
-        logger.info(f"Accuracy: {accuracy:.2f}% ({correct_predictions}/{total_predictions})")
+        accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+        accuracy_strict = (correct_predictions / len(test_data) * 100) if len(test_data) > 0 else 0
 
-        final_summary = {"model_config": {k: str(v) for k, v in config.__dict__.items()}, "evaluation_type": "0-shot Korean MMLU", "accuracy": accuracy, "details": results_details}
+        logger.info(f"--- 0-shot KMMLU Results for {config.name} ---")
+        logger.info(f"Test Items: {len(test_data)}")
+        logger.info(f"Valid Predictions: {total_predictions}")
+        logger.info(f"Correct Predictions: {correct_predictions}")
+        logger.info(f"Accuracy Standard: {accuracy_standard:.2f}%")
+        logger.info(f"Accuracy Strict: {accuracy_strict:.2f}%")
+
+        final_summary = {
+            "model_config": {k: str(v) for k, v in config.__dict__.items()},
+            "evaluation_type": "0-shot Korean MMLU",
+            "test_items": len(test_data),
+            "valid_predictions": total_predictions,
+            "correct_predictions": correct_predictions,
+            "accuracy_standard": accuracy_standard,
+            "accuracy_strict": accuracy_strict,
+            "details": results_details
+        }
         with open(results_filepath, 'w', encoding='utf-8') as f:
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
@@ -284,6 +299,39 @@ def main():
         model_dir = os.path.join(BASE_OUTPUT_DIR, config.name)
         os.makedirs(model_dir, exist_ok=True)
         evaluate_single_model(config, kmmlu_data, model_dir)
+
+    # --- Create a consolidated summary of all model results ---
+    logger.info("--- Generating Consolidated Summary for KMMLU ---")
+    all_results_summary = []
+    for config in MODEL_CONFIGS:
+        results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}_0shot_korean.json")
+        if os.path.exists(results_filepath):
+            try:
+                with open(results_filepath, 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                
+                summary = {
+                    "model_name": config.name,
+                    "accuracy_standard": result_data.get("accuracy_standard"),
+                    "accuracy_strict": result_data.get("accuracy_strict"),
+                    "correct_predictions": result_data.get("correct_predictions"),
+                    "valid_predictions": result_data.get("valid_predictions"),
+                    "total_items": result_data.get("test_items")
+                }
+                all_results_summary.append(summary)
+            except Exception as e:
+                logger.error(f"Failed to read or parse result file for {config.name}: {e}")
+        else:
+            logger.warning(f"Result file not found for {config.name} at {results_filepath}")
+
+    if all_results_summary:
+        summary_filepath = os.path.join(BASE_OUTPUT_DIR, "summary.json")
+        try:
+            with open(summary_filepath, 'w', encoding='utf-8') as f:
+                json.dump(all_results_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Consolidated summary saved to {summary_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save consolidated summary: {e}")
 
 if __name__ == "__main__":
     main()

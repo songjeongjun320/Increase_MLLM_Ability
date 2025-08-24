@@ -345,5 +345,38 @@ def main():
         os.makedirs(model_specific_output_dir, exist_ok=True)
         evaluate_single_model(config, mmlu_data, model_specific_output_dir)
 
+    # --- Create a consolidated summary of all model results ---
+    logger.info("--- Generating Consolidated Summary ---")
+    all_results_summary = []
+    for config in MODEL_CONFIGS:
+        results_filepath = os.path.join(BASE_OUTPUT_DIR, config.name, f"results_{config.name}_0shot.json")
+        if os.path.exists(results_filepath):
+            try:
+                with open(results_filepath, 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                
+                summary = {
+                    "model_name": config.name,
+                    "accuracy_standard": result_data.get("accuracy_standard"),
+                    "accuracy_strict": result_data.get("accuracy_strict"),
+                    "correct_predictions": result_data.get("correct_predictions"),
+                    "valid_predictions": result_data.get("valid_predictions"),
+                    "total_items": result_data.get("test_items")
+                }
+                all_results_summary.append(summary)
+            except Exception as e:
+                logger.error(f"Failed to read or parse result file for {config.name}: {e}")
+        else:
+            logger.warning(f"Result file not found for {config.name} at {results_filepath}")
+
+    if all_results_summary:
+        summary_filepath = os.path.join(BASE_OUTPUT_DIR, "summary.json")
+        try:
+            with open(summary_filepath, 'w', encoding='utf-8') as f:
+                json.dump(all_results_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Consolidated summary saved to {summary_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save consolidated summary: {e}")
+
 if __name__ == "__main__":
     main()

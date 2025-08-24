@@ -52,3 +52,4 @@ mmlu_baseline*
 mmlu_tow_model*
 kmmlu_baseline*
 kmmlu_tow_model*
+arc_tow_*

@@ -96,7 +96,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
-DATASET_PATH = "../../DB/MMLU/MMLU_origin.json"
+DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
 BASE_OUTPUT_DIR = "kmmlu_tow_model2_5shot" # Base dir for ALL model results
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"

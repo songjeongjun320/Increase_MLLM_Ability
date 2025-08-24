@@ -466,7 +466,8 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info(f"Dataset size: {len(gsm8k_data)}")
 
         num_batches = (len(gsm8k_data) + BATCH_SIZE - 1) // BATCH_SIZE
-        for i in tqdm(range(num_batches), desc=f"Evaluating {config.name} (GSM8K, batch size {BATCH_SIZE})"):
+        pbar = tqdm(range(num_batches), desc=f"Evaluating {config.name} (GSM8K, errors: 0)")
+        for i in pbar:
             batch_start = i * BATCH_SIZE
             batch_end = batch_start + BATCH_SIZE
             batch = gsm8k_data[batch_start:batch_end]
@@ -549,6 +550,9 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             except Exception as e:
                 logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
                 errors_or_skipped += len(prompts)
+            
+            # Update progress bar with current error count
+            pbar.set_description(f"Evaluating {config.name} (GSM8K, errors: {errors_or_skipped})")
 
         # Final Results
         logger.info(f"Inference loop finished for {config.name}.")

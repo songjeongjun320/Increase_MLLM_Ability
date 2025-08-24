@@ -529,7 +529,8 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
 
         # Evaluate MMLU-ProX English
         logger.info("Starting MMLU-ProX English evaluation...")
-        for i in tqdm(range(0, len(mmlu_prox_en_data), BATCH_SIZE), desc="Evaluating MMLU-ProX English"):
+        pbar_en = tqdm(range(0, len(mmlu_prox_en_data), BATCH_SIZE), desc="Evaluating MMLU-ProX English (errors: 0)")
+        for i in pbar_en:
             batch_data = mmlu_prox_en_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
@@ -574,12 +575,17 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                     "full_generation": result.get('full_generation', result['raw_output']),
                     "extracted_answer": result['extracted_answer']
                 })
+            
+            # Update progress bar with current error count
+            current_en_errors = len(mmlu_prox_en_data[:i+BATCH_SIZE]) - all_results["mmlu_prox_en"]["total"]
+            pbar_en.set_description(f"Evaluating MMLU-ProX English (errors: {current_en_errors})")
 
         logger.info(f"MMLU-ProX English evaluation completed: {all_results['mmlu_prox_en']['correct']}/{all_results['mmlu_prox_en']['total']}")
 
         # Evaluate MMLU-ProX Korean
         logger.info("Starting MMLU-ProX Korean evaluation...")
-        for i in tqdm(range(0, len(mmlu_prox_ko_data), BATCH_SIZE), desc="Evaluating MMLU-ProX Korean"):
+        pbar_ko = tqdm(range(0, len(mmlu_prox_ko_data), BATCH_SIZE), desc="Evaluating MMLU-ProX Korean (errors: 0)")
+        for i in pbar_ko:
             batch_data = mmlu_prox_ko_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
@@ -624,6 +630,10 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                     "full_generation": result.get('full_generation', result['raw_output']),
                     "extracted_answer": result['extracted_answer']
                 })
+            
+            # Update progress bar with current error count
+            current_ko_errors = len(mmlu_prox_ko_data[:i+BATCH_SIZE]) - all_results["mmlu_prox_ko"]["total"]
+            pbar_ko.set_description(f"Evaluating MMLU-ProX Korean (errors: {current_ko_errors})")
 
         logger.info(f"MMLU-ProX Korean evaluation completed: {all_results['mmlu_prox_ko']['correct']}/{all_results['mmlu_prox_ko']['total']}")
 

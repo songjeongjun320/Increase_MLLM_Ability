@@ -442,7 +442,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
         logger.info("Starting 5-shot inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
-        for i, item in enumerate(tqdm(test_data, desc=f"Evaluating {config.name} (5-shot)")):
+        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (5-shot, errors: 0)", total=len(test_data))
+        for i, item in pbar:
             item_index_for_log = item.get("index", i) # 데이터에 index 필드가 있다면 사용
             ground_truth = get_ground_truth_origin(item)
             
@@ -517,6 +518,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 "raw_output": generated_text_log,
                 "extracted_answer": model_answer_log
             })
+            
+            # Update progress bar with current error count
+            pbar.set_description(f"Evaluating {config.name} (5-shot, errors: {errors_or_skipped})")
 
             if (i + 1) % 100 == 0:  # Report more frequently for smaller test sets
                  current_acc = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0

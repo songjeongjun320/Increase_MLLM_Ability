@@ -267,7 +267,8 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             
             # Batch processing loop
             num_batches = (len(dataset) + BATCH_SIZE - 1) // BATCH_SIZE
-            for i in tqdm(range(num_batches), desc=f"Evaluating {config.name} on {dataset_name} (5-shot, batch size {BATCH_SIZE})"):
+            pbar = tqdm(range(num_batches), desc=f"Evaluating {config.name} on {dataset_name} (5-shot, errors: 0)")
+            for i in pbar:
                 batch_start = i * BATCH_SIZE
                 batch_end = batch_start + BATCH_SIZE
                 batch = dataset[batch_start:batch_end]
@@ -350,6 +351,9 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                 except Exception as e:
                     logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
                     errors_or_skipped += len(prompts)
+                
+                # Update progress bar with current error count
+                pbar.set_description(f"Evaluating {config.name} on {dataset_name} (5-shot, errors: {errors_or_skipped})")
 
             
             # Calculate accuracy

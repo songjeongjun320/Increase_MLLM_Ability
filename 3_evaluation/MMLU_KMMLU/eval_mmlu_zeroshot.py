@@ -243,7 +243,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         test_data = mmlu_data # Use all data for testing
         logger.info(f"Test data size: {len(test_data)}")
         
-        for i, item in enumerate(tqdm(test_data, desc=f"Evaluating {config.name} (0-shot)")):
+        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (0-shot, errors: 0)", total=len(test_data))
+        for i, item in pbar:
             ground_truth = get_ground_truth_origin(item)
             prompt = create_0shot_prompt(item)
             
@@ -290,6 +291,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 "index": i, "subject": item.get("subject", "unknown"), "ground_truth": ground_truth,
                 "raw_output": generated_text_log, "extracted_answer": model_answer_log
             })
+            
+            # Update progress bar with current error count
+            pbar.set_description(f"Evaluating {config.name} (0-shot, errors: {errors_or_skipped})")
         
         # --- Final Results ---
         accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0

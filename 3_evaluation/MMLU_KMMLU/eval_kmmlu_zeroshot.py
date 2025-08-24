@@ -224,7 +224,8 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
         results_details, raw_generations_list = [], []
 
         test_data = kmmlu_data
-        for i, item in enumerate(tqdm(test_data, desc=f"Evaluating {config.name} (0-shot Korean)")):
+        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (0-shot Korean, errors: 0)", total=len(test_data))
+        for i, item in pbar:
             ground_truth = get_ground_truth_korean(item)
             prompt = create_0shot_korean_prompt(item)
             
@@ -253,6 +254,9 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
 
             results_details.append({"index": i, "ground_truth": ground_truth, "model_raw_output": generated_text_log, "predicted_answer": model_answer_log, "is_correct": is_correct_log})
             raw_generations_list.append({"index": i, "subject": item.get("Subject"), "ground_truth": ground_truth, "raw_output": generated_text_log, "extracted_answer": model_answer_log})
+            
+            # Update progress bar with current error count
+            pbar.set_description(f"Evaluating {config.name} (0-shot Korean, errors: {errors_or_skipped})")
 
         accuracy = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
         logger.info(f"--- 0-shot KMMLU Results for {config.name} ---")

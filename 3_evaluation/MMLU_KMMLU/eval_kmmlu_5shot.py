@@ -494,7 +494,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         logger.info("Starting inference loop...")
         logger.info("Starting 5-shot Korean MMLU inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
-        for i, item in enumerate(tqdm(test_data, desc=f"Evaluating {config.name} (5-shot Korean)")):
+        pbar = tqdm(enumerate(test_data), desc=f"Evaluating {config.name} (5-shot Korean, errors: 0)", total=len(test_data))
+        for i, item in pbar:
             # Extract ground truth from Korean MMLU format (already in letter format)
             ground_truth = item.get("Answer", None)  # Korean MMLU already has letter format (A, B, C, D)
             
@@ -585,6 +586,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 "predicted_answer": model_answer,
                 "is_correct": is_correct
             })
+            
+            # Update progress bar with current error count
+            pbar.set_description(f"Evaluating {config.name} (5-shot Korean, errors: {errors})")
 
             # Intermediate progress logging
             if (i + 1) % 100 == 0: # Log every 100 items for smaller test sets

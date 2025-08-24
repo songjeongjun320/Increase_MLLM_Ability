@@ -449,7 +449,8 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
 
         # Evaluate PIQA (English)
         logger.info("Starting PIQA (English) evaluation...")
-        for i in tqdm(range(0, len(piqa_data), BATCH_SIZE), desc="Evaluating PIQA (English)"):
+        pbar_piqa = tqdm(range(0, len(piqa_data), BATCH_SIZE), desc="Evaluating PIQA (English, errors: 0)")
+        for i in pbar_piqa:
             batch_data = piqa_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
@@ -493,12 +494,17 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                     "full_generation": result.get('full_generation', result['raw_output']),
                     "extracted_answer": result['extracted_answer']
                 })
+            
+            # Update progress bar with current error count
+            current_piqa_errors = len(piqa_data[:i+BATCH_SIZE]) - all_results["piqa"]["total"]
+            pbar_piqa.set_description(f"Evaluating PIQA (English, errors: {current_piqa_errors})")
 
         logger.info(f"PIQA evaluation completed: {all_results['piqa']['correct']}/{all_results['piqa']['total']}")
 
         # Evaluate Ko-PIQA (Korean)
         logger.info("Starting Ko-PIQA (Korean) evaluation...")
-        for i in tqdm(range(0, len(ko_piqa_data), BATCH_SIZE), desc="Evaluating Ko-PIQA (Korean)"):
+        pbar_ko_piqa = tqdm(range(0, len(ko_piqa_data), BATCH_SIZE), desc="Evaluating Ko-PIQA (Korean, errors: 0)")
+        for i in pbar_ko_piqa:
             batch_data = ko_piqa_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
@@ -542,6 +548,10 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                     "full_generation": result.get('full_generation', result['raw_output']),
                     "extracted_answer": result['extracted_answer']
                 })
+            
+            # Update progress bar with current error count
+            current_ko_piqa_errors = len(ko_piqa_data[:i+BATCH_SIZE]) - all_results["ko_piqa"]["total"]
+            pbar_ko_piqa.set_description(f"Evaluating Ko-PIQA (Korean, errors: {current_ko_piqa_errors})")
 
         logger.info(f"Ko-PIQA evaluation completed: {all_results['ko_piqa']['correct']}/{all_results['ko_piqa']['total']}")
 

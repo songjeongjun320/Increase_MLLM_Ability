@@ -137,13 +137,24 @@ def evaluate_ner_task(model_config, output_dir: str, max_samples: int = None):
         predictions = []
         references = []
         
-        for i, sample in enumerate(validation_data):
+        error_count = 0
+        pbar = tqdm(enumerate(validation_data), desc=f"Evaluating NER (errors: 0)", total=len(validation_data))
+        for i, sample in pbar:
+            try:
+                pred, ref = evaluate_ner_sample(model_loader, sample)
+                predictions.append(pred)
+                references.append(ref)
+            except Exception as e:
+                logger.error(f"Error processing sample {i}: {e}")
+                error_count += 1
+                predictions.append("")
+                references.append([])
+            
+            # Update progress bar with current error count
+            pbar.set_description(f"Evaluating NER (errors: {error_count})")
+            
             if i % 50 == 0:
                 logger.info(f"Processing sample {i+1}/{len(validation_data)}")
-            
-            pred, ref = evaluate_ner_sample(model_loader, sample)
-            predictions.append(pred)
-            references.append(ref)
         
         # Compute metrics
         metrics = compute_ner_metrics(predictions, references)

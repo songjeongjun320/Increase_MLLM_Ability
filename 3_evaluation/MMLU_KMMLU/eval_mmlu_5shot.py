@@ -403,8 +403,12 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         # If an adapter is used, the updated tokenizer is saved with it.
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
-        
+        tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_load_path, 
+                    cache_dir=CACHE_DIR,
+                    padding_side='left',  # <--- 이 라인을 추가하세요!
+                    trust_remote_code=True # Qwen 등 일부 모델은 이 옵션이 필요할 수 있습니다.
+                )          
         if tokenizer.pad_token is None:
             if tokenizer.eos_token:
                 tokenizer.pad_token = tokenizer.eos_token

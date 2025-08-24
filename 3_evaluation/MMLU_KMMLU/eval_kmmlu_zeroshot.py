@@ -244,7 +244,13 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
     model, tokenizer = None, None
     try:
         tokenizer_load_path = config.adapter_path or config.model_id
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
+        tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_load_path, 
+                    cache_dir=CACHE_DIR,
+                    padding_side='left',  # <--- 이 라인을 추가하세요!
+                    trust_remote_code=True # Qwen 등 일부 모델은 이 옵션이 필요할 수 있습니다.
+                )  
+        
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 

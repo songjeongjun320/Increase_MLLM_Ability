@@ -6,6 +6,7 @@ venv/
 
 # DB
 *.json
+*.log
 *.txt
 kakaobrain-kornli
 Ko-StrategyQA

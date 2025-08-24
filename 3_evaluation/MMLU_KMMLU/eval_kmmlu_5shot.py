@@ -21,26 +21,26 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        use_quantization=False # Adjust based on VRAM
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.1-8B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-0528-Qwen3-8B",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
+    #     use_quantization=False # Adjust based on VRAM
+    # ),
     
     # TOW Trained Model
     ModelConfig(
@@ -97,8 +97,8 @@ MODEL_CONFIGS = [
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
 DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
-BASE_OUTPUT_DIR = "kmmlu_model1_5shot" # Base dir for ALL model results
-BATCH_SIZE = 16
+BASE_OUTPUT_DIR = "kmmlu_tow_model1_5shot" # Base dir for ALL model results
+BATCH_SIZE = 8
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -235,7 +235,7 @@ def create_5shot_korean_prompt(test_item, dev_examples):
         prompt_parts.append(f"C. {choice_c}")
         prompt_parts.append(f"D. {choice_d}")
         
-        prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {answer_letter}입니다.")
+        prompt_parts.append(f"Answer: {answer_letter}")
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
@@ -254,8 +254,7 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     prompt_parts.append(f"D. {test_choice_d}")
     prompt_parts.append("")
     
-    prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
-    prompt_parts.append("응답: 단계적으로 생각해봅시다.")
+    prompt_parts.append("Answer:")
     
     return "\n".join(prompt_parts)
 
@@ -292,7 +291,27 @@ def extract_korean_answer_first_token(model_output, tokenizer):
     # Clean and normalize output
     cleaned_output = model_output.strip().upper()
     
-    # Look for first letter that is A, B, C, or D
+    # First, look for immediate A, B, C, or D at the start
+    if cleaned_output and cleaned_output[0] in ['A', 'B', 'C', 'D']:
+        return cleaned_output[0]
+    
+    # Look for patterns like "A.", "(A)", "A)", "답: A" etc.
+    import re
+    patterns = [
+        r'^\s*([ABCD])[\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([ABCD])\)?\s*$',  # (A) or A with optional parentheses
+        r'답\s*:?\s*([ABCD])',      # 답: A or 답 A
+        r'정답\s*:?\s*([ABCD])',    # 정답: A or 정답 A
+        r'Answer\s*:?\s*([ABCD])',  # Answer: A
+        r'^([ABCD])'                # Just A, B, C, D at start
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, cleaned_output)
+        if match:
+            return match.group(1)
+    
+    # Look for first letter that is A, B, C, or D anywhere in the output
     for char in cleaned_output:
         if char in ['A', 'B', 'C', 'D']:
             return char
@@ -377,7 +396,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=4096 # Increased max length for 5-shot
+            max_length=2048 # Increased max length for 5-shot
         ).to(DEVICE)
 
         with torch.no_grad():
@@ -425,6 +444,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
     os.makedirs(model_output_dir, exist_ok=True)
     results_filepath = os.path.join(model_output_dir, f"results_{config.name}.json")
     log_filepath = os.path.join(model_output_dir, f"eval_{config.name}.log")
+    raw_gen_filepath = os.path.join(model_output_dir, f"raw_generations_{config.name}.json")
 
 
     # --- Setup Logging for this specific model ---
@@ -433,13 +453,22 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
     file_handler.setFormatter(formatter)
     # Add handler to the root logger for this run
     root_logger = logging.getLogger()
-    root_logger.addHandler(file_handler)
-    # Set level for root logger if needed (e.g., to capture DEBUG from libraries)
-    # root_logger.setLevel(logging.DEBUG)
+    # 기존 파일 핸들러 제거 (중복 로깅 방지)
+    for handler in list(root_logger.handlers):
+        if isinstance(handler, logging.FileHandler) and handler is not file_handler:
+            try:
+                handler.close()
+                root_logger.removeHandler(handler)
+            except Exception as e:
+                logger.debug(f"Error removing old file handler: {e}")
+    if file_handler not in root_logger.handlers:
+        root_logger.addHandler(file_handler)
 
     logger.info(f"--- Starting Evaluation for Model: {config.name} ({config.model_id}) ---")
+    logger.info(f"Output directory: {model_output_dir}")
     logger.info(f"Results will be saved to: {results_filepath}")
     logger.info(f"Logs will be saved to: {log_filepath}")
+    logger.info(f"Raw generations will be saved to: {raw_gen_filepath}")
     logger.info(f"Using Device: {DEVICE}, DType: {config.torch_dtype}")
     logger.info(f"Quantization: {'Enabled' if config.use_quantization else 'Disabled'}")
 
@@ -454,10 +483,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         tokenizer = AutoTokenizer.from_pretrained(
                     tokenizer_load_path, 
                     cache_dir=CACHE_DIR,
-                    padding_side='left',  # <--- 이 라인을 추가하세요!
-                    trust_remote_code=True # Qwen 등 일부 모델은 이 옵션이 필요할 수 있습니다.
-                )  
-        
+                    padding_side='left',
+                    trust_remote_code=True
+                )
+
         if tokenizer.pad_token is None:
             if tokenizer.eos_token:
                 logger.info("Tokenizer does not have a pad token, setting to eos_token.")
@@ -486,8 +515,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             config.model_id,
             torch_dtype=config.torch_dtype,
             quantization_config=quantization_config_bnb,
-            device_map=DEVICE, # Assumes single device mapping
-            trust_remote_code=True # Necessary for some models
+            device_map=DEVICE,
+            trust_remote_code=True,
+            cache_dir=CACHE_DIR
         )
 
         # 3. Resize model embeddings to match the tokenizer's vocabulary size BEFORE loading the adapter.
@@ -536,6 +566,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         total_predictions = 0
         errors = 0
         results_details = []
+        raw_generations_list = []
 
         logger.info("Starting inference loop...")
         logger.info("Starting 5-shot Korean MMLU inference loop...")
@@ -555,6 +586,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
                     errors += 1
                     results_details.append({"index": current_index, "ground_truth": None, "model_raw_output": "SKIPPED - Invalid Ground Truth", "predicted_answer": None, "is_correct": False})
+                    raw_generations_list.append({
+                        "index": current_index, "subject": item.get("Subject", "unknown"), "ground_truth": None,
+                        "raw_output": "SKIPPED - Invalid Ground Truth", "extracted_answer": None
+                    })
                     continue
                 
                 subject = item.get("Subject", "unknown")
@@ -564,6 +599,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 if prompt is None:
                     errors += 1
                     results_details.append({"index": current_index, "ground_truth": ground_truth, "model_raw_output": "SKIPPED - Prompt Creation Failed", "predicted_answer": None, "is_correct": False})
+                    raw_generations_list.append({
+                        "index": current_index, "subject": subject, "ground_truth": ground_truth,
+                        "raw_output": "SKIPPED - Prompt Creation Failed", "extracted_answer": None
+                    })
                     continue
 
                 batch_prompts.append(prompt)
@@ -576,7 +615,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
 
-            for result, ground_truth in zip(batch_results, batch_ground_truths):
+            for result, ground_truth, original_item in zip(batch_results, batch_ground_truths, batch_original_items):
                 model_answer = result['extracted_answer']
                 generated_text = result['raw_output']
                 is_correct = False
@@ -594,6 +633,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text,
                     "predicted_answer": model_answer, "is_correct": is_correct
+                })
+                raw_generations_list.append({
+                    "index": result['index'], "subject": original_item.get("Subject", "unknown"), "ground_truth": ground_truth,
+                    "raw_output": generated_text, "extracted_answer": model_answer
                 })
 
             pbar.set_description(f"Evaluating {config.name} (5-shot Korean, errors: {errors})")
@@ -633,22 +676,38 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         logger.info(f"Accuracy Strict (correct / total_test_items): {accuracy_strict:.2f}%")
 
         # --- Save Results ---
+        config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
         final_summary = {
-            "model_config": {k: str(v) for k, v in config.__dict__.items()},
+            "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
             "evaluation_type": "5-shot Korean MMLU",
+            "total_original_items": len(mmlu_data),
+            "dev_examples_per_subject": 5,
             "test_items": total_processed,
             "valid_predictions": total_predictions,
             "correct_predictions": correct_predictions,
             "errors_or_skipped": errors,
-            "accuracy_standard": accuracy_standard,
-            "accuracy_strict": accuracy_strict,
+            "accuracy_standard (correct / valid_predictions)": accuracy_standard,
+            "accuracy_strict (correct / total_test_items)": accuracy_strict,
+            "subjects_with_dev_examples": list(dev_data.keys()),
             "subject_wise_accuracy": subject_stats,
             "details": results_details
         }
-        with open(results_filepath, 'w', encoding='utf-8') as f:
-            json.dump(final_summary, f, indent=2, ensure_ascii=False)
-        logger.info(f"Detailed results saved to {results_filepath}")
+        try:
+            with open(results_filepath, 'w', encoding='utf-8') as f:
+                json.dump(final_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Detailed results saved to {results_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save results file {results_filepath}: {e}")
+
+        # --- Save Raw Generations ---
+        logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
+        try:
+            with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"Raw generations saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
 
     except Exception as e:
         logger.exception(f"An critical error occurred during evaluation for {config.name}: {e}")
@@ -660,8 +719,11 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         if 'file_handler' in locals() and file_handler in root_logger.handlers:
-             root_logger.removeHandler(file_handler)
-             file_handler.close()
+             try:
+                root_logger.removeHandler(file_handler)
+                file_handler.close()
+             except Exception as e:
+                logger.debug(f"Error closing/removing file handler: {e}")
 
 # --- Main Execution Logic (Uses BASE_OUTPUT_DIR) ---
 def main():

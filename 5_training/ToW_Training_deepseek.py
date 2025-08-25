@@ -134,7 +134,7 @@ class ToWTrainingConfig:
     lr_scheduler_type: str = "cosine" 
     
     # Smart text handling
-    adaptive_max_length: bool = False
+    adaptive_max_length: bool = True
     preserve_tow_tokens: bool = True
     enable_chunking: bool = True
     min_chunk_overlap: int = 50

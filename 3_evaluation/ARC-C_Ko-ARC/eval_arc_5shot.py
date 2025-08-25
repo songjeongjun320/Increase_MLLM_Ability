@@ -114,9 +114,9 @@ def create_5shot_prompt(item, examples, dataset_type="arc"):
         prompt_parts.append(f"C. {choices[2]}")
         prompt_parts.append(f"D. {choices[3]}")
         if dataset_type == "arc":
-            prompt_parts.append(f"Response: Let's think step by step. [thinking process] So the answer is {answer}.")
+            prompt_parts.append(f"Response: Let's think step by step. [thinking process] #### Therefore Answer: {answer}. #### {answer}.")
         else:  # ko-arc
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {answer}입니다.")
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: {answer}. #### {answer}.")
         prompt_parts.append("")
     
     # Add test question
@@ -136,38 +136,82 @@ def create_5shot_prompt(item, examples, dataset_type="arc"):
     prompt_parts.append("")
     
     if dataset_type == "arc":
-        prompt_parts.append("You should ONLY choose the letters from the options as your final answer.")
-        prompt_parts.append("Response: Let's think step by step.")
+        prompt_parts.append("Response: Let's think step by step. [thinking process] #### Therefore Answer: [ANSWER]. #### [ANSWER].")
     else:  # ko-arc
-        prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
-        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: [답]. #### [답].")
     
     return "\n".join(prompt_parts)
 
 def extract_answer_robust(model_output: str) -> str:
     """
-    Extracts the final answer (A, B, C, D) from the model's full output.
-    It looks for explicit answer declarations to avoid accidental matches in the reasoning part.
+    Extract the final answer (A, B, C, D) from model output using structured patterns first.
+    Supports A-D for 4 options (ARC format).
     """
-    # 1. 가장 강력한 패턴: "the answer is A", "So the answer is B", etc.
-    # 문장 끝에 마침표(.)가 있든 없든, 괄호가 있든 없든 처리
-    pattern = r"(?:the\s*(?:correct|final)?\s*answer\s*is|따라서 답은)\s*\(?([A-D])\)?"
-    matches = re.findall(pattern, model_output, re.IGNORECASE)
-    if matches:
-        return matches[-1].upper()  # 여러 번 등장하면 가장 마지막 것을 선택
-
-    # 2. 차선책 패턴: "Option A is correct", "선택지 B가 정답"
-    pattern2 = r"(?:Option|선택지)\s+([A-D])\s*(?:is correct|가 정답)"
-    matches2 = re.findall(pattern2, model_output, re.IGNORECASE)
-    if matches2:
-        return matches2[-1].upper()
-
-    # 3. 최후의 수단: 모델이 단 하나의 알파벳만 출력한 경우를 대비
-    cleaned_output = model_output.strip()
-    if cleaned_output in ['A', 'B', 'C', 'D']:
-        return cleaned_output
-
-    return None  # 모든 패턴을 찾지 못하면 실패
+    if not model_output:
+        return None
+        
+    cleaned_output = model_output.strip().upper()
+    valid_answers = ['A', 'B', 'C', 'D']
+    
+    import re
+    
+    # Priority 1: Structured answer patterns (most reliable)
+    structured_patterns = [
+        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*([A-D])',  # #### Answer: A or #### 정답: A
+        r'(?:정답|답|ANSWER)\s*:?\s*([A-D])',        # Answer: A or 정답: A
+        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*([A-D])',  # So the answer is A
+    ]
+    
+    for pattern in structured_patterns:
+        matches = re.findall(pattern, cleaned_output)
+        if matches:
+            return matches[-1]  # Return the last match (final answer)
+    
+    # Priority 2: Start of text patterns
+    start_patterns = [
+        r'^\s*([A-D])[\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([A-D])\)?\s*[\.:;]',  # (A): or A. or A:
+        r'^\s*([A-D])\s*$',          # Just A at start of line
+    ]
+    
+    for pattern in start_patterns:
+        match = re.search(pattern, cleaned_output, re.MULTILINE)
+        if match:
+            return match.group(1)
+    
+    # Priority 3: Last resort - find A-D near end of text (avoid random letters in middle)
+    # Only look in last 100 characters to avoid picking up random letters
+    last_part = cleaned_output[-100:] if len(cleaned_output) > 100 else cleaned_output
+    
+    # Look for isolated A-D characters near the end
+    end_patterns = [
+        r'([A-D])(?:\s*[\.:;]?\s*$)',  # A at end with optional punctuation
+        r'(?:\s|^)([A-D])(?:\s|$)',    # A surrounded by whitespace
+    ]
+    
+    for pattern in end_patterns:
+        matches = re.findall(pattern, last_part)
+        if matches:
+            return matches[-1]  # Return the last match
+    
+    # Priority 4: Absolute fallback - scan from end backwards
+    # This avoids picking random letters from the beginning/middle of text
+    for i in range(len(cleaned_output) - 1, -1, -1):
+        if cleaned_output[i] in valid_answers:
+            # Check if this letter appears to be part of an answer pattern
+            context_start = max(0, i - 20)
+            context_end = min(len(cleaned_output), i + 20)
+            context = cleaned_output[context_start:context_end]
+            
+            # Avoid letters that are clearly part of words
+            if i > 0 and cleaned_output[i-1].isalnum():
+                continue
+            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalnum():
+                continue
+                
+            return cleaned_output[i]
+    
+    return None
 
 def load_arc_data(filepath):
     """Loads ARC data from a JSON file."""

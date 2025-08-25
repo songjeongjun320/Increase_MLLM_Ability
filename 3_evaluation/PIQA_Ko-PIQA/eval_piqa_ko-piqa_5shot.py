@@ -202,9 +202,9 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
         prompt_parts.append(f"A. {sol1}")
         prompt_parts.append(f"B. {sol2}")
         if language == "ko":
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] 따라서 답은 {correct_answer}입니다.")
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: {correct_answer}. #### {correct_answer}.")
         else:
-            prompt_parts.append(f"Response: Let's think step by step. [thinking process] So the answer is {correct_answer}.")
+            prompt_parts.append(f"Response: Let's think step by step. [thinking process] #### Therefore Answer: {correct_answer}. #### {correct_answer}.")
         prompt_parts.append("")
     
     # Add the test question
@@ -218,69 +218,82 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("선택지에서 문자만을 최종 답변으로 선택해야 합니다.")
-        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: [답]. #### [답].")
     else:
-        prompt_parts.append("You should ONLY choose the letters from the options as your final answer.")
-        prompt_parts.append("Response: Let's think step by step.")
+        prompt_parts.append("Response: Let's think step by step. [thinking process] #### Therefore Answer: [ANSWER]. #### [ANSWER].")
     
     return "\n".join(prompt_parts)
 
 def extract_final_answer(model_output):
     """
-    Extract the final answer (A or B) from model output using multiple strategies.
-    Prioritizes patterns that appear later in the text to capture the final conclusion.
+    Extract the final answer (A or B) from model output using structured patterns first.
+    Supports A-B for 2 options (PIQA format).
     """
     if not model_output:
         return None
         
     cleaned_output = model_output.strip().upper()
+    valid_answers = ['A', 'B']
+    
     import re
     
-    # Strategy 1: Look for "ANSWER:" or "ANSWER IS" patterns (most reliable for final answer)
-    final_answer_patterns = [
-        r'(?:ANSWER\s*:?\s*|ANSWER\s+IS\s*:?\s*|THE\s+ANSWER\s+IS\s*:?\s*)([AB])(?:\b|\.|$)',
-        r'(?:THEREFORE\s*,?\s*|SO\s*,?\s*|THUS\s*,?\s*)(?:THE\s+ANSWER\s+IS\s*)?([AB])(?:\b|\.|$)',
-        r'(?:FINAL\s+ANSWER\s*:?\s*|CONCLUSION\s*:?\s*)([AB])(?:\b|\.|$)'
+    # Priority 1: Structured answer patterns (most reliable)
+    structured_patterns = [
+        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*([AB])',  # #### Answer: A or #### 정답: A
+        r'(?:정답|답|ANSWER)\s*:?\s*([AB])',        # Answer: A or 정답: A
+        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*([AB])',  # So the answer is A
     ]
     
-    for pattern in final_answer_patterns:
-        matches = list(re.finditer(pattern, cleaned_output))
+    for pattern in structured_patterns:
+        matches = re.findall(pattern, cleaned_output)
         if matches:
-            # Return the last match (most likely to be final answer)
-            return matches[-1].group(1)
+            return matches[-1]  # Return the last match (final answer)
     
-    # Strategy 2: Look for parentheses pattern, prioritizing later occurrences
-    paren_matches = list(re.finditer(r'\(([AB])\)', cleaned_output))
-    if paren_matches:
-        return paren_matches[-1].group(1)
+    # Priority 2: Start of text patterns
+    start_patterns = [
+        r'^\s*([AB])[\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([AB])\)?\s*[\.:;]',  # (A): or A. or A:
+        r'^\s*([AB])\s*$',          # Just A at start of line
+    ]
     
-    # Strategy 3: Look for standalone A or B at word boundaries, prioritizing later ones
-    standalone_matches = list(re.finditer(r'\b([AB])\b', cleaned_output))
-    if standalone_matches:
-        return standalone_matches[-1].group(1)
+    for pattern in start_patterns:
+        match = re.search(pattern, cleaned_output, re.MULTILINE)
+        if match:
+            return match.group(1)
     
-    # Strategy 4: Look for "option X" or "choice X" patterns
-    option_matches = list(re.finditer(r'(?:OPTION|CHOICE)\s*([AB])', cleaned_output))
-    if option_matches:
-        return option_matches[-1].group(1)
+    # Priority 3: Last resort - find A-B near end of text (avoid random letters in middle)
+    # Only look in last 100 characters to avoid picking up random letters
+    last_part = cleaned_output[-100:] if len(cleaned_output) > 100 else cleaned_output
     
-    # Strategy 5: Look for sentence-ending patterns
-    sentence_end_matches = list(re.finditer(r'([AB])(?:\.|!|\?|$)', cleaned_output))
-    if sentence_end_matches:
-        return sentence_end_matches[-1].group(1)
+    # Look for isolated A-B characters near the end
+    end_patterns = [
+        r'([AB])(?:\s*[\.:;]?\s*$)',  # A at end with optional punctuation
+        r'(?:\s|^)([AB])(?:\s|$)',    # A surrounded by whitespace
+    ]
     
-    # Strategy 6: First character if it's A or B (only if very short output)
-    if len(cleaned_output) <= 3 and cleaned_output and cleaned_output[0] in ['A', 'B']:
-        return cleaned_output[0]
+    for pattern in end_patterns:
+        matches = re.findall(pattern, last_part)
+        if matches:
+            return matches[-1]  # Return the last match
     
-    # Strategy 7: Last resort - find the last A or B in the text
-    last_answer = None
-    for char in cleaned_output:
-        if char in ['A', 'B']:
-            last_answer = char
+    # Priority 4: Absolute fallback - scan from end backwards
+    # This avoids picking random letters from the beginning/middle of text
+    for i in range(len(cleaned_output) - 1, -1, -1):
+        if cleaned_output[i] in valid_answers:
+            # Check if this letter appears to be part of an answer pattern
+            context_start = max(0, i - 20)
+            context_end = min(len(cleaned_output), i + 20)
+            context = cleaned_output[context_start:context_end]
+            
+            # Avoid letters that are clearly part of words
+            if i > 0 and cleaned_output[i-1].isalnum():
+                continue
+            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalnum():
+                continue
+                
+            return cleaned_output[i]
     
-    return last_answer
+    return None
 
 def load_dataset(filepath):
     """Loads dataset from a JSON file."""

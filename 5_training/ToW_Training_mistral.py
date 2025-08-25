@@ -12,7 +12,7 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-torchrun --nproc_per_node=2 ToW_Training_mistral.py
+torchrun --nproc_per_node=4 ToW_Training_mistral.py
 """
 
 import os
@@ -149,10 +149,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 500
+    eval_steps: int = 10
     save_strategy: str = "steps"
-    save_steps: int = 500
-    logging_steps: int = 500
+    save_steps: int = 10
+    logging_steps: int = 10
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8
@@ -455,6 +455,7 @@ class ToWTrainer:
         """Create training arguments"""
         return TrainingArguments(
             output_dir=str(self.output_dir),
+            optim="paged_adamw_8bit",
             overwrite_output_dir=False,
             learning_rate=self.training_config.learning_rate,
             num_train_epochs=self.training_config.num_train_epochs,

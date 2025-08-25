@@ -149,10 +149,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 250
+    eval_steps: int = 10
     save_strategy: str = "steps"
-    save_steps: int = 250
-    logging_steps: int = 250
+    save_steps: int = 10
+    logging_steps: int = 10
     early_stopping_patience: int = 3  # Increased early stopping patience to prevent premature stopping
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 8
@@ -455,6 +455,7 @@ class ToWTrainer:
         """Create training arguments"""
         return TrainingArguments(
             output_dir=str(self.output_dir),
+            optim="paged_adamw_8bit",
             overwrite_output_dir=False,
             learning_rate=self.training_config.learning_rate,
             num_train_epochs=self.training_config.num_train_epochs,

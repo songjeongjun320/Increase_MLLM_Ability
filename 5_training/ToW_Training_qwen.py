@@ -134,9 +134,9 @@ class ToWTrainingConfig:
     learning_rate: float = 1e-5  # Decreased learning rate for stability
     max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 4  # Increased batch size for more stability
+    per_device_train_batch_size: int = 8  # Increased batch size for more stability
     per_device_eval_batch_size: int = 4
-    gradient_accumulation_steps: int = 16  # Reduced accumulation steps for quicker updates
+    gradient_accumulation_steps: int = 8  # Reduced accumulation steps for quicker updates
     lr_scheduler_type: str = "cosine" 
 
 

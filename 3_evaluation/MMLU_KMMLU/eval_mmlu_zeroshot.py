@@ -100,7 +100,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_origin.json"
 BASE_OUTPUT_DIR = "mmlu_model1_zeroshot" # 0-shot evaluation results
-BATCH_SIZE = 1
+BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -117,24 +117,25 @@ def create_0shot_prompt(item):
     """
     Creates a 0-shot MMLU prompt for a given test item.
     """
-    subject = item.get("subject", "unknown")
+    subject = item.get("Subject", "unknown")  # MMLU uses 'Subject' field (uppercase)
     subject_display = subject.replace("_", " ").title()
     
     prompt_parts = [f"The following is a multiple choice question about {subject_display}."]
     prompt_parts.append("")
     
-    question = item.get("question", "")
-    choices = item.get("choices", [])
+    question = item.get("Question", "")  # MMLU uses 'Question' field (uppercase)
+    
+    # Get choices from MMLU format (A, B, C, D fields)
+    choice_a = item.get("A", "Option A")
+    choice_b = item.get("B", "Option B")
+    choice_c = item.get("C", "Option C")
+    choice_d = item.get("D", "Option D")
     
     prompt_parts.append(question)
-    if len(choices) >= 4:
-        prompt_parts.append(f"A. {choices[0]}")
-        prompt_parts.append(f"B. {choices[1]}")
-        prompt_parts.append(f"C. {choices[2]}")
-        prompt_parts.append(f"D. {choices[3]}")
-    else:
-        logger.warning(f"Insufficient choices for question in subject {subject}")
-        prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
+    prompt_parts.append(f"A. {choice_a}")
+    prompt_parts.append(f"B. {choice_b}")
+    prompt_parts.append(f"C. {choice_c}")
+    prompt_parts.append(f"D. {choice_d}")
 
     prompt_parts.append("Answer:")
     
@@ -162,10 +163,10 @@ def load_mmlu_data(filepath):
         return None
 
 def get_ground_truth_origin(item):
-    """Returns the ground truth answer letter from the original MMLU data."""
-    answer_index = item.get("answer", -1)
-    if isinstance(answer_index, int) and 0 <= answer_index <= 3:
-        return chr(ord('A') + answer_index)
+    """Returns the ground truth answer letter from the MMLU data."""
+    answer = item.get("Answer", None)
+    if answer and answer.upper() in ["A", "B", "C", "D"]:
+        return answer.upper()
     return None
 
 # --- Batch Processing Function ---
@@ -305,7 +306,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                         "predicted_answer": None, "is_correct": False
                     })
                     raw_generations_list.append({
-                        "index": current_index, "subject": item.get("subject", "unknown"), "ground_truth": ground_truth,
+                        "index": current_index, "subject": item.get("Subject", "unknown"), "ground_truth": ground_truth,
                         "raw_output": "SKIPPED - Invalid GT/Prompt", "extracted_answer": None
                     })
                     continue
@@ -341,7 +342,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 
                 original_item = test_data[result['index']]
                 raw_generations_list.append({
-                    "index": result['index'], "subject": original_item.get("subject", "unknown"), "ground_truth": ground_truth,
+                    "index": result['index'], "subject": original_item.get("Subject", "unknown"), "ground_truth": ground_truth,
                     "raw_output": generated_text_log, "extracted_answer": model_answer_log
                 })
 

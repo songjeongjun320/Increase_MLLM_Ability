@@ -97,7 +97,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration ---
-DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
+DATASET_PATH = "../../2_datasets/MMLU/MMLU_KO_Openai.json"
 BASE_OUTPUT_DIR = "kmmlu_model1_zeroshot" # 0-shot evaluation results
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -167,12 +167,22 @@ def extract_korean_answer_first_token(model_output):
     return None
 
 def load_kmmlu_data(filepath):
-    """Loads KMMLU data from a JSON file."""
+    """Loads Korean MMLU data from a JSON file."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        if not isinstance(data, list):
+            raise ValueError("Data is not in list format.")
+        if not all(isinstance(item, dict) for item in data):
+            raise ValueError("Not all items in the list are dictionaries.")
         logger.info(f"Loaded {len(data)} items from {filepath}")
         return data
+    except FileNotFoundError:
+        logger.error(f"Data file not found: {filepath}")
+        return None
+    except json.JSONDecodeError:
+        logger.error(f"Failed to decode JSON file: {filepath}")
+        return None
     except Exception as e:
         logger.error(f"Error loading data from {filepath}: {e}")
         return None
@@ -287,7 +297,7 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                         "predicted_answer": None, "is_correct": False
                     })
                     raw_generations_list.append({
-                        "index": current_index, "subject": item.get("Subject"), "ground_truth": ground_truth,
+                        "index": current_index, "subject": item.get("Subject", "unknown"), "ground_truth": ground_truth,
                         "raw_output": "SKIPPED", "extracted_answer": None
                     })
                     continue
@@ -322,7 +332,7 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                 })
                 original_item = test_data[result['index']]
                 raw_generations_list.append({
-                    "index": result['index'], "subject": original_item.get("Subject"), "ground_truth": ground_truth,
+                    "index": result['index'], "subject": original_item.get("Subject", "unknown"), "ground_truth": ground_truth,
                     "raw_output": generated_text_log, "extracted_answer": model_answer_log
                 })
 

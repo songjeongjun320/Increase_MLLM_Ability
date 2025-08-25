@@ -106,7 +106,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
-DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
+DATASET_PATH = "../../2_datasets/MMLU/MMLU_KO_Openai.json"
 BASE_OUTPUT_DIR = "kmmlu_tow_model1_5shot" # Base dir for ALL model results
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -131,7 +131,7 @@ def prepare_kmmlu_data_with_dev_split(data, dev_shots_per_subject=5):
     
     # Group by subject
     for item in data:
-        subject = item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field
+        subject = item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field (uppercase)
         if subject not in subjects_data:
             subjects_data[subject] = []
         subjects_data[subject].append(item)
@@ -158,7 +158,7 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     Create standard 5-shot Korean MMLU prompt using development examples.
     Follows Korean format: "다음은 [과목]에 관한 객관식 문제입니다."
     """
-    subject = test_item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field
+    subject = test_item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field (uppercase)
     
     # Format subject name for Korean display (comprehensive mapping for all 57 subjects)
     subject_display_map = {
@@ -227,7 +227,7 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     
     # Add development examples (few-shot examples)
     for i, example in enumerate(dev_examples):
-        question = example.get("Question", "")  # Korean MMLU uses 'Question' field
+        question = example.get("Question", "")  # Korean MMLU uses 'Question' field (uppercase)
         
         # Extract answer letter directly from Korean MMLU format
         answer_letter = example.get("Answer", "A")  # Already in letter format
@@ -249,7 +249,7 @@ def create_5shot_korean_prompt(test_item, dev_examples):
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
-    test_question = test_item.get("Question", "")  # Korean MMLU uses 'Question' field
+    test_question = test_item.get("Question", "")  # Korean MMLU uses 'Question' field (uppercase)
     prompt_parts.append(test_question)
     
     # Get choices for test question from Korean MMLU format

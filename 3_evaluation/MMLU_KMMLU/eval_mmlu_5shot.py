@@ -133,7 +133,7 @@ def prepare_mmlu_data_with_dev_split(data, dev_shots_per_subject=5):
     
     # Group by subject
     for item in data:
-        subject = item.get("subject", "unknown")
+        subject = item.get("Subject", "unknown")  # MMLU uses 'Subject' field (uppercase)
         if subject not in subjects_data:
             subjects_data[subject] = []
         subjects_data[subject].append(item)
@@ -160,7 +160,7 @@ def create_5shot_prompt(test_item, dev_examples):
     Create standard 5-shot MMLU prompt using development examples.
     Follows the format: "The following are multiple choice questions (with answers) about [subject]."
     """
-    subject = test_item.get("subject", "unknown")
+    subject = test_item.get("Subject", "unknown")  # MMLU uses 'Subject' field (uppercase)
     
     # Format subject name for display (replace underscores with spaces, capitalize)
     subject_display = subject.replace("_", " ").title()
@@ -170,18 +170,17 @@ def create_5shot_prompt(test_item, dev_examples):
     
     # Add development examples (few-shot examples)
     for i, example in enumerate(dev_examples):
-        question = example.get("question", "")
-        # Get choices from the standard MMLU format
-        choices = example.get("choices", [])
-        if not choices:
-            logger.warning(f"No choices found for example in subject {subject}")
-            choices = ["Option A", "Option B", "Option C", "Option D"]
+        question = example.get("Question", "")  # MMLU uses 'Question' field (uppercase)
         
-        answer_idx = example.get("answer", 0)
-        if isinstance(answer_idx, int):
-            answer_letter = chr(ord('A') + answer_idx)
-        else:
-            answer_letter = str(answer_idx).upper()
+        # Get choices from MMLU format (A, B, C, D fields)
+        choice_a = example.get("A", "Option A")
+        choice_b = example.get("B", "Option B")
+        choice_c = example.get("C", "Option C")
+        choice_d = example.get("D", "Option D")
+        choices = [choice_a, choice_b, choice_c, choice_d]
+        
+        # Answer is already in letter format (A, B, C, D)
+        answer_letter = example.get("Answer", "A")
         
         prompt_parts.append(question)
         if len(choices) >= 4:
@@ -193,23 +192,23 @@ def create_5shot_prompt(test_item, dev_examples):
             logger.warning(f"Insufficient choices for example in subject {subject}")
             prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
         
-        prompt_parts.append(f"Answer:{answer_letter}")
+        prompt_parts.append(f"Answer: {answer_letter}")
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
-    test_question = test_item.get("question", "")
+    test_question = test_item.get("Question", "")  # MMLU uses 'Question' field (uppercase)
     prompt_parts.append(test_question)
     
-    # Parse choices for test question
-    test_choices = test_item.get("choices", [])
-    if len(test_choices) >= 4:
-        prompt_parts.append(f"A. {test_choices[0]}")
-        prompt_parts.append(f"B. {test_choices[1]}")
-        prompt_parts.append(f"C. {test_choices[2]}")
-        prompt_parts.append(f"D. {test_choices[3]}")
-    else:
-        logger.warning(f"Insufficient choices for test question in subject {subject}")
-        prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
+    # Get choices for test question from MMLU format
+    test_choice_a = test_item.get("A", "Option A")
+    test_choice_b = test_item.get("B", "Option B")
+    test_choice_c = test_item.get("C", "Option C")
+    test_choice_d = test_item.get("D", "Option D")
+    
+    prompt_parts.append(f"A. {test_choice_a}")
+    prompt_parts.append(f"B. {test_choice_b}")
+    prompt_parts.append(f"C. {test_choice_c}")
+    prompt_parts.append(f"D. {test_choice_d}")
     
     prompt_parts.append("Answer:")
     
@@ -275,12 +274,10 @@ def load_mmlu_data(filepath):
         return None
 
 def get_ground_truth_origin(item):
-    """원본 MMLU 데이터('answer' 정수 인덱스)에서 정답 문자를 반환합니다."""
-    answer_index = item.get("answer", -1)
-    if isinstance(answer_index, int) and 0 <= answer_index <= 3:
-        return chr(ord('A') + answer_index)
-    elif isinstance(answer_index, str) and answer_index.upper() in ["A", "B", "C", "D"]:
-        return answer_index.upper()
+    """MMLU 데이터에서 정답 문자를 반환합니다."""
+    answer = item.get("Answer", None)
+    if answer and answer.upper() in ["A", "B", "C", "D"]:
+        return answer.upper()
     return None
 
 # --- Batch Processing Function ---
@@ -465,7 +462,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 current_index = i + j
                 item_index_for_log = item.get("index", current_index)
                 ground_truth = get_ground_truth_origin(item)
-                subject = item.get("subject", "unknown")
+                subject = item.get("Subject", "unknown")
                 dev_examples = dev_data.get(subject, [])
                 
                 prompt = create_5shot_prompt(item, dev_examples) if dev_examples else None
@@ -513,7 +510,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     "predicted_answer": model_answer_log, "is_correct": is_correct_log
                 })
                 raw_generations_list.append({
-                    "index": result['index'], "subject": original_item.get("subject", "unknown"), "ground_truth": ground_truth,
+                    "index": result['index'], "subject": original_item.get("Subject", "unknown"), "ground_truth": ground_truth,
                     "raw_output": generated_text_log, "extracted_answer": model_answer_log
                 })
 
@@ -529,7 +526,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
         for i, item in enumerate(test_data):
-            subject = item.get("subject", "unknown")
+            subject = item.get("Subject", "unknown")
             result = results_details[i]
             
             if subject not in subject_stats:

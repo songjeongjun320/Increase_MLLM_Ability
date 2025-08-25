@@ -83,7 +83,7 @@ MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_Ko.json"
 BASE_OUTPUT_DIR = "mmlu_prox_0shot"
 BATCH_SIZE = 16
-MAX_NEW_TOKENS = 256
+MAX_NEW_TOKENS = 2048
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -98,16 +98,18 @@ logger = logging.getLogger(__name__)
 # --- Helper Functions ---
 def create_0shot_prompt(item, language="en"):
     """
-    Creates a 0-shot MMLU-ProX prompt for a given test item.
+    Creates a 0-shot MMLU-ProX prompt that instructs the model 
+    to use Chain-of-Thought and a specific answer format.
     """
     if language == "ko":
-        prompt_parts = ["다음은 다양한 학문 분야의 전문적이고 어려운 다지선다형 질문입니다."]
+        # 1. 전체 지시문
+        prompt_parts = ["다음 질문을 읽고, 단계적으로 생각하여 최종 정답을 '#### 정답: [선택지]' 형식으로 제시하시오."]
     else:
-        prompt_parts = ["The following is a challenging multiple choice question from various academic disciplines."]
+        prompt_parts = ["Read the following question, think step by step, and provide the final answer in the format '#### Answer: [Option]'."]
     
     prompt_parts.append("")
     
-    # Add the test question
+    # 2. 실제 문제 제시
     question = item.get("question", "")
     options = []
     for i in range(10):
@@ -119,16 +121,12 @@ def create_0shot_prompt(item, language="en"):
     prompt_parts.extend(options)
     prompt_parts.append("")
     
+    # 3. 모델이 CoT를 시작하도록 유도
     if language == "ko":
-        prompt_parts.append("단계별로 생각해봅시다. [생각].")
-        prompt_parts.append("#### 따라서 정답은 {correct_answer} 입니다.")
-        prompt_parts.append("#### 정답: {correct_answer}")
+        prompt_parts.append("단계적으로 생각해봅시다.")
     else:
-        prompt_parts.append("Let's think step by step. [Thinking].")
-        prompt_parts.append("#### So the answer is {correct_answer}.")
-        prompt_parts.append("#### Answer: {correct_answer}.")
-    prompt_parts.append("")
-    
+        prompt_parts.append("Let's think step by step.")
+        
     return "\n".join(prompt_parts)
 
 def extract_answer_first_token(model_output):

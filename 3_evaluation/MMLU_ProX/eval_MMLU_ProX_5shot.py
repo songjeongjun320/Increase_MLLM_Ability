@@ -83,7 +83,7 @@ MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_Ko.json"
 BASE_OUTPUT_DIR = "mmlu_prox_5shot"
 BATCH_SIZE = 16
-MAX_NEW_TOKENS = 256
+MAX_NEW_TOKENS = 2048
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 

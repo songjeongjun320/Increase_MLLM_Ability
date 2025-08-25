@@ -12,6 +12,7 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
+deepspeed --num_gpus=2 ToW_Training_qwen.py
 torchrun --nproc_per_node=2 ToW_Training_qwen.py
 """
 

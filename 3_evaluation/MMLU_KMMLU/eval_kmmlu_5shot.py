@@ -108,7 +108,7 @@ MODEL_CONFIGS = [
 # --- General Configuration (Updated for 5-shot evaluation) ---
 DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
 BASE_OUTPUT_DIR = "kmmlu_tow_model1_5shot" # Base dir for ALL model results
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -349,53 +349,6 @@ def load_mmlu_data(filepath):
         logger.error(f"데이터 로드 중 오류 발생: {e}")
         return None
 
-# Legacy 0-shot prompt function (replaced by 5-shot version)
-def create_prompt_legacy(item):
-    """MMLU 항목에 대한 프롬프트를 생성합니다. [LEGACY - 0-shot]"""
-    question = item.get("Question", "")
-    choices = { k: item.get(k, "") for k in ["A", "B", "C", "D"] }
-    if not question or not all(choices.values()):
-        logger.warning(f"항목에 필수 필드(Question, A, B, C, D)가 없습니다: {item.get('id', 'N/A')}") # ID 등 식별자 추가
-        return None
-    prompt = f"""다음 질문에 가장 적절한 답을 선택하고, 선택한 답의 알파벳(A, B, C, D) 하나만 출력하세요.
-
-질문: {question}
-A: {choices['A']}
-B: {choices['B']}
-C: {choices['C']}
-D: {choices['D']}
-
-정답: """
-    return prompt
-
-# Legacy answer extraction function (replaced by first-token approach)
-def extract_answer_legacy(model_output, prompt):
-    """모델 출력에서 답변(A, B, C, D)을 추출합니다. [LEGACY]"""
-    # Remove the prompt part if the model echoes it
-    # Handle cases where the prompt might be slightly modified (e.g., whitespace)
-    normalized_output = model_output.strip()
-    normalized_prompt = prompt.strip()
-    if normalized_output.startswith(normalized_prompt):
-        prediction_text = normalized_output[len(normalized_prompt):].strip()
-    # Handle cases where model might just output the answer or have extra text before
-    else:
-        prediction_text = normalized_output # Assume the start might be the answer
-
-    cleaned_text = prediction_text.upper()
-
-    # More robust extraction: look for A/B/C/D possibly surrounded by common delimiters
-    # Example: "정답: A", "A.", "(A)" etc.
-    match = re.search(r"([(\[']*)?\b([ABCD])\b([.)\]']*)?", cleaned_text)
-    if match:
-        return match.group(2) # Return the letter itself
-
-    # Fallback: check if the very first character is the answer
-    if cleaned_text and cleaned_text[0] in ["A", "B", "C", "D"]:
-        return cleaned_text[0]
-
-    # logger.warning(f"모델 출력에서 유효한 답변(A,B,C,D)을 추출하지 못했습니다: '{prediction_text}'") # Too verbose
-    return None
-
 
 # --- Batch Processing Function ---
 def process_batch(model, tokenizer, batch_prompts, batch_indices):
@@ -412,7 +365,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=1,
+                max_new_tokens=5,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,

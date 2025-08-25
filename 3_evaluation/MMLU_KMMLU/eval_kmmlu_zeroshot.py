@@ -99,7 +99,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/KO_MMLU.json"
 BASE_OUTPUT_DIR = "kmmlu_model1_zeroshot" # 0-shot evaluation results
-BATCH_SIZE = 1
+BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -193,13 +193,13 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=2048
+            max_length=1024
         ).to(DEVICE)
 
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=1,
+                max_new_tokens=5,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,

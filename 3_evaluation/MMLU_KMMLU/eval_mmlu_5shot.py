@@ -111,7 +111,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_origin.json"
 BASE_OUTPUT_DIR = "mmlu_model1_5shot" # 5-shot evaluation results
-BATCH_SIZE = 1
+BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -193,7 +193,7 @@ def create_5shot_prompt(test_item, dev_examples):
             logger.warning(f"Insufficient choices for example in subject {subject}")
             prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
         
-        prompt_parts.append(f"Answer: {answer_letter}")
+        prompt_parts.append(f"Answer:{answer_letter}")
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
@@ -274,22 +274,6 @@ def load_mmlu_data(filepath):
         logger.error(f"데이터 로드 중 오류 발생: {e}")
         return None
 
-# Legacy 0-shot prompt function (replaced by 5-shot version)
-def create_prompt_for_origin_legacy(item):
-    """원본 MMLU 형식('question', 'choices' 리스트)에 맞는 프롬프트를 생성합니다. [LEGACY - 0-shot]"""
-    question = item.get("question", "")
-    choices_list = item.get("choices", [])
-    if not question or not isinstance(choices_list, list) or len(choices_list) != 4:
-        return None
-
-    choices_dict = {chr(ord('A') + i): choice for i, choice in enumerate(choices_list)}
-    prompt = f"""Question: {question}
-A) {choices_dict.get('A', '')}
-B) {choices_dict.get('B', '')}
-C) {choices_dict.get('D', '')}
-Answer:"""
-    return prompt
-
 def get_ground_truth_origin(item):
     """원본 MMLU 데이터('answer' 정수 인덱스)에서 정답 문자를 반환합니다."""
     answer_index = item.get("answer", -1)
@@ -297,31 +281,6 @@ def get_ground_truth_origin(item):
         return chr(ord('A') + answer_index)
     elif isinstance(answer_index, str) and answer_index.upper() in ["A", "B", "C", "D"]:
         return answer_index.upper()
-    return None
-
-# Legacy answer extraction function (replaced by first-token approach)
-def extract_answer_legacy(model_output, prompt): # prompt 인자 유지 (미래 사용 가능성)
-    """모델 출력에서 답변(A, B, C, D)을 추출합니다. [LEGACY]"""
-    # 프롬프트가 출력 시작 부분에 있으면 제거 (더 유연하게 처리)
-    # model_output과 prompt 모두 strip()으로 앞뒤 공백 제거 후 비교
-    stripped_output = model_output.strip()
-    stripped_prompt_end = prompt.strip().split("Answer:")[0] + "Answer:" # "Answer:" 까지의 프롬프트
-    
-    prediction_text = stripped_output
-    if stripped_output.startswith(stripped_prompt_end.strip()):
-        prediction_text = stripped_output[len(stripped_prompt_end.strip()):].strip()
-    
-    cleaned_text = prediction_text.upper()
-    match = re.search(r"^\s*([ABCD])(?:[).:\s]|\b)", cleaned_text)
-    if match:
-        return match.group(1)
-
-    if len(cleaned_text) == 1 and cleaned_text in ["A", "B", "C", "D"]:
-        return cleaned_text
-
-    match_phrase = re.search(r"(?:ANSWER\s*IS|:\s*)\s*([ABCD])\b", cleaned_text)
-    if match_phrase:
-         return match_phrase.group(1)
     return None
 
 # --- Batch Processing Function ---
@@ -339,7 +298,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=1,
+                max_new_tokens=5,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,

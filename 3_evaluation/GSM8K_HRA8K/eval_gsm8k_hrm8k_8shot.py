@@ -208,13 +208,13 @@ def create_gsm8k_prompt(text, is_korean=False):
         prompt = f"""{GSM8K_8SHOT_KOR_COT_EXAMPLES}
 
 Question: {text}
-Answer: Let's think step by step. #### 따라서 답은"""
+Answer: Let's think step by step. [Thinking] #### 따라서 답은 [ANSWER]. #### [ANSWER]."""
     else:
         # Use English 8-shot Chain-of-Thought prompt for English questions
         prompt = f"""{GSM8K_8SHOT_COT_EXAMPLES}
 
 Question: {text}
-Answer: Let's think step by step. #### The answer is"""
+Answer: Let's think step by step. [THINKING] #### The answer is [ANSWER]. #### [ANSWER]."""
     
     return prompt
 

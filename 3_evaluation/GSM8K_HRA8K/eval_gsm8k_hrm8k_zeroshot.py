@@ -146,10 +146,10 @@ def create_gsm8k_prompt(text, is_korean=False):
     """Create GSM8K 0-shot CoT evaluation prompt"""
     if is_korean:
         prompt = f"""문제: {text}
-답: 단계별로 생각해보겠습니다. [THINKING] #### 따라서 답은 [ANSWER] #### [ANSWER]"""
+답: 단계별로 생각해보겠습니다. [THINKING] #### 따라서 답은 [ANSWER] #### [ANSWER]."""
     else:
         prompt = f"""Question: {text}
-Answer: Let's think step by step. [THINKING] #### The answer is [ANSWER] #### [ANSWER]"""
+Answer: Let's think step by step. [THINKING] #### The answer is [ANSWER] #### [ANSWER]."""
     
     return prompt
 

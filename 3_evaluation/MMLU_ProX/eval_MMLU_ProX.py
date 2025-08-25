@@ -278,9 +278,13 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
         prompt_parts.append(f"Question: {question}")
         prompt_parts.extend(options)
         if language == "ko":
-            prompt_parts.append(f"Answer: {correct_answer}")
+            prompts_parts.append("단계별로 생각해봅시다. [생각].")
+            prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
+            prompt_parts.append(f"#### 정답: {correct_answer}")
         else:
-            prompt_parts.append(f"Answer: {correct_answer}")
+            prompt_parts.append("Let's think step by step. [Thinking].")
+            prompt_parts.append(f"#### So the answer is {correct_answer}.")
+            prompt_parts.append(f"#### Answer: {correct_answer}.")
         prompt_parts.append("")
     
     # Add the test question

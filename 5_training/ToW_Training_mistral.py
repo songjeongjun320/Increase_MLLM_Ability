@@ -120,7 +120,7 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/processed/training_dataset_converted.json"
+        "../4_tow_generation/tow_data/training_dataset_converted.json"
     ])
     output_base_dir: str = "ToW_Models_2"
     

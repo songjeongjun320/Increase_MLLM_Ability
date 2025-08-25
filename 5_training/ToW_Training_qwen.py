@@ -134,9 +134,9 @@ class ToWTrainingConfig:
     learning_rate: float = 1e-5  # Decreased learning rate for stability
     max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 8  # Increased batch size for more stability
-    per_device_eval_batch_size: int = 4
-    gradient_accumulation_steps: int = 8  # Reduced accumulation steps for quicker updates
+    per_device_train_batch_size: int = 1  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 1  # Reduced for memory efficiency
+    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
 
 
@@ -159,7 +159,7 @@ class ToWTrainingConfig:
     logging_steps: int = 500  # Logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 4  # Increased workers for faster data loading
+    dataloader_num_workers: int = 2  # Reduced for memory efficiency
     remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True
@@ -488,6 +488,8 @@ class ToWTrainer:
             seed=42,
             data_seed=42,
             report_to=[],
+            # DeepSpeed ZeRO 설정 추가
+            deepspeed="zero2_config.json",
         )
     
     def train(self):

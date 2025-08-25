@@ -32,16 +32,16 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-7B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Mistral-8B-Instruct-2410",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="Llama-3.1-8B-Instruct",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",

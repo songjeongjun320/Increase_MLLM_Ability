@@ -239,6 +239,7 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
     results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_0shot_korean.json")
     log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_0shot_korean.log")
     raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_0shot_korean.json")
+    failure_cases_filepath = os.path.join(model_specific_output_dir, f"failure_cases_{config.name}_0shot_korean.json")
 
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
@@ -276,6 +277,7 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
 
         correct_predictions, total_predictions, errors_or_skipped = 0, 0, 0
         results_details, raw_generations_list = [], []
+        failure_cases_list = []  # New: Track failure cases separately
 
         test_data = kmmlu_data
         pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (0-shot Korean, errors: 0)")
@@ -292,13 +294,27 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                 
                 if ground_truth is None or prompt is None:
                     errors_or_skipped += 1
+                    failure_reason = "SKIPPED - Invalid GT/Prompt"
+                    failure_type = "invalid_ground_truth" if ground_truth is None else "prompt_creation_failed"
+                    
                     results_details.append({
-                        "index": current_index, "ground_truth": ground_truth, "model_raw_output": "SKIPPED",
+                        "index": current_index, "ground_truth": ground_truth, "model_raw_output": failure_reason,
                         "predicted_answer": None, "is_correct": False
                     })
                     raw_generations_list.append({
                         "index": current_index, "subject": item.get("Subject", "unknown"), "ground_truth": ground_truth,
-                        "raw_output": "SKIPPED", "extracted_answer": None
+                        "raw_output": failure_reason, "extracted_answer": None
+                    })
+                    
+                    # Add to failure cases
+                    failure_cases_list.append({
+                        "index": current_index,
+                        "subject": item.get("Subject", "unknown"),
+                        "question": item.get("Question", ""),
+                        "ground_truth": ground_truth,
+                        "failure_type": failure_type,
+                        "failure_reason": failure_reason,
+                        "raw_output": failure_reason
                     })
                     continue
 
@@ -323,8 +339,30 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                         is_correct_log = True
                 else:
                     errors_or_skipped += 1
+                    original_generated_text = generated_text_log
                     if not generated_text_log.startswith("ERROR"):
-                         generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+                        generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+                        failure_type = "answer_extraction_failed"
+                    else:
+                        failure_type = "model_error"
+                    
+                    # Add to failure cases
+                    original_item = test_data[result['index']]
+                    failure_cases_list.append({
+                        "index": result['index'],
+                        "subject": original_item.get("Subject", "unknown"),
+                        "question": original_item.get("Question", ""),
+                        "ground_truth": ground_truth,
+                        "failure_type": failure_type,
+                        "failure_reason": generated_text_log,
+                        "raw_output": original_generated_text,
+                        "choices": {
+                            "A": original_item.get("A", ""),
+                            "B": original_item.get("B", ""),
+                            "C": original_item.get("C", ""),
+                            "D": original_item.get("D", "")
+                        }
+                    })
 
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,
@@ -362,6 +400,29 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
             json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
+        
+        # --- Save Failure Cases ---
+        if failure_cases_list:
+            logger.info(f"Saving {len(failure_cases_list)} failure cases to {failure_cases_filepath}...")
+            try:
+                failure_summary = {
+                    "total_failures": len(failure_cases_list),
+                    "failure_types": {},
+                    "failure_cases": failure_cases_list
+                }
+                
+                # Count failure types
+                for case in failure_cases_list:
+                    failure_type = case.get("failure_type", "unknown")
+                    failure_summary["failure_types"][failure_type] = failure_summary["failure_types"].get(failure_type, 0) + 1
+                
+                with open(failure_cases_filepath, 'w', encoding='utf-8') as f:
+                    json.dump(failure_summary, f, indent=2, ensure_ascii=False)
+                logger.info(f"Failure cases saved successfully. Types: {failure_summary['failure_types']}")
+            except Exception as e:
+                logger.error(f"Failed to save failure cases file {failure_cases_filepath}: {e}")
+        else:
+            logger.info("No failure cases to save.")
 
     finally:
         del model, tokenizer

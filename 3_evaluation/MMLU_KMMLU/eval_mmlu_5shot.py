@@ -333,6 +333,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
     results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}.json")
     log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}.log")
     raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}.json")
+    failure_cases_filepath = os.path.join(model_specific_output_dir, f"failure_cases_{config.name}.json")
 
 
     # --- Setup Logging for this specific model ---
@@ -446,6 +447,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         total_predictions = 0 # 유효한 예측 시도 횟수
         errors_or_skipped = 0 # 데이터 문제, 프롬프트 생성 실패, 추론 오류, 답변 추출 실패 모두 포함
         results_details = []
+        raw_generations_list = []
+        failure_cases_list = []  # New: Track failure cases separately
 
         logger.info("Starting 5-shot inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
@@ -470,6 +473,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 if ground_truth is None or prompt is None:
                     errors_or_skipped += 1
                     output_reason = "SKIPPED - Invalid Ground Truth" if ground_truth is None else "SKIPPED - Prompt Creation Failed"
+                    failure_type = "invalid_ground_truth" if ground_truth is None else "prompt_creation_failed"
+                    
                     results_details.append({
                         "index": item_index_for_log, "ground_truth": ground_truth, "model_raw_output": output_reason,
                         "predicted_answer": None, "is_correct": False
@@ -477,6 +482,17 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     raw_generations_list.append({
                         "index": item_index_for_log, "subject": subject, "ground_truth": ground_truth,
                         "raw_output": output_reason, "extracted_answer": None
+                    })
+                    
+                    # Add to failure cases
+                    failure_cases_list.append({
+                        "index": item_index_for_log,
+                        "subject": subject,
+                        "question": item.get("Question", ""),
+                        "ground_truth": ground_truth,
+                        "failure_type": failure_type,
+                        "failure_reason": output_reason,
+                        "raw_output": output_reason
                     })
                     continue
                 
@@ -502,8 +518,29 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                         is_correct_log = True
                 else:
                     errors_or_skipped += 1
+                    original_generated_text = generated_text_log
                     if not generated_text_log.startswith("ERROR"):
                         generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+                        failure_type = "answer_extraction_failed"
+                    else:
+                        failure_type = "model_error"
+                    
+                    # Add to failure cases
+                    failure_cases_list.append({
+                        "index": result['index'],
+                        "subject": original_item.get("Subject", "unknown"),
+                        "question": original_item.get("Question", ""),
+                        "ground_truth": ground_truth,
+                        "failure_type": failure_type,
+                        "failure_reason": generated_text_log,
+                        "raw_output": original_generated_text,
+                        "choices": {
+                            "A": original_item.get("A", ""),
+                            "B": original_item.get("B", ""),
+                            "C": original_item.get("C", ""),
+                            "D": original_item.get("D", "")
+                        }
+                    })
 
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,
@@ -591,6 +628,29 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             logger.info(f"Raw generations saved successfully.")
         except Exception as e:
             logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
+
+        # --- Save Failure Cases ---
+        if failure_cases_list:
+            logger.info(f"Saving {len(failure_cases_list)} failure cases to {failure_cases_filepath}...")
+            try:
+                failure_summary = {
+                    "total_failures": len(failure_cases_list),
+                    "failure_types": {},
+                    "failure_cases": failure_cases_list
+                }
+                
+                # Count failure types
+                for case in failure_cases_list:
+                    failure_type = case.get("failure_type", "unknown")
+                    failure_summary["failure_types"][failure_type] = failure_summary["failure_types"].get(failure_type, 0) + 1
+                
+                with open(failure_cases_filepath, 'w', encoding='utf-8') as f:
+                    json.dump(failure_summary, f, indent=2, ensure_ascii=False)
+                logger.info(f"Failure cases saved successfully. Types: {failure_summary['failure_types']}")
+            except Exception as e:
+                logger.error(f"Failed to save failure cases file {failure_cases_filepath}: {e}")
+        else:
+            logger.info("No failure cases to save.")
 
     except Exception as e:
         logger.exception(f"An critical error occurred during evaluation for {config.name}: {e}")

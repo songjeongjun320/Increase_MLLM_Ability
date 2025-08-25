@@ -214,6 +214,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
     results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_0shot.json")
     log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_0shot.log")
     raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_0shot.json")
+    failure_cases_filepath = os.path.join(model_specific_output_dir, f"failure_cases_{config.name}_0shot.json")
 
     # --- Setup Logging for this specific model ---
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -282,6 +283,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         total_predictions = 0
         errors_or_skipped = 0
         results_details = []
+        raw_generations_list = []
+        failure_cases_list = []  # New: Track failure cases separately
 
         logger.info("Starting 0-shot inference loop...")
         test_data = mmlu_data # Use all data for testing
@@ -375,6 +378,29 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
             json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
+        
+        # --- Save Failure Cases ---
+        if failure_cases_list:
+            logger.info(f"Saving {len(failure_cases_list)} failure cases to {failure_cases_filepath}...")
+            try:
+                failure_summary = {
+                    "total_failures": len(failure_cases_list),
+                    "failure_types": {},
+                    "failure_cases": failure_cases_list
+                }
+                
+                # Count failure types  
+                for case in failure_cases_list:
+                    failure_type = case.get("failure_type", "unknown")
+                    failure_summary["failure_types"][failure_type] = failure_summary["failure_types"].get(failure_type, 0) + 1
+                
+                with open(failure_cases_filepath, 'w', encoding='utf-8') as f:
+                    json.dump(failure_summary, f, indent=2, ensure_ascii=False)
+                logger.info(f"Failure cases saved successfully. Types: {failure_summary['failure_types']}")
+            except Exception as e:
+                logger.error(f"Failed to save failure cases file {failure_cases_filepath}: {e}")
+        else:
+            logger.info("No failure cases to save.")
 
     except Exception as e:
         logger.exception(f"An critical error occurred during evaluation for {config.name}: {e}")

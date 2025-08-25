@@ -436,7 +436,7 @@ class ToWTrainer:
             r=16,
             lora_alpha=32,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.05,
+            lora_dropout=0.1,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens

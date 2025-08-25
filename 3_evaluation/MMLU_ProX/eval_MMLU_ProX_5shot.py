@@ -308,7 +308,7 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
 
 def extract_answer_first_token(model_output):
     """
-    Extract answer from model output using first token approach.
+    Extract answer from model output using structured patterns first, then fallback approaches.
     Supports A-J for 10 options.
     """
     if not model_output:
@@ -317,28 +317,63 @@ def extract_answer_first_token(model_output):
     cleaned_output = model_output.strip().upper()
     valid_answers = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     
-    # First, look for immediate A-J at the start
-    if cleaned_output and cleaned_output[0] in valid_answers:
-        return cleaned_output[0]
-    
-    # Look for patterns like "A.", "(A)", "A)" etc.
     import re
-    patterns = [
-        r'^\s*([A-J])[\.\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([A-J])\)?\s*$',    # (A) or A with optional parentheses
-        r'Answer\s*:?\s*([A-J])',    # Answer: A
-        r'^([A-J])'                  # Just A, B, C, etc. at start
+    
+    # Priority 1: Structured answer patterns (most reliable)
+    structured_patterns = [
+        r'####\s*(?:정답|답|ANSWER)\s*:?\s*([A-J])',  # #### Answer: A or #### 정답: A
+        r'(?:정답|답|ANSWER)\s*:?\s*([A-J])',        # Answer: A or 정답: A
+        r'(?:따라서|그러므로|SO)\s+(?:정답은|답은|THE\s+ANSWER\s+IS)\s+([A-J])',  # So the answer is A
     ]
     
-    for pattern in patterns:
-        match = re.search(pattern, cleaned_output)
+    for pattern in structured_patterns:
+        matches = re.findall(pattern, cleaned_output)
+        if matches:
+            return matches[-1]  # Return the last match (final answer)
+    
+    # Priority 2: Start of text patterns
+    start_patterns = [
+        r'^\s*([A-J])[\.\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([A-J])\)?\s*[\.:;]',  # (A): or A. or A:
+        r'^\s*([A-J])\s*$',          # Just A at start of line
+    ]
+    
+    for pattern in start_patterns:
+        match = re.search(pattern, cleaned_output, re.MULTILINE)
         if match:
             return match.group(1)
     
-    # Look for first letter that is A-J anywhere in the output
-    for char in cleaned_output:
-        if char in valid_answers:
-            return char
+    # Priority 3: Last resort - find A-J near end of text (avoid random letters in middle)
+    # Only look in last 100 characters to avoid picking up random letters
+    last_part = cleaned_output[-100:] if len(cleaned_output) > 100 else cleaned_output
+    
+    # Look for isolated A-J characters near the end
+    end_patterns = [
+        r'([A-J])(?:\s*[\.:;]?\s*$)',  # A at end with optional punctuation
+        r'(?:\s|^)([A-J])(?:\s|$)',    # A surrounded by whitespace
+    ]
+    
+    for pattern in end_patterns:
+        matches = re.findall(pattern, last_part)
+        if matches:
+            return matches[-1]  # Return the last match
+    
+    # Priority 4: Absolute fallback - scan from end backwards
+    # This avoids picking random letters from the beginning/middle of text
+    for i in range(len(cleaned_output) - 1, -1, -1):
+        if cleaned_output[i] in valid_answers:
+            # Check if this letter appears to be part of an answer pattern
+            context_start = max(0, i - 20)
+            context_end = min(len(cleaned_output), i + 20)
+            context = cleaned_output[context_start:context_end]
+            
+            # Avoid letters that are clearly part of words
+            if i > 0 and cleaned_output[i-1].isalnum():
+                continue
+            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalnum():
+                continue
+                
+            return cleaned_output[i]
     
     return None
 

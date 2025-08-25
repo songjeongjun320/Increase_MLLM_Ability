@@ -81,7 +81,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_Ko.json"
-BASE_OUTPUT_DIR = "mmlu_prox_5shot"
+BASE_OUTPUT_DIR = "mmlu_prox_0shot"
 BATCH_SIZE = 16
 MAX_NEW_TOKENS = 256
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -95,197 +95,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Few-Shot Examples ---
-ENGLISH_FEW_SHOT_EXAMPLES = [
-    {
-        "question": "Which of the following statements about DNA replication is correct?",
-        "option_0": "DNA replication occurs in the 3' to 5' direction",
-        "option_1": "DNA replication is semiconservative",
-        "option_2": "DNA replication only occurs during mitosis", 
-        "option_3": "DNA replication produces identical copies",
-        "option_4": "DNA replication is conservative",
-        "option_5": "DNA replication occurs bidirectionally",
-        "option_6": "DNA replication is discontinuous",
-        "option_7": "All of the above",
-        "option_8": "None of the above",
-        "option_9": "DNA replication is continuous",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "What is the primary function of the mitochondria in eukaryotic cells?",
-        "option_0": "Protein synthesis",
-        "option_1": "ATP production",
-        "option_2": "DNA storage", 
-        "option_3": "Waste removal",
-        "option_4": "Cell division",
-        "option_5": "Photosynthesis",
-        "option_6": "Lipid synthesis",
-        "option_7": "RNA processing",
-        "option_8": "Calcium storage",
-        "option_9": "Carbohydrate metabolism",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "Which principle of physics explains why objects in motion tend to stay in motion?",
-        "option_0": "Newton's second law",
-        "option_1": "Newton's first law", 
-        "option_2": "Newton's third law",
-        "option_3": "Law of conservation of energy",
-        "option_4": "Law of conservation of momentum",
-        "option_5": "Bernoulli's principle",
-        "option_6": "Archimedes' principle",
-        "option_7": "Pascal's principle",
-        "option_8": "Hooke's law",
-        "option_9": "Coulomb's law",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "What is the derivative of f(x) = x³ + 2x² - 5x + 3?",
-        "option_0": "3x + 4",
-        "option_1": "x² + 2x - 5",
-        "option_2": "3x² + 4x + 5", 
-        "option_3": "x³ + 4x - 5",
-        "option_4": "3x² + 4x - 5",
-        "option_5": "6x + 4",
-        "option_6": "3x² - 5",
-        "option_7": "x² + 4x",
-        "option_8": "3x² + 2x - 5",
-        "option_9": "Cannot be determined",
-        "answer": "E",
-        "answer_index": 4
-    },
-    {
-        "question": "Which economic theory suggests that government spending can stimulate economic growth during recessions?",
-        "option_0": "Monetarism",
-        "option_1": "Keynesian economics",
-        "option_2": "Supply-side economics",
-        "option_3": "Austrian economics", 
-        "option_4": "Classical economics",
-        "option_5": "Behavioral economics",
-        "option_6": "Neoclassical economics", 
-        "option_7": "Chicago school economics",
-        "option_8": "Post-Keynesian economics",
-        "option_9": "Institutional economics",
-        "answer": "B",
-        "answer_index": 1
-    }
-]
-
-KOREAN_FEW_SHOT_EXAMPLES = [
-    {
-        "question": "DNA 복제에 관한 다음 설명 중 올바른 것은?",
-        "option_0": "DNA 복제는 3'에서 5' 방향으로 일어난다",
-        "option_1": "DNA 복제는 불연속적이다",
-        "option_2": "DNA 복제는 유사분열 동안에만 일어난다",
-        "option_3": "DNA 복제는 동일한 사본을 만든다",
-        "option_4": "DNA 복제는 보존적이다",
-        "option_5": "DNA 복제는 양방향으로 일어난다",
-        "option_6": "DNA 복제는 반보존적이다",
-        "option_7": "위의 모든 것",
-        "option_8": "위의 것 중 없음",
-        "option_9": "DNA 복제는 연속적이다",
-        "answer": "G",
-        "answer_index": 6
-    },
-    {
-        "question": "진핵세포에서 미토콘드리아의 주요 기능은 무엇인가?",
-        "option_0": "단백질 합성",
-        "option_1": "ATP 생산",
-        "option_2": "DNA 저장",
-        "option_3": "노폐물 제거",
-        "option_4": "세포 분열",
-        "option_5": "광합성",
-        "option_6": "지질 합성",
-        "option_7": "RNA 처리",
-        "option_8": "칼슘 저장",
-        "option_9": "탄수화물 대사",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "운동하는 물체가 계속 운동하려는 경향을 설명하는 물리학 원리는?",
-        "option_0": "뉴턴의 제2법칙",
-        "option_1": "후크의 법칙",
-        "option_2": "뉴턴의 제3법칙",
-        "option_3": "에너지 보존 법칙",
-        "option_4": "운동량 보존 법칙",
-        "option_5": "베르누이의 원리",
-        "option_6": "아르키메데스의 원리",
-        "option_7": "파스칼의 원리",
-        "option_8": "뉴턴의 제1법칙",
-        "option_9": "쿨롱의 법칙",
-        "answer": "I",
-        "answer_index": 8
-    },
-    {
-        "question": "f(x) = x³ + 2x² - 5x + 3의 도함수는?",
-        "option_0": "3x² + 4x - 5",
-        "option_1": "x² + 2x - 5",
-        "option_2": "3x² + 4x + 5",
-        "option_3": "x³ + 4x - 5",
-        "option_4": "3x + 4",
-        "option_5": "6x + 4",
-        "option_6": "3x² - 5",
-        "option_7": "x² + 4x",
-        "option_8": "3x² + 2x - 5",
-        "option_9": "결정할 수 없음",
-        "answer": "A",
-        "answer_index": 0
-    },
-    {
-        "question": "경기 침체기에 정부 지출이 경제 성장을 촉진할 수 있다고 주장하는 경제 이론은?",
-        "option_0": "통화주의",
-        "option_1": "오스트리아 경제학",
-        "option_2": "공급 경제학",
-        "option_3": "케인즈 경제학",
-        "option_4": "고전 경제학",
-        "option_5": "행동 경제학",
-        "option_6": "신고전 경제학",
-        "option_7": "시카고 학파 경제학",
-        "option_8": "포스트 케인즈 경제학",
-        "option_9": "제도 경제학",
-        "answer": "D",
-        "answer_index": 3
-    }
-]
-
 # --- Helper Functions ---
-def create_5shot_prompt(item, few_shot_examples, language="en"):
+def create_0shot_prompt(item, language="en"):
     """
-    Creates a 5-shot MMLU-ProX prompt for a given test item.
+    Creates a 0-shot MMLU-ProX prompt for a given test item.
     """
     if language == "ko":
         prompt_parts = ["다음은 다양한 학문 분야의 전문적이고 어려운 다지선다형 질문입니다."]
     else:
-        prompt_parts = ["The following are challenging multiple choice questions from various academic disciplines."]
+        prompt_parts = ["The following is a challenging multiple choice question from various academic disciplines."]
     
     prompt_parts.append("")
-    
-    # Add few-shot examples
-    for example in few_shot_examples:
-        question = example["question"]
-        options = []
-        for i in range(10):
-            option_key = f"option_{i}"
-            if option_key in example and example[option_key].strip() and example[option_key].strip() != "N/A":
-                options.append(f"{chr(65+i)}. {example[option_key]}")
-        
-        correct_answer = example["answer"]
-        
-        prompt_parts.append(f"Question: {question}")
-        prompt_parts.extend(options)
-        if language == "ko":
-            prompts_parts.append("단계별로 생각해봅시다. [생각].")
-            prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
-            prompt_parts.append(f"#### 정답: {correct_answer}")
-        else:
-            prompt_parts.append("Let's think step by step. [Thinking].")
-            prompt_parts.append(f"#### So the answer is {correct_answer}.")
-            prompt_parts.append(f"#### Answer: {correct_answer}.")
-        prompt_parts.append("")
     
     # Add the test question
     question = item.get("question", "")
@@ -300,9 +120,14 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("Answer:")
+        prompt_parts.append("단계별로 생각해봅시다. [생각].")
+        prompt_parts.append("#### 따라서 정답은 {correct_answer} 입니다.")
+        prompt_parts.append("#### 정답: {correct_answer}")
     else:
-        prompt_parts.append("Answer:")
+        prompt_parts.append("Let's think step by step. [Thinking].")
+        prompt_parts.append("#### So the answer is {correct_answer}.")
+        prompt_parts.append("#### Answer: {correct_answer}.")
+    prompt_parts.append("")
     
     return "\n".join(prompt_parts)
 
@@ -324,8 +149,8 @@ def extract_answer_first_token(model_output):
     # Look for patterns like "A.", "(A)", "A)" etc.
     import re
     patterns = [
-        r'^\s*([A-J])[\.\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([A-J])\)?\s*$',    # (A) or A with optional parentheses
+        r'^\s*([A-J])[\.\):\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([A-J])\)?:\s*$',    # (A) or A with optional parentheses
         r'Answer\s*:?\s*([A-J])',    # Answer: A
         r'^([A-J])'                  # Just A, B, C, etc. at start
     ]
@@ -378,7 +203,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=4096  # Longer context for complex questions
+            max_length=2048  # Longer context for complex questions
         ).to(DEVICE)
         
         with torch.no_grad():
@@ -459,11 +284,11 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
 # --- Evaluation Function ---
 def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: list, mmlu_prox_ko_data: list, model_specific_output_dir: str):
     """
-    Performs 5-shot MMLU-ProX evaluation for a single model on both English and Korean datasets.
+    Performs 0-shot MMLU-ProX evaluation for a single model on both English and Korean datasets.
     """
-    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot.json")
-    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_5shot.log")
-    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot.json")
+    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_0shot.json")
+    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_0shot.log")
+    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_0shot.json")
 
     # Setup Logging
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -475,7 +300,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
             root_logger.removeHandler(handler)
     root_logger.addHandler(file_handler)
 
-    logger.info(f"--- Starting 5-shot MMLU-ProX Evaluation for Model: {config.name} ---")
+    logger.info(f"--- Starting 0-shot MMLU-ProX Evaluation for Model: {config.name} ---")
     logger.info(f"Results will be saved to: {results_filepath}")
 
     model = None
@@ -545,7 +370,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, ENGLISH_FEW_SHOT_EXAMPLES, "en")
+                prompt = create_0shot_prompt(item, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -600,7 +425,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, KOREAN_FEW_SHOT_EXAMPLES, "ko")
+                prompt = create_0shot_prompt(item, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -656,7 +481,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         # Save Results
         final_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
-            "evaluation_type": "5-shot MMLU-ProX",
+            "evaluation_type": "0-shot MMLU-ProX",
             "evaluation_date": datetime.now().isoformat(),
             "mmlu_prox_en_results": {
                 "accuracy_strict": en_strict_accuracy,
@@ -751,7 +576,7 @@ def main():
     # Generate summary
     summary_data = {
         "evaluation_info": {
-            "evaluation_type": "5-shot MMLU-ProX",
+            "evaluation_type": "0-shot MMLU-ProX",
             "evaluation_date": datetime.now().isoformat(),
             "batch_size": BATCH_SIZE,
             "max_new_tokens": MAX_NEW_TOKENS,

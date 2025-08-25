@@ -4,23 +4,23 @@ from collections import defaultdict
 import argparse
 
 def count_tokens_simple(text):
-    """간단한 토큰 카운팅 (공백 기준)"""
+    """Simple token counting (space-based)"""
     return len(text.split()) if text else 0
 
 def count_characters(text):
-    """문자 수 카운팅"""
+    """Character count"""
     return len(text) if text else 0
 
 def analyze_context_lengths(json_file, min_char_threshold=10, min_token_threshold=3):
-    """JSON 파일에서 context 길이를 분석하고 통계를 제공"""
+    """Analyze context lengths from JSON file and provide statistics"""
     
     with open(json_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
-    print(f"\n=== {os.path.basename(json_file)} 분석 결과 ===")
-    print(f"총 데이터 개수: {len(data)}")
+    print(f"\n=== Analysis Results for {os.path.basename(json_file)} ===")
+    print(f"Total data count: {len(data)}")
     
-    # 통계 수집
+    # Collect statistics
     char_counts = []
     token_counts = []
     context_lengths = defaultdict(int)
@@ -34,54 +34,54 @@ def analyze_context_lengths(json_file, min_char_threshold=10, min_token_threshol
         token_counts.append(token_count)
         context_lengths[char_count] += 1
     
-    # 기본 통계
-    print(f"\n--- 문자 수 기준 통계 ---")
-    print(f"최소: {min(char_counts)} 문자")
-    print(f"최대: {max(char_counts)} 문자")
-    print(f"평균: {sum(char_counts)/len(char_counts):.1f} 문자")
-    print(f"중간값: {sorted(char_counts)[len(char_counts)//2]} 문자")
+    # Basic statistics
+    print(f"\n--- Character Count Statistics ---")
+    print(f"Minimum: {min(char_counts)} characters")
+    print(f"Maximum: {max(char_counts)} characters")
+    print(f"Average: {sum(char_counts)/len(char_counts):.1f} characters")
+    print(f"Median: {sorted(char_counts)[len(char_counts)//2]} characters")
     
-    print(f"\n--- 토큰 수 기준 통계 ---")
-    print(f"최소: {min(token_counts)} 토큰")
-    print(f"최대: {max(token_counts)} 토큰")
-    print(f"평균: {sum(token_counts)/len(token_counts):.1f} 토큰")
-    print(f"중간값: {sorted(token_counts)[len(token_counts)//2]} 토큰")
+    print(f"\n--- Token Count Statistics ---")
+    print(f"Minimum: {min(token_counts)} tokens")
+    print(f"Maximum: {max(token_counts)} tokens")
+    print(f"Average: {sum(token_counts)/len(token_counts):.1f} tokens")
+    print(f"Median: {sorted(token_counts)[len(token_counts)//2]} tokens")
     
-    # 필터링 기준별 분석
-    print(f"\n--- 필터링 기준별 분석 ---")
+    # Filtering criteria analysis
+    print(f"\n--- Filtering Criteria Analysis ---")
     
-    # 문자 수 기준
+    # Character count criteria
     removed_by_char = sum(1 for count in char_counts if count < min_char_threshold)
     remaining_by_char = len(data) - removed_by_char
     
-    print(f"문자 수 {min_char_threshold}자 미만:")
-    print(f"  - 제거될 데이터: {removed_by_char}개 ({removed_by_char/len(data)*100:.1f}%)")
-    print(f"  - 남을 데이터: {remaining_by_char}개 ({remaining_by_char/len(data)*100:.1f}%)")
+    print(f"Character count less than {min_char_threshold}:")
+    print(f"  - Data to be removed: {removed_by_char} items ({removed_by_char/len(data)*100:.1f}%)")
+    print(f"  - Data to remain: {remaining_by_char} items ({remaining_by_char/len(data)*100:.1f}%)")
     
-    # 토큰 수 기준
+    # Token count criteria
     removed_by_token = sum(1 for count in token_counts if count < min_token_threshold)
     remaining_by_token = len(data) - removed_by_token
     
-    print(f"토큰 수 {min_token_threshold}개 미만:")
-    print(f"  - 제거될 데이터: {removed_by_token}개 ({removed_by_token/len(data)*100:.1f}%)")
-    print(f"  - 남을 데이터: {remaining_by_token}개 ({remaining_by_token/len(data)*100:.1f}%)")
+    print(f"Token count less than {min_token_threshold}:")
+    print(f"  - Data to be removed: {removed_by_token} items ({removed_by_token/len(data)*100:.1f}%)")
+    print(f"  - Data to remain: {remaining_by_token} items ({remaining_by_token/len(data)*100:.1f}%)")
     
-    # 구간별 분포
-    print(f"\n--- 문자 수 구간별 분포 ---")
+    # Distribution by range
+    print(f"\n--- Character Count Distribution by Range ---")
     ranges = [(0, 10), (11, 20), (21, 50), (51, 100), (101, 200), (201, float('inf'))]
     for start, end in ranges:
         count = sum(1 for c in char_counts if start <= c < end or (end == float('inf') and c >= start))
         percentage = count / len(data) * 100
         range_str = f"{start}-{end if end != float('inf') else '+'}"
-        print(f"  {range_str:>8}자: {count:>4}개 ({percentage:>5.1f}%)")
+        print(f"  {range_str:>8} chars: {count:>4} items ({percentage:>5.1f}%)")
     
-    print(f"\n--- 토큰 수 구간별 분포 ---")
+    print(f"\n--- Token Count Distribution by Range ---")
     token_ranges = [(0, 3), (4, 5), (6, 10), (11, 20), (21, 50), (51, float('inf'))]
     for start, end in token_ranges:
         count = sum(1 for c in token_counts if start <= c < end or (end == float('inf') and c >= start))
         percentage = count / len(data) * 100
         range_str = f"{start}-{end if end != float('inf') else '+'}"
-        print(f"  {range_str:>8}토큰: {count:>4}개 ({percentage:>5.1f}%)")
+        print(f"  {range_str:>8} tokens: {count:>4} items ({percentage:>5.1f}%)")
     
     return {
         'total': len(data),
@@ -108,28 +108,28 @@ def analyze_context_lengths(json_file, min_char_threshold=10, min_token_threshol
     }
 
 def main():
-    parser = argparse.ArgumentParser(description='JSON 파일의 context 길이 분석')
-    parser.add_argument('--dir', default='tow_data', help='JSON 파일들이 있는 디렉토리 (기본값: tow_data)')
-    parser.add_argument('--char-threshold', type=int, default=10, help='최소 문자 수 임계값 (기본값: 10)')
-    parser.add_argument('--token-threshold', type=int, default=3, help='최소 토큰 수 임계값 (기본값: 3)')
-    parser.add_argument('--file', help='특정 파일만 분석 (선택사항)')
+    parser = argparse.ArgumentParser(description='Analyze context lengths in JSON files')
+    parser.add_argument('--dir', default='tow_data', help='Directory containing JSON files (default: tow_data)')
+    parser.add_argument('--char-threshold', type=int, default=10, help='Minimum character count threshold (default: 10)')
+    parser.add_argument('--token-threshold', type=int, default=3, help='Minimum token count threshold (default: 3)')
+    parser.add_argument('--file', help='Analyze specific file only (optional)')
     
     args = parser.parse_args()
     
     if args.file:
-        # 특정 파일만 분석
+        # Analyze specific file only
         json_files = [args.file]
     else:
-        # 디렉토리의 모든 JSON 파일 분석
+        # Analyze all JSON files in directory
         json_files = [f for f in os.listdir(args.dir) if f.endswith('.json')]
         json_files = [os.path.join(args.dir, f) for f in json_files]
     
     if not json_files:
-        print("JSON 파일을 찾을 수 없습니다.")
+        print("No JSON files found.")
         return
     
-    print(f"문자 수 임계값: {args.char_threshold}자")
-    print(f"토큰 수 임계값: {args.token_threshold}개")
+    print(f"Character count threshold: {args.char_threshold} characters")
+    print(f"Token count threshold: {args.token_threshold} tokens")
     print("="*60)
     
     all_results = {}
@@ -139,24 +139,24 @@ def main():
             result = analyze_context_lengths(json_file, args.char_threshold, args.token_threshold)
             all_results[json_file] = result
         except Exception as e:
-            print(f"오류 발생 ({json_file}): {e}")
+            print(f"Error occurred ({json_file}): {e}")
     
-    # 전체 요약
+    # Overall summary
     if len(all_results) > 1:
         print("\n" + "="*60)
-        print("=== 전체 요약 ===")
+        print("=== Overall Summary ===")
         total_data = sum(r['total'] for r in all_results.values())
         total_removed_char = sum(r['filtering']['removed_by_char'] for r in all_results.values())
         total_removed_token = sum(r['filtering']['removed_by_token'] for r in all_results.values())
         
-        print(f"총 파일 수: {len(all_results)}개")
-        print(f"총 데이터 개수: {total_data:,}개")
-        print(f"\n문자 수 {args.char_threshold}자 미만 제거시:")
-        print(f"  - 제거될 데이터: {total_removed_char:,}개 ({total_removed_char/total_data*100:.1f}%)")
-        print(f"  - 남을 데이터: {total_data-total_removed_char:,}개 ({(total_data-total_removed_char)/total_data*100:.1f}%)")
-        print(f"\n토큰 수 {args.token_threshold}개 미만 제거시:")
-        print(f"  - 제거될 데이터: {total_removed_token:,}개 ({total_removed_token/total_data*100:.1f}%)")
-        print(f"  - 남을 데이터: {total_data-total_removed_token:,}개 ({(total_data-total_removed_token)/total_data*100:.1f}%)")
+        print(f"Total files: {len(all_results)}")
+        print(f"Total data count: {total_data:,}")
+        print(f"\nWhen removing data with character count less than {args.char_threshold}:")
+        print(f"  - Data to be removed: {total_removed_char:,} items ({total_removed_char/total_data*100:.1f}%)")
+        print(f"  - Data to remain: {total_data-total_removed_char:,} items ({(total_data-total_removed_char)/total_data*100:.1f}%)")
+        print(f"\nWhen removing data with token count less than {args.token_threshold}:")
+        print(f"  - Data to be removed: {total_removed_token:,} items ({total_removed_token/total_data*100:.1f}%)")
+        print(f"  - Data to remain: {total_data-total_removed_token:,} items ({(total_data-total_removed_token)/total_data*100:.1f}%)")
 
 if __name__ == "__main__":
     main()

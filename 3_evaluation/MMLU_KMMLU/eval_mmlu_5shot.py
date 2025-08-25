@@ -111,7 +111,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_origin.json"
 BASE_OUTPUT_DIR = "mmlu_model1_5shot" # 5-shot evaluation results
-BATCH_SIZE = 16
+BATCH_SIZE = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -416,8 +416,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         tokenizer = AutoTokenizer.from_pretrained(
                     tokenizer_load_path, 
                     cache_dir=CACHE_DIR,
-                    padding_side='left',  # <--- 이 라인을 추가하세요!
-                    trust_remote_code=True # Qwen 등 일부 모델은 이 옵션이 필요할 수 있습니다.
+                    padding_side='left',
+                    trust_remote_code=True
                 )          
         if tokenizer.pad_token is None:
             if tokenizer.eos_token:

@@ -131,9 +131,9 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # Slightly higher learning rate
     max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased to 10 epochs
-    per_device_train_batch_size: int = 1  # Reduced for memory efficiency with DeepSpeed
-    per_device_eval_batch_size: int = 1  # Reduced for memory efficiency
-    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
+    gradient_accumulation_steps: int = 1  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
 
     
@@ -436,7 +436,7 @@ class ToWTrainer:
             r=16,
             lora_alpha=32,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.05,
+            lora_dropout=0.1,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens

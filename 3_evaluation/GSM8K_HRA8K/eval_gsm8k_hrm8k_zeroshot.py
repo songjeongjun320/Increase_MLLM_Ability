@@ -145,7 +145,7 @@ def load_gsm8k_data(filepath):
 def create_gsm8k_prompt(text, is_korean=False):
     """Create GSM8K 0-shot CoT evaluation prompt"""
     prompt = f"""Question: {text}
-Answer: Let's think step by step."""
+Answer: Let's think step by step. [Thinking] #### So the answer is [Answer]."""
     
     return prompt
 

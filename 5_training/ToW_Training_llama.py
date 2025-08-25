@@ -119,10 +119,7 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/klue_tow_gemini_2.0-flash-lite.json",
-        "../4_tow_generation/tow_data/koconovel_tow_gemini_2.0-flash-lite.json",
-        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part1.json",
-        "../4_tow_generation/tow_data/kornli_kobest-kostrategyqa_tow_gemini_2.0-flash-lite_part2.json"
+        "../4_tow_generation/processed/training_dataset_converted.json"
     ])
     output_base_dir: str = "ToW_Models_2"
     
@@ -181,16 +178,15 @@ class SmartToWDataProcessor:
         self.tow_end_token = "</ToW>"
     
     def analyze_data_lengths(self, data: List[Dict]) -> int:
-        """Analyze data to determine optimal max length"""
+        """Analyze data to determine optimal max length (converted format)"""
         logger.info("Analyzing dataset lengths...")
         
         lengths = []
         
         for entry in tqdm(data, desc="Analyzing lengths"):
-            context = entry.get('context', '')
-            tow = entry.get('tow', '')
-            gold_label = entry.get('gold_label', '')
-            text = f"{context}{tow}{gold_label}{self.tokenizer.eos_token}"
+            input_text = entry.get('input', '')
+            output_text = entry.get('output', '')
+            text = f"{input_text}{output_text}{self.tokenizer.eos_token}"
             tokens = self.tokenizer.tokenize(text)
             lengths.append(len(tokens))
         
@@ -228,8 +224,8 @@ class SmartToWDataProcessor:
         return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
 
     def load_tow_data(self, data_paths: List[str]) -> List[Dict]:
-        """Load ToW-augmented Korean dataset from multiple files"""
-        logger.info(f"Loading ToW data from {len(data_paths)} files...")
+        """Load converted ToW dataset (input/output format) from file"""
+        logger.info(f"Loading converted ToW data from {len(data_paths)} files...")
         
         all_data = []
         for data_path in data_paths:
@@ -249,31 +245,30 @@ class SmartToWDataProcessor:
             except json.JSONDecodeError:
                 logger.warning(f"Could not decode JSON from {data_path}. Skipping.")
         
-        logger.info(f"Loaded a total of {len(all_data)} ToW-augmented entries")
+        logger.info(f"Loaded a total of {len(all_data)} converted ToW entries")
         return all_data
     
     def create_training_dataset(self, data: List[Dict]) -> Dataset:
-        """Create dataset for context -> tow + gold_label training"""
-        logger.info("Creating training dataset for context-based ToW training...")
+        """Create dataset for input -> output training (converted format)"""
+        logger.info("Creating training dataset for converted ToW training...")
         
         if self.config.adaptive_max_length:
             optimal_length = self.analyze_data_lengths(data)
             self.config.max_sequence_length = optimal_length
         
         processed_data = []
-        for entry in tqdm(data, desc="Processing context/ToW examples"):
-            context = entry.get('context', '')
-            tow = entry.get('tow', '')
-            gold_label = entry.get('gold_label', '')
+        for entry in tqdm(data, desc="Processing converted input/output examples"):
+            input_text = entry.get('input', '')
+            output_text = entry.get('output', '')
 
-            if not context or not tow or not gold_label:
+            if not input_text or not output_text:
                 continue
 
-            # Format: context -> tow -> gold_label -> eos
-            full_text = f"{context}{tow}{gold_label}{self.tokenizer.eos_token}"
+            # Format: input -> output -> eos
+            full_text = f"{input_text}{output_text}{self.tokenizer.eos_token}"
             
             processed_data.append({
-                "context": context,
+                "input": input_text,
                 "full_text": full_text
             })
 
@@ -289,8 +284,8 @@ class SmartToWDataProcessor:
             if hasattr(self.tokenizer, 'truncation_side'):
                 self.tokenizer.truncation_side = 'left'
             
-            context_tokens = self.tokenizer(
-                examples['context'],
+            input_tokens = self.tokenizer(
+                examples['input'],
                 add_special_tokens=False
             )
             full_tokens = self.tokenizer(
@@ -311,16 +306,16 @@ class SmartToWDataProcessor:
                 input_ids = full_tokens['input_ids'][i]
                 attention_mask = full_tokens['attention_mask'][i]
                 
-                # Get the length of the context for this specific example
-                context_len = len(context_tokens['input_ids'][i])
+                # Get the length of the input for this specific example
+                input_len = len(input_tokens['input_ids'][i])
                 
                 labels = input_ids.copy()
                 
-                # Determine the actual number of context tokens to mask.
-                # This prevents index errors if the context itself was truncated.
-                mask_len = min(context_len, len(labels))
+                # Determine the actual number of input tokens to mask.
+                # This prevents index errors if the input itself was truncated.
+                mask_len = min(input_len, len(labels))
 
-                # Mask context tokens by setting them to -100
+                # Mask input tokens by setting them to -100
                 labels[:mask_len] = [-100] * mask_len
                 
                 # Also mask padding tokens
@@ -336,7 +331,7 @@ class SmartToWDataProcessor:
         tokenized_dataset = dataset.map(
             tokenize_function,
             batched=True,  # Explicitly set batched=True
-            remove_columns=['context', 'full_text'],
+            remove_columns=['input', 'full_text'],
             desc="Tokenizing and creating labels"
         )
 

@@ -304,13 +304,27 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
                 if ground_truth is None or prompt is None:
                     errors_or_skipped += 1
+                    failure_reason = "SKIPPED - Invalid GT/Prompt"
+                    failure_type = "invalid_ground_truth" if ground_truth is None else "prompt_creation_failed"
+                    
                     results_details.append({
-                        "index": current_index, "ground_truth": ground_truth, "model_raw_output": "SKIPPED - Invalid GT/Prompt",
+                        "index": current_index, "ground_truth": ground_truth, "model_raw_output": failure_reason,
                         "predicted_answer": None, "is_correct": False
                     })
                     raw_generations_list.append({
                         "index": current_index, "subject": item.get("Subject", "unknown"), "ground_truth": ground_truth,
-                        "raw_output": "SKIPPED - Invalid GT/Prompt", "extracted_answer": None
+                        "raw_output": failure_reason, "extracted_answer": None
+                    })
+                    
+                    # Add to failure cases
+                    failure_cases_list.append({
+                        "index": current_index,
+                        "subject": item.get("Subject", "unknown"),
+                        "question": item.get("Question", ""),
+                        "ground_truth": ground_truth,
+                        "failure_type": failure_type,
+                        "failure_reason": failure_reason,
+                        "raw_output": failure_reason
                     })
                     continue
                 
@@ -335,8 +349,30 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                         is_correct_log = True
                 else:
                     errors_or_skipped += 1
+                    original_generated_text = generated_text_log
                     if not generated_text_log.startswith("ERROR"):
                         generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+                        failure_type = "answer_extraction_failed"
+                    else:
+                        failure_type = "model_error"
+
+                    # Add to failure cases
+                    original_item = test_data[result['index']]
+                    failure_cases_list.append({
+                        "index": result['index'],
+                        "subject": original_item.get("Subject", "unknown"),
+                        "question": original_item.get("Question", ""),
+                        "ground_truth": ground_truth,
+                        "failure_type": failure_type,
+                        "failure_reason": generated_text_log,
+                        "raw_output": original_generated_text,
+                        "choices": {
+                            "A": original_item.get("A", ""),
+                            "B": original_item.get("B", ""),
+                            "C": original_item.get("C", ""),
+                            "D": original_item.get("D", "")
+                        }
+                    })
 
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,

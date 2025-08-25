@@ -142,13 +142,13 @@ class ToWTrainingConfig:
 
 
     # Smart text handling
-    adaptive_max_length: bool = True
+    adaptive_max_length: bool = False
     preserve_tow_tokens: bool = True
     enable_chunking: bool = True
     min_chunk_overlap: int = 50
 
     # Default settings
-    max_sequence_length: int = 1024
+    max_sequence_length: int = 256
     warmup_ratio: float = 0.05  # Decreased warmup ratio for smoother start
     weight_decay: float = 0.01  # Lower weight decay for stability
 

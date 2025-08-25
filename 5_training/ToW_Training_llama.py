@@ -486,7 +486,7 @@ class ToWTrainer:
             data_seed=42,
             report_to=[],
             # DeepSpeed ZeRO 설정 추가
-            deepspeed="zero2_config.json",
+            deepspeed="deepspeed_config_llama.json",
         )
     
     def train(self):

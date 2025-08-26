@@ -291,7 +291,6 @@ async def generate_multiple_tow_dataset_async():
         print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
         return
     
-    data = data[:5]
 
     # 출력 디렉토리 생성
     output_dir = os.path.dirname(OUTPUT_JSON_PATH)

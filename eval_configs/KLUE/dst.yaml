@@ -1,0 +1,35 @@
+task: dst
+dataset_path: klue
+dataset_name: dst  # Word-in-Context
+test_split: validation
+
+output_type: multiple_choice
+
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+
+description: "두 문장에서 대상 단어가 같은 의미로 사용되었는지 판단하세요."
+
+doc_to_text: |
+  문장1: {{context_1}}
+  문장2: {{context_2}}
+  대상 단어: {{word}}
+  
+  두 문장에서 '{{word}}'가 같은 의미로 사용되었습니까?
+  A. 예 (같은 의미)
+  B. 아니오 (다른 의미)
+  
+  답:
+
+doc_to_choice: ["A", "B"]
+doc_to_target: "label"  # 0: False(다른 의미), 1: True(같은 의미)
+
+fewshot_config:
+  sampler: first_n
+
+num_fewshot: 3
+should_decontaminate: true
+metadata:
+  version: 1.0

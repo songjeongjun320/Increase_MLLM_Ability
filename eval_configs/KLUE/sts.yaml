@@ -1,0 +1,44 @@
+# KLUE STS - 회귀 태스크 (Pearson 상관계수 사용)
+task: sts
+dataset_path: klue
+dataset_name: sts
+test_split: validation
+output_type: generate_until
+
+generation_kwargs:
+  until: ["\n\n", "\n문장", "<|im_end|>"]
+  max_gen_toks: 50
+  temperature: 0.0
+  do_sample: false
+
+metric_list:
+  - metric: pearsonr
+    aggregation: mean
+    higher_is_better: true
+
+description: "두 문장의 의미적 유사성을 0-5 점수로 평가하세요."
+
+doc_to_text: |
+  문장1: {{sentence1}}
+  문장2: {{sentence2}}
+  
+  위 두 문장의 의미적 유사성을 0점(전혀 유사하지 않음)부터 5점(완전히 동일함)까지의 점수로 평가하세요.
+  
+  점수:
+
+# 실수값 추출을 위한 필터
+filter_list:
+  - name: "get-score"
+    filter:
+      - function: "regex"
+        regex_pattern: r"(?:점수:|점수는|평가:|결과:)?\s*([0-5](?:\.[0-9]+)?)"
+      - function: "take_first"
+
+fewshot_config:
+  sampler: first_n
+
+doc_to_target: "labels.label"  # 반올림된 라벨 사용 (0-5 범위)
+num_fewshot: 3  # STS는 복잡하므로 적은 few-shot 사용
+should_decontaminate: true
+metadata:
+  version: 1.0

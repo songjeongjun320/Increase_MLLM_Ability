@@ -1,0 +1,31 @@
+task: gsm8k_ko_hf
+dataset_path: kuotient/gsm8k-ko
+test_split: test
+output_type: generate_until
+generation_kwargs:
+  until: ["\n\n", "\n질문:", "<|im_end|>", "질문:"]
+  max_gen_toks: 1024
+  temperature: 0.0
+  do_sample: false
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+description: "수학 문제를 단계별로 해결하고 최종 숫자 답을 제공하세요."
+doc_to_text: |
+  질문: {{question}}
+  
+  단계별로 해결해보겠습니다:
+filter_list:
+  - name: "get-answer"
+    filter:
+      - function: "regex"
+        regex_pattern: "(?:답은|답:|따라서|정답은|결과는|#### )\\s*([+-]?(?:\\d+(?:,\\d{3})*(?:\\.\\d+)?\\.\\d+))"
+      - function: "take_first"
+fewshot_config:
+  sampler: first_n
+doc_to_target: "answer"
+num_fewshot: 5
+should_decontaminate: true
+metadata:
+  version: 1.0

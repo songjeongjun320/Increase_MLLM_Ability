@@ -6,6 +6,7 @@ venv/
 
 # DB
 *.json
+*.jsonl
 *.log
 *.txt
 kakaobrain-kornli

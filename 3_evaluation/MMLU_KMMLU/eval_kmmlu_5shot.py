@@ -791,7 +791,7 @@ def main():
                     "correct_predictions": result_data.get("correct_predictions"),
                     "valid_predictions": result_data.get("valid_predictions"),
                     "total_items": result_data.get("test_items"),
-                    "subject_wise_accuracy": result_data.get("subject_wise_accuracy", {})
+                    # "subject_wise_accuracy": result_data.get("subject_wise_accuracy", {})
                 }
                 all_results_summary.append(summary)
             except Exception as e:

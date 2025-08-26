@@ -103,9 +103,9 @@ def create_0shot_prompt(item, language="en"):
     """
     if language == "ko":
         # 1. 전체 지시문
-        prompt_parts = ["다음 질문을 읽고, 단계적으로 생각하여 최종 정답을 '#### 정답: [선택지]' 형식으로 제시하시오."]
+        prompt_parts = ["다음 질문을 읽고, 이제 단계적으로 생각하여 최종 정답을 '#### 정답: [선택지]' 형식으로 제시하시오."]
     else:
-        prompt_parts = ["Read the following question, think step by step, and provide the final answer in the format '#### Answer: [Option]'."]
+        prompt_parts = ["Read the following question, Let's think step by step, and provide the final answer in the format '#### Answer: [Option]'."]
     
     prompt_parts.append("")
     

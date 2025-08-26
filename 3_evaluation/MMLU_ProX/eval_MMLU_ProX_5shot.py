@@ -105,7 +105,7 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
             "D": "David",
             "E": "Cannot be determined"
         },
-        "cot_content": """Let's think step by step.
+        "cot_content": """Response: Let's think step by step.
 Let's break down the statements. Let '>' mean 'finished before'.
 Statement 1: Alice > Bob.
 Statement 3: Bob > David.
@@ -125,7 +125,7 @@ The person who finished last is the one at the very end of this chain. That pers
             "E": "50 m/s²",
             "F": "10 m/s²"
         },
-        "cot_content": """Let's think step by step.
+        "cot_content": """Response: Let's think step by step.
 The question asks for acceleration given a net force and a mass.
 The relevant physical principle is Newton's Second Law of Motion.
 The formula is Force = mass × acceleration (F = ma).
@@ -145,7 +145,7 @@ The calculation gives a = 5 m/s². This matches option B.""",
             "E": "France",
             "F": "The Netherlands"
         },
-        "cot_content": """Let's think step by step.
+        "cot_content": """Response: Let's think step by step.
 The question is about the Louisiana Purchase in 1803.
 I need to recall the historical context of that period in North America. The major European powers with territory were Spain, Great Britain, and France.
 At that time, the leader of France was Napoleon Bonaparte. He was engaged in wars in Europe and needed funds.
@@ -163,7 +163,7 @@ This historical fact confirms the purchase was made from France.""",
             "D": "Glucose and oxygen",
             "E": "Sunlight and water"
         },
-        "cot_content": """Let's think step by step.
+        "cot_content": """Response: Let's think step by step.
 Photosynthesis is the process plants use to convert light energy into chemical energy.
 First, let's identify the inputs (reactants). Plants take in carbon dioxide (CO₂), water (H₂O), and sunlight.
 The process then converts these inputs into outputs (products).
@@ -181,7 +181,7 @@ Therefore, the primary products are glucose and oxygen. This corresponds to opti
             "D": "Charles Dickens",
             "E": "Jane Austen"
         },
-        "cot_content": """Let's think step by step.
+        "cot_content": """Response: Let's think step by step.
 This is one of the most famous quotes in English literature.
 I need to identify which play and author it comes from.
 The line is a soliloquy from the play Hamlet.
@@ -201,7 +201,7 @@ KOREAN_FEW_SHOT_EXAMPLES = [
             "D": "데이비드",
             "E": "결정할 수 없음"
         },
-        "cot_content": """단계별로 생각해봅시다.
+        "cot_content": """응답: 단계별로 생각해봅시다.
 주어진 문장들을 분석해 보겠습니다. '>'를 '먼저 들어왔다'는 의미로 사용하겠습니다.
 문장 1: 앨리스 > 밥.
 문장 3: 밥 > 데이비드.
@@ -221,7 +221,7 @@ KOREAN_FEW_SHOT_EXAMPLES = [
             "E": "50 m/s²",
             "F": "10 m/s²"
         },
-        "cot_content": """단계별로 생각해봅시다.
+        "cot_content": """응답: 단계별로 생각해봅시다.
 이 질문은 알짜힘과 질량이 주어졌을 때 가속도를 구하는 문제입니다.
 관련된 물리 법칙은 뉴턴의 운동 제2법칙입니다.
 공식은 힘 = 질량 × 가속도 (F = ma) 입니다.
@@ -241,7 +241,7 @@ KOREAN_FEW_SHOT_EXAMPLES = [
             "E": "프랑스",
             "F": "네덜란드"
         },
-        "cot_content": """단계별로 생각해봅시다.
+        "cot_content": """응답: 단계별로 생각해봅시다.
 이 질문은 1803년의 '루이지애나 매입'에 관한 것입니다.
 당시 북미 대륙의 역사적 상황을 떠올려야 합니다. 영토를 가진 주요 유럽 국가는 스페인, 영국, 프랑스였습니다.
 그 시기 프랑스의 지도자는 나폴레옹 보나파르트였습니다. 그는 유럽에서 전쟁을 치르고 있었고 자금이 필요했습니다.
@@ -259,7 +259,7 @@ KOREAN_FEW_SHOT_EXAMPLES = [
             "D": "포도당과 산소",
             "E": "햇빛과 물"
         },
-        "cot_content": """단계별로 생각해봅시다.
+        "cot_content": """응답: 단계별로 생각해봅시다.
 광합성은 식물이 빛 에너지를 화학 에너지로 전환하는 과정입니다.
 먼저, 투입물(반응물)이 무엇인지 확인합니다. 식물은 이산화탄소(CO₂), 물(H₂O), 그리고 햇빛을 흡수합니다.
 이 과정은 투입물을 산출물(생성물)로 변환합니다.
@@ -277,7 +277,7 @@ KOREAN_FEW_SHOT_EXAMPLES = [
             "D": "찰스 디킨스",
             "E": "제인 오스틴"
         },
-        "cot_content": """단계별로 생각해봅시다.
+        "cot_content": """응답: 단계별로 생각해봅시다.
 이것은 영문학에서 가장 유명한 인용구 중 하나입니다.
 어떤 희곡과 작가로부터 나왔는지 식별해야 합니다.
 이 대사는 희곡 «햄릿»에 나오는 독백입니다.

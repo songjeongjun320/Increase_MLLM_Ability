@@ -147,14 +147,14 @@ def create_gsm8k_0shot_prompt(text, is_korean=False):
     if is_korean:
         instruction = "다음 수학 문제를 단계적으로 생각하여 풀이 과정을 설명하고, 최종 숫자 답변을 '#### [숫자]' 형식으로 제시해주세요."
         question_header = "문제:"
-        cot_trigger = "답: 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
+        cot_trigger = "응답답: 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
         
         prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
         
     else: # English version
         instruction = "Solve the following math problem by thinking step-by-step and providing the final numerical answer in the format '#### [number]'."
         question_header = "Question:"
-        cot_trigger = "Answer: Let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
+        cot_trigger = "Response: Let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
         
         prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
     

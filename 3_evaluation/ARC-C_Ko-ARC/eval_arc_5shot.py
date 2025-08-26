@@ -85,62 +85,225 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+ARC_5SHOT_EXAMPLES = [
+    {
+        "question": "Which of the following is the primary source of energy for most ecosystems on Earth?",
+        "options": {
+            "A": "Fungi",
+            "B": "Herbivores",
+            "C": "The Sun",
+            "D": "Carnivores"
+        },
+        "cot_content": """Let's think step by step.
+1. The question asks for the primary, or ultimate, source of energy for most ecosystems.
+2. Let's analyze the options. A food chain shows how energy is transferred.
+3. Option A, Fungi, are decomposers. They get energy from dead organic material, so they are part of the energy cycle, but not the primary source.
+4. Option B, Herbivores, are primary consumers. They get their energy by eating plants (producers). So they are not the source.
+5. Option D, Carnivores, are secondary or tertiary consumers. They get energy by eating other animals. They are even further down the energy transfer chain.
+6. Option C, The Sun. Plants (producers) use sunlight to create their own food through photosynthesis. This chemical energy is the foundation of almost every food chain. Therefore, the sun is the primary source of energy.""",
+        "answer": "C"
+    },
+    {
+        "question": "Which physical process describes a liquid turning into a gas?",
+        "options": {
+            "A": "Melting",
+            "B": "Freezing",
+            "C": "Condensation",
+            "D": "Evaporation"
+        },
+        "cot_content": """Let's think step by step.
+1. The question is about the phase transition from liquid to gas.
+2. Option A, Melting, is the process of a solid turning into a liquid. This is incorrect.
+3. Option B, Freezing, is the process of a liquid turning into a solid. This is incorrect.
+4. Option C, Condensation, is the process of a gas turning into a liquid. This is the reverse of what the question asks. This is incorrect.
+5. Option D, Evaporation (or boiling), is the process where a liquid substance becomes a gas. This directly matches the question.""",
+        "answer": "D"
+    },
+    {
+        "question": "A student wants to test how the amount of sunlight affects the growth of a bean plant. Which of the following is the independent variable in her experiment?",
+        "options": {
+            "A": "the height of the plant",
+            "B": "the amount of water given to the plant",
+            "C": "the amount of sunlight",
+            "D": "the type of soil"
+        },
+        "cot_content": """Let's think step by step.
+1. An experiment tests how an independent variable affects a dependent variable. The independent variable is the one factor that the scientist intentionally changes or manipulates.
+2. The student wants to see the effect *of* the amount of sunlight. This is the factor she will change.
+3. Option A, the height of the plant, is what is being measured to see the effect. This is the dependent variable.
+4. Option B, the amount of water, and Option D, the type of soil, should be kept the same for all plants to ensure a fair test. These are controlled variables.
+5. Option C, the amount of sunlight, is the one thing the student is purposefully changing to observe its effect on growth. Therefore, it is the independent variable.""",
+        "answer": "C"
+    },
+    {
+        "question": "Which of these is an example of a chemical change?",
+        "options": {
+            "A": "boiling water",
+            "B": "dissolving salt in water",
+            "C": "the rusting of iron",
+            "D": "tearing a piece of paper"
+        },
+        "cot_content": """Let's think step by step.
+1. A chemical change produces a new substance with new chemical properties. A physical change only alters the form or appearance of a substance.
+2. Option A, boiling water, changes liquid water to gaseous water (steam). It is still H₂O. This is a physical change.
+3. Option B, dissolving salt in water, creates a mixture. The salt and water are not chemically changed and can be separated by evaporation. This is a physical change.
+4. Option D, tearing paper, changes the size and shape of the paper, but it is still made of paper. This is a physical change.
+5. Option C, the rusting of iron, is a process where iron (Fe) reacts with oxygen (O₂) to form a new substance, iron oxide (Fe₂O₃), which is rust. A new substance is formed, so this is a chemical change.""",
+        "answer": "C"
+    },
+    {
+        "question": "Which layer of the Earth is composed primarily of liquid iron and nickel?",
+        "options": {
+            "A": "Crust",
+            "B": "Mantle",
+            "C": "Outer Core",
+            "D": "Inner Core"
+        },
+        "cot_content": """Let's think step by step.
+1. The question asks to identify the liquid layer of the Earth's core made of iron and nickel.
+2. Option A, the Crust, is the outermost solid rock layer. This is incorrect.
+3. Option B, the Mantle, is a layer of hot, semi-solid rock beneath the crust. It is not a liquid metal core. This is incorrect.
+4. The Earth has two core layers. The Inner Core is solid due to immense pressure, even though it's very hot. So, Option D is incorrect.
+5. The Outer Core surrounds the solid inner core. It is under less pressure than the inner core, allowing the iron and nickel to exist in a liquid state. This liquid layer is responsible for Earth's magnetic field. This matches the description.""",
+        "answer": "C"
+    }
+]
+
+KO_ARC_5SHOT_EXAMPLES = [
+    {
+        "question": "다음 중 지구상 대부분의 생태계에서 주요 에너지원은 무엇입니까?",
+        "options": {
+            "A": "균류",
+            "B": "초식동물",
+            "C": "태양",
+            "D": "육식동물"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+1. 이 질문은 대부분의 생태계에서 가장 근원적인 에너지 공급원이 무엇인지 묻고 있습니다.
+2. 선택지를 분석해 봅시다. 먹이 사슬은 에너지가 어떻게 전달되는지를 보여줍니다.
+3. 선택지 A, 균류는 분해자입니다. 죽은 유기물로부터 에너지를 얻으므로 에너지 순환의 일부이지만 근원적인 에너지원은 아닙니다.
+4. 선택지 B, 초식동물은 1차 소비자입니다. 식물(생산자)을 먹음으로써 에너지를 얻으므로 에너지원이 아닙니다.
+5. 선택지 D, 육식동물은 2차 또는 3차 소비자입니다. 다른 동물을 먹음으로써 에너지를 얻으며, 에너지 전달 단계에서 더 뒤에 있습니다.
+6. 선택지 C, 태양. 식물(생산자)은 광합성을 통해 태양빛을 이용하여 스스로 양분을 만듭니다. 이 화학 에너지가 거의 모든 먹이 사슬의 기초가 됩니다. 따라서 태양이 주요 에너지원입니다.""",
+        "answer": "C"
+    },
+    {
+        "question": "액체가 기체로 변하는 물리적 과정은 무엇입니까?",
+        "options": {
+            "A": "융해",
+            "B": "응고",
+            "C": "액화",
+            "D": "증발"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+1. 이 질문은 액체에서 기체로의 상태 변화에 관한 것입니다.
+2. 선택지 A, 융해는 고체가 액체로 변하는 과정입니다. 틀렸습니다.
+3. 선택지 B, 응고는 액체가 고체로 변하는 과정입니다. 틀렸습니다.
+4. 선택지 C, 액화는 기체가 액체로 변하는 과정입니다. 질문과 반대되는 과정입니다. 틀렸습니다.
+5. 선택지 D, 증발(또는 끓음)은 액체 물질이 기체로 변하는 과정입니다. 이는 질문과 정확히 일치합니다.""",
+        "answer": "D"
+    },
+    {
+        "question": "한 학생이 햇빛의 양이 강낭콩 식물의 성장에 미치는 영향을 시험하고 싶어 합니다. 이 실험에서 독립 변인은 무엇입니까?",
+        "options": {
+            "A": "식물의 키",
+            "B": "식물에게 주는 물의 양",
+            "C": "햇빛의 양",
+            "D": "토양의 종류"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+1. 실험은 독립 변인이 종속 변인에 미치는 영향을 시험합니다. 독립 변인은 과학자가 의도적으로 변화시키거나 조작하는 하나의 요인입니다.
+2. 학생은 햇빛의 양이 미치는 '영향'을 보고 싶어 하므로, 햇빛의 양이 바로 학생이 변화시킬 요인입니다.
+3. 선택지 A, 식물의 키는 햇빛의 영향을 확인하기 위해 측정되는 것입니다. 이것은 종속 변인입니다.
+4. 선택지 B, 물의 양과 선택지 D, 토양의 종류는 공정한 실험을 위해 모든 식물에게 동일하게 유지되어야 합니다. 이것들은 통제 변인입니다.
+5. 선택지 C, 햇빛의 양은 학생이 성장에 미치는 영향을 관찰하기 위해 의도적으로 변화시키는 유일한 것입니다. 따라서 이것이 독립 변인입니다.""",
+        "answer": "C"
+    },
+    {
+        "question": "다음 중 화학적 변화의 예는 무엇입니까?",
+        "options": {
+            "A": "물이 끓는 것",
+            "B": "소금이 물에 녹는 것",
+            "C": "철이 녹스는 것",
+            "D": "종이를 찢는 것"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+1. 화학적 변화는 새로운 화학적 특성을 가진 새로운 물질을 생성합니다. 물리적 변화는 물질의 형태나 외관만을 바꿉니다.
+2. 선택지 A, 물이 끓는 것은 액체 상태의 물이 기체 상태의 물(수증기)로 변하는 것입니다. 여전히 H₂O입니다. 이것은 물리적 변화입니다.
+3. 선택지 B, 소금이 물에 녹는 것은 혼합물을 만듭니다. 소금과 물은 화학적으로 변하지 않았으며 증발을 통해 분리될 수 있습니다. 이것은 물리적 변화입니다.
+4. 선택지 D, 종이를 찢는 것은 종이의 크기와 모양을 바꾸지만, 여전히 종이로 만들어져 있습니다. 이것은 물리적 변화입니다.
+5. 선택지 C, 철이 녹스는 것은 철(Fe)이 산소(O₂)와 반응하여 새로운 물질인 산화철(Fe₂O₃), 즉 녹을 형성하는 과정입니다. 새로운 물질이 형성되었으므로 이것은 화학적 변화입니다.""",
+        "answer": "C"
+    },
+    {
+        "question": "지구의 층 중에서 주로 액체 상태의 철과 니켈로 구성된 곳은 어디입니까?",
+        "options": {
+            "A": "지각",
+            "B": "맨틀",
+            "C": "외핵",
+            "D": "내핵"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+1. 이 질문은 철과 니켈로 이루어진 액체 상태의 지구 핵 층을 식별하라고 요구합니다.
+2. 선택지 A, 지각은 가장 바깥쪽의 단단한 암석 층입니다. 틀렸습니다.
+3. 선택지 B, 맨틀은 지각 아래에 있는 뜨거운 반고체 상태의 암석 층입니다. 액체 금속 핵이 아닙니다. 틀렸습니다.
+4. 지구에는 두 개의 핵 층이 있습니다. 내핵은 매우 뜨거움에도 불구하고 엄청난 압력 때문에 고체 상태입니다. 따라서 선택지 D는 틀렸습니다.
+5. 외핵은 고체 상태의 내핵을 둘러싸고 있습니다. 내핵보다 압력이 낮아 철과 니켈이 액체 상태로 존재할 수 있습니다. 이 액체 층이 지구 자기장을 만드는 원인입니다. 이는 질문의 설명과 일치합니다.""",
+        "answer": "C"
+    }
+]
+
 # --- Helper Functions for 5-shot ARC Evaluation ---
 def create_5shot_prompt(item, examples, dataset_type="arc"):
     """
-    Creates a 5-shot ARC prompt with examples from the same dataset type.
+    (최종 개선 버전)
+    딕셔셔너리 리스트 형태의 고품질 5-shot 예제를 사용하여
+    ARC / Ko-ARC 평가 프롬프트를 동적으로 생성합니다.
     """
     if dataset_type == "arc":
-        prompt_parts = ["The following are multiple choice questions about science and reasoning."]
-    else:  # ko-arc
-        prompt_parts = ["다음은 과학과 추론에 관한 객관식 문제들입니다."]
-    
-    prompt_parts.append("")
-    
-    # Add 5 examples
-    for i, example in enumerate(examples[:5], 1):
-        question = example.get("question", "")
-        choices = [
-            example.get("A", ""),
-            example.get("B", ""),
-            example.get("C", ""),
-            example.get("D", "")
-        ]
-        answer = example.get("answer", "")
+        prompt_parts = ["The following are multiple choice questions about science and reasoning.\n"]
+        response_header = "Response:"
+        cot_trigger = "Let's think step by step."
+        final_answer_prefix = "Therefore Answer:"
         
-        prompt_parts.append(question)
-        prompt_parts.append(f"A. {choices[0]}")
-        prompt_parts.append(f"B. {choices[1]}")
-        prompt_parts.append(f"C. {choices[2]}")
-        prompt_parts.append(f"D. {choices[3]}")
-        if dataset_type == "arc":
-            prompt_parts.append(f"Response: Let's think step by step. [thinking process] #### Therefore Answer: {answer}. #### {answer}.")
-        else:  # ko-arc
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: {answer}. #### {answer}.")
-        prompt_parts.append("")
-    
-    # Add test question
-    test_question = item.get("question", "")
-    test_choices = [
-        item.get("A", ""),
-        item.get("B", ""),
-        item.get("C", ""),
-        item.get("D", "")
-    ]
-    
-    prompt_parts.append(test_question)
-    prompt_parts.append(f"A. {test_choices[0]}")
-    prompt_parts.append(f"B. {test_choices[1]}")
-    prompt_parts.append(f"C. {test_choices[2]}")
-    prompt_parts.append(f"D. {test_choices[3]}")
-    prompt_parts.append("")
-    
-    if dataset_type == "arc":
-        prompt_parts.append("Response: Let's think step by step. [thinking process] #### Therefore Answer: [ANSWER]. #### [ANSWER].")
     else:  # ko-arc
-        prompt_parts.append("응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: [답]. #### [답].")
+        prompt_parts = ["다음은 과학과 추론에 관한 객관식 문제들입니다.\n"]
+        response_header = "응답:"
+        cot_trigger = "단계적으로 생각해봅시다."
+        final_answer_prefix = "따라서 정답:"
+
+    # 1. 5개의 예제를 동적으로 생성합니다.
+    for example in examples:
+        # 예제 딕셔너리에서 각 부분을 가져옵니다.
+        question = example["question"]
+        options_dict = example["options"]
+        cot_content = example["cot_content"] # 실제 추론 과정을 사용합니다.
+        answer = example["answer"]
+
+        # 질문과 선택지를 프롬프트에 추가합니다.
+        prompt_parts.append(question)
+        for key, value in sorted(options_dict.items()):
+            prompt_parts.append(f"{key}. {value}")
+        
+        # 실제 추론 과정과 최종 답변 형식을 포함한 완전한 응답 블록을 만듭니다.
+        full_response_block = f"{response_header} {cot_content} #### {final_answer_prefix} {answer}. #### {answer}."
+        prompt_parts.append(full_response_block)
+        prompt_parts.append("") # 예제 사이에 빈 줄 추가
+
+    # 2. 모델이 풀어야 할 실제 문제를 추가합니다.
+    test_question = item.get("question", "")
+    prompt_parts.append(test_question)
+    # 실제 데이터셋('item')의 선택지 형식에 맞춰 처리합니다.
+    for key in ['A', 'B', 'C', 'D']:
+        if key in item:
+            prompt_parts.append(f"{key}. {item[key]}")
+    prompt_parts.append("")
+
+    # 3. 모델의 추론을 유도하는 깔끔한 시작 신호로 프롬프트를 마무리합니다.
+    prompt_parts.append(f"{response_header} {cot_trigger}")
     
     return "\n".join(prompt_parts)
+
 
 def extract_answer_robust(model_output: str) -> str:
     """
@@ -322,6 +485,11 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         for dataset_name, dataset, dataset_type in datasets:
             logger.info(f"Starting evaluation on {dataset_name} dataset...")
             
+            if dataset_type == "arc":
+                examples_to_use = ARC_5SHOT_EXAMPLES
+            else:  # "ko-arc"
+                examples_to_use = KO_ARC_5SHOT_EXAMPLES
+
             correct_predictions = 0
             total_predictions = 0
             errors_or_skipped = 0
@@ -346,8 +514,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         # Log skipped item if needed
                         continue
 
-                    examples = select_examples(dataset, item, num_examples=5)
-                    prompt = create_5shot_prompt(item, examples, dataset_type)
+                    prompt = create_5shot_prompt(item, examples_to_use, dataset_type)
                     prompts.append(prompt)
                     ground_truths.append(ground_truth)
                     valid_items_in_batch.append(item)

@@ -253,10 +253,10 @@ def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
         answer = example["answer"]
         
         if is_korean:
-            full_answer_block = f"{cot_content} #### 따라서 정답은 {answer}. #### {answer}"
+            full_answer_block = f"Response: {cot_content} #### 따라서 정답은 {answer}. #### {answer}"
             example_block = f"문제: {question}\n {full_answer_block}"
         else:
-            full_answer_block = f"{cot_content} #### So the answer is {answer}. #### {answer}"
+            full_answer_block = f"응답: {cot_content} #### So the answer is {answer}. #### {answer}"
             example_block = f"Question: {question}\n {full_answer_block}"
 
         # 최종 예제 블록을 조립합니다.
@@ -270,12 +270,12 @@ def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
         final_prompt = f"""{final_examples_str}
 
 문제: {text}
-정답: Let's think step by step."""
+응답: 단계별로 생각해봅시다."""
     else:
         final_prompt = f"""{final_examples_str}
 
 Question: {text}
-Answer: Let's think step by step."""
+Response: Let's think step by step."""
     
     return final_prompt
 

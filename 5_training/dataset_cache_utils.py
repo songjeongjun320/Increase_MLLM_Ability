@@ -243,38 +243,21 @@ class SmartToWDataProcessor:
         if cached_dataset is not None:
             return cached_dataset
         
-        # Process data based on its format
+        # Process data assuming 'prompt'/'completion' format
         processed_data = []
-        is_prompt_completion_format = 'prompt' in data[0] and 'completion' in data[0]
+        logger.info("Processing data in 'prompt'/'completion' format.")
+        for entry in tqdm(data, desc="Processing prompt/completion data"):
+            prompt = entry.get('prompt', '')
+            completion = entry.get('completion', '')
+            if not completion:
+                logger.warning(f"Skipping entry with empty completion: {entry}")
+                continue
+            
+            # If prompt is None, treat it as an empty string
+            prompt = prompt if prompt is not None else ''
 
-        if is_prompt_completion_format:
-            logger.info("Processing data in 'prompt'/'completion' format.")
-            for entry in tqdm(data, desc="Processing prompt/completion data"):
-                prompt = entry.get('prompt', '')
-                completion = entry.get('completion', '')
-                if not completion:
-                    continue
-                
-                full_text = f"{prompt}{completion}{self.tokenizer.eos_token}"
-                processed_data.append({"input": prompt, "full_text": full_text})
-        else:
-            logger.info("Processing data in 'original_sentence'/'tow' format.")
-            for entry in tqdm(data, desc="Processing original_sentence data"):
-                original_sentence = entry.get('original_sentence', '')
-                gold_label = entry.get('gold_label', '')
-                tow = entry.get('tow', '')
-
-                if not original_sentence or not gold_label or not tow:
-                    continue
-
-                if gold_label in original_sentence:
-                    parts = original_sentence.split(gold_label, 1)
-                    input_text = parts[0]
-                    full_text = f"{parts[0]}{tow}{gold_label}{parts[1]}{self.tokenizer.eos_token}"
-                    processed_data.append({"input": input_text, "full_text": full_text})
-                else:
-                    logger.warning(f"gold_label not found in original_sentence for ID {entry.get('id', 'N/A')}. Skipping.")
-                    continue
+            full_text = f"{prompt}{completion}{self.tokenizer.eos_token}"
+            processed_data.append({"input": prompt, "full_text": full_text})
         
         logger.info(f"Created {len(processed_data)} training examples.")
         

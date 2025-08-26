@@ -120,7 +120,7 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/ToW-NoDeN.jsonl"
+        "../4_tow_generation/tow_data/single_tow_dataset.jsonl"
     ])
     output_base_dir: str = "ToW_Models_2"
     
@@ -211,7 +211,7 @@ class ToWTrainer:
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
         # Add special tokens
-        special_tokens = ["<hCoT>", "</hCoT>"]
+        special_tokens = ["<ToW>", "</ToW>"]
         new_tokens = [token for token in special_tokens if token not in tokenizer.get_vocab()]
         if new_tokens:
             tokenizer.add_tokens(new_tokens)

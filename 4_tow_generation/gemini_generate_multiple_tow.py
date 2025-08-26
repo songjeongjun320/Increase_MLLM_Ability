@@ -11,6 +11,8 @@ import json
 import os
 import asyncio
 import time
+import signal
+import atexit
 from tqdm import tqdm
 import random
 import re
@@ -167,9 +169,104 @@ def find_text_until_gold_label(original_sentence, current_gold_label, next_gold_
     # current_gold_label 이후부터 next_gold_label 이전까지의 텍스트
     return remaining_text[:next_pos]
 
+# =================================================================
+# 응급 저장 시스템 (Emergency Save System)
+# =================================================================
+
+# 전역 변수로 저장할 결과 데이터 관리
+current_results = []
+emergency_save_enabled = False
+
+def emergency_save(results=None):
+    """예기치 못한 종료 시 현재까지의 결과를 저장하는 함수"""
+    global current_results
+    
+    if results is None:
+        results = current_results
+    
+    if not results:
+        print("[EMERGENCY] 저장할 데이터가 없습니다.")
+        return
+    
+    try:
+        # 응급 저장 파일명 생성 (타임스탬프 포함)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        emergency_filename = OUTPUT_JSON_PATH.replace('.json', f'_emergency_{timestamp}.json')
+        
+        print(f"\n[EMERGENCY] 예기치 못한 종료 감지. 현재까지의 결과를 저장합니다...")
+        print(f"[EMERGENCY] 저장 위치: {emergency_filename}")
+        print(f"[EMERGENCY] 저장할 항목 수: {len(results)}")
+        
+        # 응급 저장 실행
+        with open(emergency_filename, 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        
+        # 통계 정보 출력
+        total_tows = sum(r.get('total_count', 0) for r in results)
+        completed_tows = sum(r.get('completed_count', 0) for r in results)
+        completion_rate = (completed_tows / total_tows * 100) if total_tows > 0 else 0
+        
+        print(f"[EMERGENCY] 응급 저장 완료!")
+        print(f"[EMERGENCY] - 저장된 항목 수: {len(results)}")
+        print(f"[EMERGENCY] - 완성된 ToW: {completed_tows:,} / {total_tows:,} ({completion_rate:.1f}%)")
+        print(f"[EMERGENCY] 재시작 시 이 파일을 사용하여 작업을 이어갈 수 있습니다.")
+        
+    except Exception as e:
+        print(f"[EMERGENCY ERROR] 응급 저장 실패: {e}")
+        # 최후의 수단으로 pickle로 시도
+        try:
+            import pickle
+            pickle_filename = OUTPUT_JSON_PATH.replace('.json', f'_emergency_{timestamp}.pkl')
+            with open(pickle_filename, 'wb') as f:
+                pickle.dump(results, f)
+            print(f"[EMERGENCY] 백업: pickle 형태로 저장됨 - {pickle_filename}")
+        except Exception as pickle_error:
+            print(f"[EMERGENCY ERROR] 백업 저장도 실패: {pickle_error}")
+
+def setup_emergency_handlers():
+    """시그널 핸들러와 종료 핸들러를 설정합니다"""
+    global emergency_save_enabled
+    emergency_save_enabled = True
+    
+    # 일반적인 종료 시그널 핸들러
+    def signal_handler(signum, frame):
+        signal_name = signal.Signals(signum).name
+        print(f"\n[EMERGENCY] 시그널 {signal_name}({signum}) 수신됨. 응급 저장을 시작합니다...")
+        emergency_save()
+        print(f"[EMERGENCY] 프로그램을 종료합니다.")
+        exit(0)
+    
+    # 프로그램 종료 시 자동 저장
+    def exit_handler():
+        if emergency_save_enabled and current_results:
+            print(f"\n[EMERGENCY] 프로그램 종료 감지. 마지막 저장을 수행합니다...")
+            emergency_save()
+    
+    # 시그널 핸들러 등록 (Windows/Linux 호환)
+    try:
+        signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # 종료 시그널
+        if hasattr(signal, 'SIGBREAK'):  # Windows
+            signal.signal(signal.SIGBREAK, signal_handler)  # Ctrl+Break
+    except Exception as e:
+        print(f"[WARNING] 일부 시그널 핸들러 등록 실패: {e}")
+    
+    # atexit 핸들러 등록
+    atexit.register(exit_handler)
+    
+    print("[INFO] 응급 저장 시스템이 활성화되었습니다. (Ctrl+C로 안전하게 중단 가능)")
+
+def update_emergency_data(results):
+    """현재 결과를 전역 응급 저장 데이터에 업데이트"""
+    global current_results
+    current_results = results[:]  # 복사본 저장
+
 # --- 메인 실행 로직 (비동기 배치 처리 및 주기적 저장) ---
 async def generate_multiple_tow_dataset_async():
     """Gemini API를 비동기 배치로 호출하고 순차적으로 다중 ToW 데이터셋을 생성합니다."""
+    
+    # 응급 저장 시스템 활성화
+    setup_emergency_handlers()
 
     # Vertex AI 초기화
     print(f"[INFO] Vertex AI를 초기화합니다. (Project: {PROJECT_ID}, Location: {LOCATION})")
@@ -194,6 +291,7 @@ async def generate_multiple_tow_dataset_async():
         print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
         return
     
+    data = data[:5]
 
     # 출력 디렉토리 생성
     output_dir = os.path.dirname(OUTPUT_JSON_PATH)
@@ -368,6 +466,9 @@ async def generate_multiple_tow_dataset_async():
         results = [r for r in results if r['id'] != item_id]
         results.append(result_item)
         
+        # 응급 저장용 데이터 업데이트
+        update_emergency_data(results)
+        
         # 항목 완료 후 누적 정보 표시
         session_cost = calculate_cost(total_input_tokens, total_output_tokens)
         print(f"[ITEM COMPLETED] ID {item_id}: {result_item['completed_count']}/{result_item['total_count']} ToW 완료")
@@ -434,6 +535,11 @@ async def generate_multiple_tow_dataset_async():
             print(f"[INFO] 백업 파일로 저장: {backup_path}")
         except Exception as backup_e:
             print(f"[ERROR] 백업 저장도 실패: {backup_e}")
+    
+    # 정상 완료 시 응급 저장 시스템 비활성화
+    global emergency_save_enabled
+    emergency_save_enabled = False
+    print(f"[INFO] 작업이 정상적으로 완료되어 응급 저장 시스템을 비활성화합니다.")
 
 
 if __name__ == "__main__":
@@ -441,4 +547,10 @@ if __name__ == "__main__":
     # gcloud auth application-default login
     
     # asyncio.run()을 사용하여 비동기 함수 실행
-    asyncio.run(generate_multiple_tow_dataset_async())
+    try:
+        asyncio.run(generate_multiple_tow_dataset_async())
+    except Exception as e:
+        print(f"\n[CRITICAL ERROR] 예기치 못한 오류로 프로그램이 종료됩니다: {e}")
+        emergency_save()
+        print(f"[CRITICAL ERROR] 응급 저장 완료. 프로그램을 종료합니다.")
+        raise

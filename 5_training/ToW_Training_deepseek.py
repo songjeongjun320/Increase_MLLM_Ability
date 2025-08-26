@@ -257,12 +257,23 @@ class SmartToWDataProcessor:
             self.config.max_sequence_length = optimal_length
         
         processed_data = []
-        for entry in tqdm(data, desc="Processing converted input/output examples"):
-            input_text = entry.get('input', '')
-            output_text = entry.get('output', '')
+        for entry in tqdm(data, desc="Processing data with corrected logic"):
+            original_sentence = entry.get('original_sentence', '')
+            context = entry.get('context', '')
+            tow = entry.get('tow', '')
 
-            if not input_text or not output_text:
+            if not original_sentence or not context or not tow:
                 continue
+
+            # Ensure context is a prefix of the original sentence
+            if original_sentence.startswith(context):
+                remaining_sentence = original_sentence[len(context):]
+            else:
+                logger.warning(f"Context not a prefix of original_sentence for ID {entry.get('id', 'N/A')}. Skipping.")
+                continue
+            
+            input_text = context
+            output_text = f"{tow}{remaining_sentence}"
 
             # Format: input -> output -> eos
             full_text = f"{input_text}{output_text}{self.tokenizer.eos_token}"

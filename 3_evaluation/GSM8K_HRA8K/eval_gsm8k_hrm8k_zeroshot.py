@@ -142,14 +142,21 @@ def load_gsm8k_data(filepath):
         logger.error(f"Error loading data: {e}")
         return None
 
-def create_gsm8k_prompt(text, is_korean=False):
-    """Create GSM8K 0-shot CoT evaluation prompt"""
+def create_gsm8k_0shot_prompt(text, is_korean=False):
+    """(개선된 버전) GSM8K 평가를 위한 Zero-Shot CoT 프롬프트"""
     if is_korean:
-        prompt = f"""문제: {text}
-답: 단계별로 생각해보겠습니다. [THINKING] #### 따라서 답은 [ANSWER] #### [ANSWER]."""
-    else:
-        prompt = f"""Question: {text}
-Answer: Let's think step by step. [THINKING] #### The answer is [ANSWER] #### [ANSWER]."""
+        instruction = "다음 수학 문제를 단계적으로 생각하여 풀이 과정을 설명하고, 최종 숫자 답변을 '#### [숫자]' 형식으로 제시해주세요."
+        question_header = "문제:"
+        cot_trigger = "답: 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
+        
+        prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
+        
+    else: # English version
+        instruction = "Solve the following math problem by thinking step-by-step and providing the final numerical answer in the format '#### [number]'."
+        question_header = "Question:"
+        cot_trigger = "Answer: Let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
+        
+        prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
     
     return prompt
 
@@ -223,9 +230,11 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
     Evaluate single model on GSM8K dataset
     """
     os.makedirs(model_output_dir, exist_ok=True)
-    results_filepath = os.path.join(model_output_dir, f"results_{config.name}.json")
+    results_korean_filepath = os.path.join(model_output_dir, f"results_korean_{config.name}.json")
+    results_english_filepath = os.path.join(model_output_dir, f"results_english_{config.name}.json")
     log_filepath = os.path.join(model_output_dir, f"eval_{config.name}.log")
-    raw_gen_filepath = os.path.join(model_output_dir, f"raw_generations_{config.name}.json")
+    raw_gen_korean_filepath = os.path.join(model_output_dir, f"raw_generations_korean_{config.name}.json")
+    raw_gen_english_filepath = os.path.join(model_output_dir, f"raw_generations_english_{config.name}.json")
 
     # Setup logging for this model
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -247,14 +256,17 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
     logger.info(f"--- Starting GSM8K Evaluation for Model: {config.name} ({config.model_id}) ---")
     logger.info(f"Output directory: {model_output_dir}")
-    logger.info(f"Results will be saved to: {results_filepath}")
-    logger.info(f"Raw generations will be saved to: {raw_gen_filepath}")
+    logger.info(f"Korean results will be saved to: {results_korean_filepath}")
+    logger.info(f"English results will be saved to: {results_english_filepath}")
+    logger.info(f"Korean raw generations will be saved to: {raw_gen_korean_filepath}")
+    logger.info(f"English raw generations will be saved to: {raw_gen_english_filepath}")
     logger.info(f"Using Device: {DEVICE}, DType: {config.torch_dtype}")
     logger.info(f"Quantization: {'Enabled' if config.use_quantization else 'Disabled'}")
 
     model = None
     tokenizer = None
-    raw_generations_list = []
+    raw_generations_korean_list = []
+    raw_generations_english_list = []
 
     try:
         # Load Model and Tokenizer
@@ -395,7 +407,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                         "is_correct": is_correct_korean
                     })
 
-                    raw_generations_list.append({
+                    raw_generations_korean_list.append({
                         "index": idx,
                         "language": "Korean",
                         "question": question,
@@ -451,7 +463,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                         "is_correct": is_correct_english
                     })
 
-                    raw_generations_list.append({
+                    raw_generations_english_list.append({
                         "index": idx,
                         "language": "English",
                         "question": question,
@@ -491,9 +503,73 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard_english:.2f}%")
         logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict_english:.2f}%")
 
-        # Save Results
+        # Save Results - Separate Korean and English
         config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
-        final_summary = {
+        
+        # Korean results
+        korean_summary = {
+            "model_config": config_dict_serializable,
+            "dataset_path": DATASET_PATH,
+            "evaluation_type": "GSM8K (HRM8K Korean)",
+            "total_questions": len(gsm8k_data),
+            "language": "Korean",
+            "results": {
+                "valid_predictions": total_predictions_korean,
+                "correct_predictions": correct_predictions_korean,
+                "errors_or_skipped": errors_or_skipped_korean,
+                "accuracy_standard": accuracy_standard_korean,
+                "accuracy_strict": accuracy_strict_korean,
+                "details": results_details_korean
+            }
+        }
+        
+        # English results
+        english_summary = {
+            "model_config": config_dict_serializable,
+            "dataset_path": DATASET_PATH,
+            "evaluation_type": "GSM8K (HRM8K English)",
+            "total_questions": len(gsm8k_data),
+            "language": "English",
+            "results": {
+                "valid_predictions": total_predictions_english,
+                "correct_predictions": correct_predictions_english,
+                "errors_or_skipped": errors_or_skipped_english,
+                "accuracy_standard": accuracy_standard_english,
+                "accuracy_strict": accuracy_strict_english,
+                "details": results_details_english
+            }
+        }
+
+        try:
+            with open(results_korean_filepath, 'w', encoding='utf-8') as f:
+                json.dump(korean_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Korean results saved to {results_korean_filepath}")
+            
+            with open(results_english_filepath, 'w', encoding='utf-8') as f:
+                json.dump(english_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"English results saved to {results_english_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save results files: {e}")
+
+        # Save Raw Generations - Separate Korean and English
+        logger.info(f"Saving Korean raw generations to {raw_gen_korean_filepath}...")
+        try:
+            with open(raw_gen_korean_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_korean_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"Korean raw generations saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save Korean raw generations file: {e}")
+            
+        logger.info(f"Saving English raw generations to {raw_gen_english_filepath}...")
+        try:
+            with open(raw_gen_english_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_english_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"English raw generations saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save English raw generations file: {e}")
+
+        # Return combined summary for compatibility with main function
+        combined_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
             "evaluation_type": "GSM8K (HRM8K Korean and English Separate)",
@@ -515,24 +591,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 "details": results_details_english
             }
         }
-
-        try:
-            with open(results_filepath, 'w', encoding='utf-8') as f:
-                json.dump(final_summary, f, indent=2, ensure_ascii=False)
-            logger.info(f"Detailed results saved to {results_filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save results file {results_filepath}: {e}")
-
-        # Save Raw Generations
-        logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
-        try:
-            with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
-                json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
-            logger.info(f"Raw generations saved successfully.")
-        except Exception as e:
-            logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
-
-        return final_summary
+        return combined_summary
 
     except Exception as e:
         logger.exception(f"Critical error during evaluation for {config.name}: {e}")

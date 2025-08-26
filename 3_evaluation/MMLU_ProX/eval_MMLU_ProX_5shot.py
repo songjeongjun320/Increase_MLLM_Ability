@@ -95,80 +95,255 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Few-Shot Prompts with Reasoning ---
-# You can fill in these variables with proper reasoning examples
-eng_prompt = """
-Put your 5-shot English examples with proper reasoning here.
-Each example should include:
-- Question
-- Options A-J
-- "Let's think step by step. [Detailed reasoning process]"
-- "#### So the answer is [Letter]."
-- "#### Answer: [Letter]."
-"""
+ENGLISH_FEW_SHOT_EXAMPLES = [
+    {
+        "question": "In a race, Alice finished before Bob. Charlie finished after David. Bob finished before David. Who finished last?",
+        "options": {
+            "A": "Alice",
+            "B": "Bob",
+            "C": "Charlie",
+            "D": "David",
+            "E": "Cannot be determined"
+        },
+        "cot_content": """Let's think step by step.
+Let's break down the statements. Let '>' mean 'finished before'.
+Statement 1: Alice > Bob.
+Statement 3: Bob > David.
+Combining these two, we get the order: Alice > Bob > David.
+Statement 2: Charlie finished after David, which means David > Charlie.
+Combining all information, the complete order is: Alice > Bob > David > Charlie.
+The person who finished last is the one at the very end of this chain. That person is Charlie.""",
+        "answer": "C"
+    },
+    {
+        "question": "A net force of 50 Newtons is applied to a 10 kg object. What is the acceleration of the object?",
+        "options": {
+            "A": "0.2 m/s²",
+            "B": "5 m/s²",
+            "C": "40 m/s²",
+            "D": "500 m/s²",
+            "E": "50 m/s²",
+            "F": "10 m/s²"
+        },
+        "cot_content": """Let's think step by step.
+The question asks for acceleration given a net force and a mass.
+The relevant physical principle is Newton's Second Law of Motion.
+The formula is Force = mass × acceleration (F = ma).
+We need to rearrange the formula to solve for acceleration: acceleration = Force / mass (a = F/m).
+The given values are Force (F) = 50 N and mass (m) = 10 kg.
+Substitute the values into the rearranged formula: a = 50 N / 10 kg.
+The calculation gives a = 5 m/s². This matches option B.""",
+        "answer": "B"
+    },
+    {
+        "question": "From which country did the United States purchase the Louisiana Territory in 1803?",
+        "options": {
+            "A": "Spain",
+            "B": "Great Britain",
+            "C": "Mexico",
+            "D": "Russia",
+            "E": "France",
+            "F": "The Netherlands"
+        },
+        "cot_content": """Let's think step by step.
+The question is about the Louisiana Purchase in 1803.
+I need to recall the historical context of that period in North America. The major European powers with territory were Spain, Great Britain, and France.
+At that time, the leader of France was Napoleon Bonaparte. He was engaged in wars in Europe and needed funds.
+The territory, known as Louisiana, was difficult for France to control and defend from afar.
+Therefore, Napoleon decided to sell the vast territory to the young United States to finance his military campaigns. This event is known as the Louisiana Purchase.
+This historical fact confirms the purchase was made from France.""",
+        "answer": "E"
+    },
+    {
+        "question": "What are the primary products of photosynthesis?",
+        "options": {
+            "A": "Carbon dioxide and water",
+            "B": "Glucose and water",
+            "C": "Oxygen and carbon dioxide",
+            "D": "Glucose and oxygen",
+            "E": "Sunlight and water"
+        },
+        "cot_content": """Let's think step by step.
+Photosynthesis is the process plants use to convert light energy into chemical energy.
+First, let's identify the inputs (reactants). Plants take in carbon dioxide (CO₂), water (H₂O), and sunlight.
+The process then converts these inputs into outputs (products).
+One main product is a sugar called glucose (C₆H₁₂O₆), which the plant uses as food/energy.
+The other main product is oxygen (O₂), which is released into the atmosphere as a byproduct.
+Therefore, the primary products are glucose and oxygen. This corresponds to option D.""",
+        "answer": "D"
+    },
+    {
+        "question": "Who is the author of the famous line, \"To be, or not to be: that is the question\"?",
+        "options": {
+            "A": "Christopher Marlowe",
+            "B": "John Milton",
+            "C": "William Shakespeare",
+            "D": "Charles Dickens",
+            "E": "Jane Austen"
+        },
+        "cot_content": """Let's think step by step.
+This is one of the most famous quotes in English literature.
+I need to identify which play and author it comes from.
+The line is a soliloquy from the play Hamlet.
+The author of Hamlet is William Shakespeare, the famous English playwright.
+The other authors are known for different works: John Milton for Paradise Lost, Charles Dickens for novels like A Tale of Two Cities, etc. The style and origin firmly point to Shakespeare.""",
+        "answer": "C"
+    }
+]
 
-kor_prompt = """
-Put your 5-shot Korean examples with proper reasoning here.
-Each example should include:
-- Question
-- Options A-J  
-- "단계별로 생각해봅시다. [Detailed reasoning process]"
-- "#### 따라서 정답은 [Letter] 입니다."
-- "#### 정답: [Letter]"
-"""
+KOREAN_FEW_SHOT_EXAMPLES = [
+    {
+        "question": "경주에서 앨리스는 밥보다 먼저 들어왔다. 찰리는 데이비드보다 늦게 들어왔다. 밥은 데이비드보다 먼저 들어왔다. 누가 가장 꼴찌로 들어왔는가?",
+        "options": {
+            "A": "앨리스",
+            "B": "밥",
+            "C": "찰리",
+            "D": "데이비드",
+            "E": "결정할 수 없음"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+주어진 문장들을 분석해 보겠습니다. '>'를 '먼저 들어왔다'는 의미로 사용하겠습니다.
+문장 1: 앨리스 > 밥.
+문장 3: 밥 > 데이비드.
+이 두 문장을 조합하면 순서는 앨리스 > 밥 > 데이비드 입니다.
+문장 2: 찰리는 데이비드보다 늦게 들어왔다, 즉 데이비드 > 찰리 입니다.
+모든 정보를 종합하면, 전체 순서는 앨리스 > 밥 > 데이비드 > 찰리 입니다.
+가장 꼴찌로 들어온 사람은 이 순서의 맨 마지막에 있는 사람입니다. 그 사람은 찰리입니다.""",
+        "answer": "C"
+    },
+    {
+        "question": "10kg의 물체에 50 뉴턴(N)의 알짜힘이 가해졌다. 이 물체의 가속도는 얼마인가?",
+        "options": {
+            "A": "0.2 m/s²",
+            "B": "5 m/s²",
+            "C": "40 m/s²",
+            "D": "500 m/s²",
+            "E": "50 m/s²",
+            "F": "10 m/s²"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+이 질문은 알짜힘과 질량이 주어졌을 때 가속도를 구하는 문제입니다.
+관련된 물리 법칙은 뉴턴의 운동 제2법칙입니다.
+공식은 힘 = 질량 × 가속도 (F = ma) 입니다.
+가속도를 구하기 위해 공식을 변형해야 합니다: 가속도 = 힘 / 질량 (a = F/m).
+주어진 값은 힘 (F) = 50 N 이고, 질량 (m) = 10 kg 입니다.
+변형된 공식에 값을 대입합니다: a = 50 N / 10 kg.
+계산 결과 a = 5 m/s² 입니다. 이는 선택지 B와 일치합니다.""",
+        "answer": "B"
+    },
+    {
+        "question": "1803년 미국은 어느 나라로부터 루이지애나 영토를 매입했는가?",
+        "options": {
+            "A": "스페인",
+            "B": "영국",
+            "C": "멕시코",
+            "D": "러시아",
+            "E": "프랑스",
+            "F": "네덜란드"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+이 질문은 1803년의 '루이지애나 매입'에 관한 것입니다.
+당시 북미 대륙의 역사적 상황을 떠올려야 합니다. 영토를 가진 주요 유럽 국가는 스페인, 영국, 프랑스였습니다.
+그 시기 프랑스의 지도자는 나폴레옹 보나파르트였습니다. 그는 유럽에서 전쟁을 치르고 있었고 자금이 필요했습니다.
+루이지애나로 알려진 영토는 프랑스가 멀리서 통제하고 방어하기 어려웠습니다.
+따라서 나폴레옹은 그의 군사 작전 자금을 마련하기 위해 광대한 영토를 신생 국가인 미국에 팔기로 결정했습니다. 이 사건이 바로 루이지애나 매입입니다.
+이 역사적 사실은 해당 영토를 프랑스로부터 매입했음을 확인시켜 줍니다.""",
+        "answer": "E"
+    },
+    {
+        "question": "광합성의 주된 생성물은 무엇인가?",
+        "options": {
+            "A": "이산화탄소와 물",
+            "B": "포도당과 물",
+            "C": "산소와 이산화탄소",
+            "D": "포도당과 산소",
+            "E": "햇빛과 물"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+광합성은 식물이 빛 에너지를 화학 에너지로 전환하는 과정입니다.
+먼저, 투입물(반응물)이 무엇인지 확인합니다. 식물은 이산화탄소(CO₂), 물(H₂O), 그리고 햇빛을 흡수합니다.
+이 과정은 투입물을 산출물(생성물)로 변환합니다.
+주요 생성물 중 하나는 식물이 식량/에너지로 사용하는 포도당(C₆H₁₂O₆)이라는 당입니다.
+다른 주요 생성물은 부산물로서 대기 중으로 방출되는 산소(O₂)입니다.
+따라서, 주된 생성물은 포도당과 산소입니다. 이는 선택지 D에 해당합니다.""",
+        "answer": "D"
+    },
+    {
+        "question": "\"죽느냐 사느냐, 그것이 문제로다\"라는 유명한 대사를 쓴 작가는 누구인가?",
+        "options": {
+            "A": "크리스토퍼 말로",
+            "B": "존 밀턴",
+            "C": "윌리엄 셰익스피어",
+            "D": "찰스 디킨스",
+            "E": "제인 오스틴"
+        },
+        "cot_content": """단계별로 생각해봅시다.
+이것은 영문학에서 가장 유명한 인용구 중 하나입니다.
+어떤 희곡과 작가로부터 나왔는지 식별해야 합니다.
+이 대사는 희곡 «햄릿»에 나오는 독백입니다.
+«햄릿»의 저자는 영국의 유명한 극작가인 윌리엄 셰익스피어입니다.
+다른 작가들은 다른 작품으로 유명합니다: 존 밀턴은 «실낙원», 찰스 디킨스는 «두 도시 이야기»와 같은 소설로 유명합니다. 문체와 출처를 볼 때 셰익스피어가 확실합니다.""",
+        "answer": "C"
+    }
+]
 
-# --- Helper Functions ---
-def clean_text(text):
+def create_5shot_prompt(item, few_shot_examples, language="en"):
     """
-    Clean text by handling LaTeX formatting and newlines.
-    """
-    if not text:
-        return text
-    
-    # Handle common LaTeX patterns
-    text = text.replace("\\factorial{n}", "n!")
-    text = text.replace("$S_n$", "S_n")
-    text = text.replace("$n$", "n")
-    text = text.replace("$\\", "$")
-    
-    # Clean up excessive newlines but preserve intentional line breaks
-    text = text.replace("\n\n", " ")
-    text = text.replace("\n", " ")
-    text = text.strip()
-    
-    return text
-
-def create_5shot_prompt(item, language="en"):
-    """
-    Creates a 5-shot MMLU-ProX prompt for a given test item using predefined prompts.
+    Creates a 5-shot MMLU-ProX prompt for a given test item.
+    (Corrected Version)
     """
     if language == "ko":
-        # Use Korean prompt with 5-shot examples
-        few_shot_part = kor_prompt
+        prompt_parts = ["다음은 다양한 학문 분야의 전문적이고 어려운 다지선다형 질문입니다.\n"]
     else:
-        # Use English prompt with 5-shot examples  
-        few_shot_part = eng_prompt
+        prompt_parts = ["The following are challenging multiple choice questions from various academic disciplines.\n"]
     
-    # Clean and prepare the test question
-    question = clean_text(item.get("question", ""))
+    # Add few-shot examples
+    for example in few_shot_examples:
+        # 1. 질문, CoT 내용, 정답을 딕셔너리에서 직접 가져옵니다.
+        question = example["question"]
+        correct_answer = example["answer"]
+        cot_reasoning = example["cot_content"] # 실제 추론 내용을 가져옵니다.
+
+        prompt_parts.append(f"Question: {question}")
+        
+        # 2. 예제의 옵션 처리 방식을 수정합니다. (options 딕셔너리 순회)
+        #    sorted()를 사용하여 A, B, C 순서를 보장합니다.
+        options = []
+        for key, value in sorted(example["options"].items()):
+            options.append(f"{key}. {value}")
+        prompt_parts.extend(options)
+        
+        # 3. [생각] 플레이스홀더 대신 실제 CoT 추론 내용(cot_reasoning)을 추가합니다.
+        prompt_parts.append(cot_reasoning)
+        
+        if language == "ko":
+            prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
+            prompt_parts.append(f"#### 정답: {correct_answer}")
+        else:
+            prompt_parts.append(f"#### So the answer is {correct_answer}.")
+            prompt_parts.append(f"#### Answer: {correct_answer}.")
+        prompt_parts.append("")
+    
+    # Add the test question
+    question = item.get("question", "")
     options = []
     for i in range(10):
         option_key = f"option_{i}"
-        if option_key in item and item[option_key].strip() and item[option_key].strip() != "N/A":
-            cleaned_option = clean_text(item[option_key])
-            options.append(f"{chr(65+i)}. {cleaned_option}")
+        # MMLU-ProX 데이터셋의 실제 'item'은 이 형식을 따르므로 이 로직은 유지합니다.
+        if option_key in item and item[option_key] and str(item[option_key]).strip() and str(item[option_key]).strip() != "N/A":
+            options.append(f"{chr(65+i)}. {item[option_key]}")
     
-    # Construct the full prompt: few_shot_examples + current_question
-    prompt_parts = [
-        few_shot_part,
-        "",
-        f"Question: {question}"
-    ]
+    prompt_parts.append(f"Question: {question}")
     prompt_parts.extend(options)
     prompt_parts.append("")
-    prompt_parts.append("Answer:")
+    
+    if language == "ko":
+        prompt_parts.append("단계별로 생각해봅시다. ")
+    else:
+        prompt_parts.append("Let's think step by step. ")
     
     return "\n".join(prompt_parts)
+
 
 def extract_answer_first_token(model_output):
     """
@@ -444,7 +619,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, "en")
+                prompt = create_5shot_prompt(item, ENGLISH_FEW_SHOT_EXAMPLES, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -499,7 +674,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, "ko")
+                prompt = create_5shot_prompt(item, KOREAN_FEW_SHOT_EXAMPLES, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -671,9 +846,6 @@ def main():
     if create_enhanced_summary:
         # Prepare model results for analysis
         model_results_for_analysis = []
-        en_results_for_analysis = []
-        ko_results_for_analysis = []
-        
         for result in all_model_results:
             if 'error' not in result:
                 # Create combined accuracy metric for analysis
@@ -690,129 +862,32 @@ def main():
                     "total_items": result.get('mmlu_prox_en_total_items', 0) + result.get('mmlu_prox_ko_total_items', 0)
                 }
                 model_results_for_analysis.append(analysis_result)
-                
-                # Separate English and Korean results
-                en_analysis_result = {
-                    "model_name": result["model_name"],
-                    "accuracy_strict": en_accuracy,
-                    "correct_predictions": result.get('mmlu_prox_en_correct', 0),
-                    "total_items": result.get('mmlu_prox_en_total_items', 0)
-                }
-                en_results_for_analysis.append(en_analysis_result)
-                
-                ko_analysis_result = {
-                    "model_name": result["model_name"],
-                    "accuracy_strict": ko_accuracy,
-                    "correct_predictions": result.get('mmlu_prox_ko_correct', 0),
-                    "total_items": result.get('mmlu_prox_ko_total_items', 0)
-                }
-                ko_results_for_analysis.append(ko_analysis_result)
         
-        # Combined summary
         enhanced_summary = create_enhanced_summary(
             model_results=model_results_for_analysis,
             evaluation_info=summary_data["evaluation_info"],
             primary_metric="accuracy_strict",
             subject_metric=None  # MMLU_ProX doesn't have subject breakdown
         )
+        
+        # Merge with original summary data
         enhanced_summary["original_detailed_results"] = summary_data
         
-        # English-only summary
-        en_evaluation_info = summary_data["evaluation_info"].copy()
-        en_evaluation_info["dataset_language"] = "English"
-        en_evaluation_info["total_items"] = len(mmlu_prox_en_data)
-        en_enhanced_summary = create_enhanced_summary(
-            model_results=en_results_for_analysis,
-            evaluation_info=en_evaluation_info,
-            primary_metric="accuracy_strict",
-            subject_metric=None
-        )
-        
-        # Korean-only summary
-        ko_evaluation_info = summary_data["evaluation_info"].copy()
-        ko_evaluation_info["dataset_language"] = "Korean"
-        ko_evaluation_info["total_items"] = len(mmlu_prox_ko_data)
-        ko_enhanced_summary = create_enhanced_summary(
-            model_results=ko_results_for_analysis,
-            evaluation_info=ko_evaluation_info,
-            primary_metric="accuracy_strict",
-            subject_metric=None
-        )
-        
-        # Save all summaries
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
-        en_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_EN.json")
-        ko_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_KO.json")
-        
         with open(summary_filepath, 'w', encoding='utf-8') as f:
             json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
-        with open(en_summary_filepath, 'w', encoding='utf-8') as f:
-            json.dump(en_enhanced_summary, f, indent=2, ensure_ascii=False)
-        with open(ko_summary_filepath, 'w', encoding='utf-8') as f:
-            json.dump(ko_enhanced_summary, f, indent=2, ensure_ascii=False)
             
         # Log key insights
         perf_analysis = enhanced_summary["performance_analysis"]
-        logger.info(f"🏆 Best performing model (Combined): {perf_analysis['best_model']}")
+        logger.info(f"🏆 Best performing model: {perf_analysis['best_model']}")
         logger.info(f"📊 Average combined accuracy: {perf_analysis['average_score']:.2f}%")
         logger.info(f"📈 Performance gap: {perf_analysis['performance_gap']:.2f}%p")
         
-        en_perf_analysis = en_enhanced_summary["performance_analysis"]
-        ko_perf_analysis = ko_enhanced_summary["performance_analysis"]
-        logger.info(f"🏆 Best performing model (English): {en_perf_analysis['best_model']}")
-        logger.info(f"🏆 Best performing model (Korean): {ko_perf_analysis['best_model']}")
-        
     else:
-        # Fallback to basic summary with separate language files
+        # Fallback to basic summary
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
-        en_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_EN.json")
-        ko_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_KO.json")
-        
-        # Create English-only summary
-        en_summary_data = {
-            "evaluation_info": summary_data["evaluation_info"].copy(),
-            "model_results": [{
-                "model_name": result["model_name"],
-                "mmlu_prox_en_accuracy_strict": result.get("mmlu_prox_en_accuracy_strict", 0),
-                "mmlu_prox_en_correct": result.get("mmlu_prox_en_correct", 0),
-                "mmlu_prox_en_total": result.get("mmlu_prox_en_total", 0),
-                "mmlu_prox_en_total_items": result.get("mmlu_prox_en_total_items", 0),
-                "mmlu_prox_en_errors_skipped": result.get("mmlu_prox_en_errors_skipped", 0)
-            } for result in all_model_results],
-            "summary_statistics": {
-                "best_mmlu_prox_en_model": summary_data["summary_statistics"]["best_mmlu_prox_en_model"],
-                "average_mmlu_prox_en_accuracy_strict": summary_data["summary_statistics"]["average_mmlu_prox_en_accuracy_strict"]
-            }
-        }
-        en_summary_data["evaluation_info"]["dataset_language"] = "English"
-        en_summary_data["evaluation_info"]["total_items"] = len(mmlu_prox_en_data)
-        
-        # Create Korean-only summary
-        ko_summary_data = {
-            "evaluation_info": summary_data["evaluation_info"].copy(),
-            "model_results": [{
-                "model_name": result["model_name"],
-                "mmlu_prox_ko_accuracy_strict": result.get("mmlu_prox_ko_accuracy_strict", 0),
-                "mmlu_prox_ko_correct": result.get("mmlu_prox_ko_correct", 0),
-                "mmlu_prox_ko_total": result.get("mmlu_prox_ko_total", 0),
-                "mmlu_prox_ko_total_items": result.get("mmlu_prox_ko_total_items", 0),
-                "mmlu_prox_ko_errors_skipped": result.get("mmlu_prox_ko_errors_skipped", 0)
-            } for result in all_model_results],
-            "summary_statistics": {
-                "best_mmlu_prox_ko_model": summary_data["summary_statistics"]["best_mmlu_prox_ko_model"],
-                "average_mmlu_prox_ko_accuracy_strict": summary_data["summary_statistics"]["average_mmlu_prox_ko_accuracy_strict"]
-            }
-        }
-        ko_summary_data["evaluation_info"]["dataset_language"] = "Korean"
-        ko_summary_data["evaluation_info"]["total_items"] = len(mmlu_prox_ko_data)
-        
-        # Save all summaries
         with open(summary_filepath, 'w', encoding='utf-8') as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
-        with open(en_summary_filepath, 'w', encoding='utf-8') as f:
-            json.dump(en_summary_data, f, indent=2, ensure_ascii=False)
-        with open(ko_summary_filepath, 'w', encoding='utf-8') as f:
-            json.dump(ko_summary_data, f, indent=2, ensure_ascii=False)
 
     logger.info(f"Evaluation complete. Summary saved to: {summary_filepath}")
     logger.info("=== FINAL SUMMARY ===")

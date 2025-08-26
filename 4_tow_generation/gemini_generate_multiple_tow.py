@@ -28,14 +28,14 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 PROJECT_ID = "gen-lang-client-0996841973"
 LOCATION = "us-central1"
 
-GEMINI_MODEL_ID = "gemini-2.5-pro"
+GEMINI_MODEL_ID = "gemini-2.5-flash"
 
 INPUT_JSON_PATH = "./multiple_gold_labels_extracted_data_kr_prompt/extract_over_19token_next_word_prediction_gemini_2.0-flash.json"
-OUTPUT_JSON_PATH = "./multiple_tow_data/extract_over_19token_multiple_tow_gemini_2.5-pro.json"
+OUTPUT_JSON_PATH = "./multiple_tow_data/extract_over_19token_multiple_tow_gemini_2.5-flash.json"
 
 # Gemini API 비용 (2024년 기준, 1M 토큰당 USD)
-GEMINI_COST_PER_1M_INPUT = 1.25    # gemini-2.5-pro 입력 비용
-GEMINI_COST_PER_1M_OUTPUT = 5.00   # gemini-2.5-pro 출력 비용
+GEMINI_COST_PER_1M_INPUT = 0.3   # gemini-flash 입력 비용
+GEMINI_COST_PER_1M_OUTPUT = 2.5  # gemini-flash 출력 비용
 
 # =================================================================
 # 배치 크기 및 저장 주기 설정

@@ -190,9 +190,9 @@ class SmartToWDataProcessor:
         logger.info(f"Setting adaptive max length to: {optimal_length} tokens")
         return optimal_length
     
-    def load_tow_data(self, data_paths: List[str]) -> List[Dict]:
-        """Load converted ToW dataset from file"""
-        logger.info(f"Loading converted ToW data from {len(data_paths)} files...")
+    def _load_data(self, data_paths: List[str]) -> List[Dict]:
+        """Load dataset from json or jsonl files."""
+        logger.info(f"Loading data from {len(data_paths)} files...")
         
         all_data = []
         for data_path in data_paths:
@@ -204,24 +204,34 @@ class SmartToWDataProcessor:
             logger.info(f"  - Loading from {data_path}")
             try:
                 with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        all_data.extend(data)
+                    if path.suffix == ".jsonl":
+                        for line in f:
+                            all_data.append(json.loads(line))
+                    elif path.suffix == ".json":
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            all_data.extend(data)
+                        else:
+                            logger.warning(f"Data in {data_path} is not a list, skipping.")
                     else:
-                        logger.warning(f"Data in {data_path} is not a list, skipping.")
-            except json.JSONDecodeError:
-                logger.warning(f"Could not decode JSON from {data_path}. Skipping.")
+                        logger.warning(f"Unsupported file type {path.suffix} for {data_path}. Skipping.")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Could not decode JSON from {data_path}: {e}. Skipping line or file.")
         
-        logger.info(f"Loaded a total of {len(all_data)} converted ToW entries")
+        logger.info(f"Loaded a total of {len(all_data)} entries")
         return all_data
-    
+
     def create_training_dataset(self, data_paths: List[str]) -> Dataset:
         """Create dataset with intelligent caching"""
         logger.info("Creating training dataset for converted ToW training...")
         
         # Load data first to determine optimal length if needed
-        data = self.load_tow_data(data_paths)
+        data = self._load_data(data_paths)
         
+        if not data:
+            logger.error("No data loaded. Aborting dataset creation.")
+            return None
+
         if self.config.adaptive_max_length:
             optimal_length = self.analyze_data_lengths(data)
             self.config.max_sequence_length = optimal_length
@@ -233,32 +243,39 @@ class SmartToWDataProcessor:
         if cached_dataset is not None:
             return cached_dataset
         
-        # Process data
+        # Process data based on its format
         processed_data = []
-        for entry in tqdm(data, desc="Processing data with corrected logic"):
-            original_sentence = entry.get('original_sentence', '')
-            context = entry.get('context', '')
-            tow = entry.get('tow', '')
+        is_prompt_completion_format = 'prompt' in data[0] and 'completion' in data[0]
 
-            if not original_sentence or not context or not tow:
-                continue
+        if is_prompt_completion_format:
+            logger.info("Processing data in 'prompt'/'completion' format.")
+            for entry in tqdm(data, desc="Processing prompt/completion data"):
+                prompt = entry.get('prompt', '')
+                completion = entry.get('completion', '')
+                if not completion:
+                    continue
+                
+                full_text = f"{prompt}{completion}{self.tokenizer.eos_token}"
+                processed_data.append({"input": prompt, "full_text": full_text})
+        else:
+            logger.info("Processing data in 'original_sentence'/'tow' format.")
+            for entry in tqdm(data, desc="Processing original_sentence data"):
+                original_sentence = entry.get('original_sentence', '')
+                gold_label = entry.get('gold_label', '')
+                tow = entry.get('tow', '')
 
-            # Ensure context is a prefix of the original sentence
-            if original_sentence.startswith(context):
-                remaining_sentence = original_sentence[len(context):]
-            else:
-                logger.warning(f"Context not a prefix of original_sentence for ID {entry.get('id', 'N/A')}. Skipping.")
-                continue
-            
-            input_text = context
-            output_text = f"{tow}{remaining_sentence}"
-            full_text = f"{input_text}{output_text}{self.tokenizer.eos_token}"
-            
-            processed_data.append({
-                "input": input_text,
-                "full_text": full_text
-            })
+                if not original_sentence or not gold_label or not tow:
+                    continue
 
+                if gold_label in original_sentence:
+                    parts = original_sentence.split(gold_label, 1)
+                    input_text = parts[0]
+                    full_text = f"{parts[0]}{tow}{gold_label}{parts[1]}{self.tokenizer.eos_token}"
+                    processed_data.append({"input": input_text, "full_text": full_text})
+                else:
+                    logger.warning(f"gold_label not found in original_sentence for ID {entry.get('id', 'N/A')}. Skipping.")
+                    continue
+        
         logger.info(f"Created {len(processed_data)} training examples.")
         
         # Create and tokenize dataset

@@ -95,214 +95,78 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Few-Shot Examples ---
-ENGLISH_FEW_SHOT_EXAMPLES = [
-    {
-        "question": "Which of the following statements about DNA replication is correct?",
-        "option_0": "DNA replication occurs in the 3' to 5' direction",
-        "option_1": "DNA replication is semiconservative",
-        "option_2": "DNA replication only occurs during mitosis", 
-        "option_3": "DNA replication produces identical copies",
-        "option_4": "DNA replication is conservative",
-        "option_5": "DNA replication occurs bidirectionally",
-        "option_6": "DNA replication is discontinuous",
-        "option_7": "All of the above",
-        "option_8": "None of the above",
-        "option_9": "DNA replication is continuous",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "What is the primary function of the mitochondria in eukaryotic cells?",
-        "option_0": "Protein synthesis",
-        "option_1": "ATP production",
-        "option_2": "DNA storage", 
-        "option_3": "Waste removal",
-        "option_4": "Cell division",
-        "option_5": "Photosynthesis",
-        "option_6": "Lipid synthesis",
-        "option_7": "RNA processing",
-        "option_8": "Calcium storage",
-        "option_9": "Carbohydrate metabolism",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "Which principle of physics explains why objects in motion tend to stay in motion?",
-        "option_0": "Newton's second law",
-        "option_1": "Newton's first law", 
-        "option_2": "Newton's third law",
-        "option_3": "Law of conservation of energy",
-        "option_4": "Law of conservation of momentum",
-        "option_5": "Bernoulli's principle",
-        "option_6": "Archimedes' principle",
-        "option_7": "Pascal's principle",
-        "option_8": "Hooke's law",
-        "option_9": "Coulomb's law",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "What is the derivative of f(x) = x³ + 2x² - 5x + 3?",
-        "option_0": "3x + 4",
-        "option_1": "x² + 2x - 5",
-        "option_2": "3x² + 4x + 5", 
-        "option_3": "x³ + 4x - 5",
-        "option_4": "3x² + 4x - 5",
-        "option_5": "6x + 4",
-        "option_6": "3x² - 5",
-        "option_7": "x² + 4x",
-        "option_8": "3x² + 2x - 5",
-        "option_9": "Cannot be determined",
-        "answer": "E",
-        "answer_index": 4
-    },
-    {
-        "question": "Which economic theory suggests that government spending can stimulate economic growth during recessions?",
-        "option_0": "Monetarism",
-        "option_1": "Keynesian economics",
-        "option_2": "Supply-side economics",
-        "option_3": "Austrian economics", 
-        "option_4": "Classical economics",
-        "option_5": "Behavioral economics",
-        "option_6": "Neoclassical economics", 
-        "option_7": "Chicago school economics",
-        "option_8": "Post-Keynesian economics",
-        "option_9": "Institutional economics",
-        "answer": "B",
-        "answer_index": 1
-    }
-]
+# --- Few-Shot Prompts with Reasoning ---
+# You can fill in these variables with proper reasoning examples
+eng_prompt = """
+Put your 5-shot English examples with proper reasoning here.
+Each example should include:
+- Question
+- Options A-J
+- "Let's think step by step. [Detailed reasoning process]"
+- "#### So the answer is [Letter]."
+- "#### Answer: [Letter]."
+"""
 
-KOREAN_FEW_SHOT_EXAMPLES = [
-    {
-        "question": "DNA 복제에 관한 다음 설명 중 올바른 것은?",
-        "option_0": "DNA 복제는 3'에서 5' 방향으로 일어난다",
-        "option_1": "DNA 복제는 불연속적이다",
-        "option_2": "DNA 복제는 유사분열 동안에만 일어난다",
-        "option_3": "DNA 복제는 동일한 사본을 만든다",
-        "option_4": "DNA 복제는 보존적이다",
-        "option_5": "DNA 복제는 양방향으로 일어난다",
-        "option_6": "DNA 복제는 반보존적이다",
-        "option_7": "위의 모든 것",
-        "option_8": "위의 것 중 없음",
-        "option_9": "DNA 복제는 연속적이다",
-        "answer": "G",
-        "answer_index": 6
-    },
-    {
-        "question": "진핵세포에서 미토콘드리아의 주요 기능은 무엇인가?",
-        "option_0": "단백질 합성",
-        "option_1": "ATP 생산",
-        "option_2": "DNA 저장",
-        "option_3": "노폐물 제거",
-        "option_4": "세포 분열",
-        "option_5": "광합성",
-        "option_6": "지질 합성",
-        "option_7": "RNA 처리",
-        "option_8": "칼슘 저장",
-        "option_9": "탄수화물 대사",
-        "answer": "B",
-        "answer_index": 1
-    },
-    {
-        "question": "운동하는 물체가 계속 운동하려는 경향을 설명하는 물리학 원리는?",
-        "option_0": "뉴턴의 제2법칙",
-        "option_1": "후크의 법칙",
-        "option_2": "뉴턴의 제3법칙",
-        "option_3": "에너지 보존 법칙",
-        "option_4": "운동량 보존 법칙",
-        "option_5": "베르누이의 원리",
-        "option_6": "아르키메데스의 원리",
-        "option_7": "파스칼의 원리",
-        "option_8": "뉴턴의 제1법칙",
-        "option_9": "쿨롱의 법칙",
-        "answer": "I",
-        "answer_index": 8
-    },
-    {
-        "question": "f(x) = x³ + 2x² - 5x + 3의 도함수는?",
-        "option_0": "3x² + 4x - 5",
-        "option_1": "x² + 2x - 5",
-        "option_2": "3x² + 4x + 5",
-        "option_3": "x³ + 4x - 5",
-        "option_4": "3x + 4",
-        "option_5": "6x + 4",
-        "option_6": "3x² - 5",
-        "option_7": "x² + 4x",
-        "option_8": "3x² + 2x - 5",
-        "option_9": "결정할 수 없음",
-        "answer": "A",
-        "answer_index": 0
-    },
-    {
-        "question": "경기 침체기에 정부 지출이 경제 성장을 촉진할 수 있다고 주장하는 경제 이론은?",
-        "option_0": "통화주의",
-        "option_1": "오스트리아 경제학",
-        "option_2": "공급 경제학",
-        "option_3": "케인즈 경제학",
-        "option_4": "고전 경제학",
-        "option_5": "행동 경제학",
-        "option_6": "신고전 경제학",
-        "option_7": "시카고 학파 경제학",
-        "option_8": "포스트 케인즈 경제학",
-        "option_9": "제도 경제학",
-        "answer": "D",
-        "answer_index": 3
-    }
-]
+kor_prompt = """
+Put your 5-shot Korean examples with proper reasoning here.
+Each example should include:
+- Question
+- Options A-J  
+- "단계별로 생각해봅시다. [Detailed reasoning process]"
+- "#### 따라서 정답은 [Letter] 입니다."
+- "#### 정답: [Letter]"
+"""
 
 # --- Helper Functions ---
-def create_5shot_prompt(item, few_shot_examples, language="en"):
+def clean_text(text):
     """
-    Creates a 5-shot MMLU-ProX prompt for a given test item.
+    Clean text by handling LaTeX formatting and newlines.
+    """
+    if not text:
+        return text
+    
+    # Handle common LaTeX patterns
+    text = text.replace("\\factorial{n}", "n!")
+    text = text.replace("$S_n$", "S_n")
+    text = text.replace("$n$", "n")
+    text = text.replace("$\\", "$")
+    
+    # Clean up excessive newlines but preserve intentional line breaks
+    text = text.replace("\n\n", " ")
+    text = text.replace("\n", " ")
+    text = text.strip()
+    
+    return text
+
+def create_5shot_prompt(item, language="en"):
+    """
+    Creates a 5-shot MMLU-ProX prompt for a given test item using predefined prompts.
     """
     if language == "ko":
-        prompt_parts = ["다음은 다양한 학문 분야의 전문적이고 어려운 다지선다형 질문입니다."]
+        # Use Korean prompt with 5-shot examples
+        few_shot_part = kor_prompt
     else:
-        prompt_parts = ["The following are challenging multiple choice questions from various academic disciplines."]
+        # Use English prompt with 5-shot examples  
+        few_shot_part = eng_prompt
     
-    prompt_parts.append("")
-    
-    # Add few-shot examples
-    for example in few_shot_examples:
-        question = example["question"]
-        options = []
-        for i in range(10):
-            option_key = f"option_{i}"
-            if option_key in example and example[option_key].strip() and example[option_key].strip() != "N/A":
-                options.append(f"{chr(65+i)}. {example[option_key]}")
-        
-        correct_answer = example["answer"]
-        
-        prompt_parts.append(f"Question: {question}")
-        prompt_parts.extend(options)
-        if language == "ko":
-            prompt_parts.append("단계별로 생각해봅시다. [생각].")
-            prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
-            prompt_parts.append(f"#### 정답: {correct_answer}")
-        else:
-            prompt_parts.append("Let's think step by step. [Thinking].")
-            prompt_parts.append(f"#### So the answer is {correct_answer}.")
-            prompt_parts.append(f"#### Answer: {correct_answer}.")
-        prompt_parts.append("")
-    
-    # Add the test question
-    question = item.get("question", "")
+    # Clean and prepare the test question
+    question = clean_text(item.get("question", ""))
     options = []
     for i in range(10):
         option_key = f"option_{i}"
         if option_key in item and item[option_key].strip() and item[option_key].strip() != "N/A":
-            options.append(f"{chr(65+i)}. {item[option_key]}")
+            cleaned_option = clean_text(item[option_key])
+            options.append(f"{chr(65+i)}. {cleaned_option}")
     
-    prompt_parts.append(f"Question: {question}")
+    # Construct the full prompt: few_shot_examples + current_question
+    prompt_parts = [
+        few_shot_part,
+        "",
+        f"Question: {question}"
+    ]
     prompt_parts.extend(options)
     prompt_parts.append("")
-    
-    if language == "ko":
-        prompt_parts.append("Answer:")
-    else:
-        prompt_parts.append("Answer:")
+    prompt_parts.append("Answer:")
     
     return "\n".join(prompt_parts)
 
@@ -580,7 +444,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, ENGLISH_FEW_SHOT_EXAMPLES, "en")
+                prompt = create_5shot_prompt(item, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -635,7 +499,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, KOREAN_FEW_SHOT_EXAMPLES, "ko")
+                prompt = create_5shot_prompt(item, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -807,6 +671,9 @@ def main():
     if create_enhanced_summary:
         # Prepare model results for analysis
         model_results_for_analysis = []
+        en_results_for_analysis = []
+        ko_results_for_analysis = []
+        
         for result in all_model_results:
             if 'error' not in result:
                 # Create combined accuracy metric for analysis
@@ -823,32 +690,129 @@ def main():
                     "total_items": result.get('mmlu_prox_en_total_items', 0) + result.get('mmlu_prox_ko_total_items', 0)
                 }
                 model_results_for_analysis.append(analysis_result)
+                
+                # Separate English and Korean results
+                en_analysis_result = {
+                    "model_name": result["model_name"],
+                    "accuracy_strict": en_accuracy,
+                    "correct_predictions": result.get('mmlu_prox_en_correct', 0),
+                    "total_items": result.get('mmlu_prox_en_total_items', 0)
+                }
+                en_results_for_analysis.append(en_analysis_result)
+                
+                ko_analysis_result = {
+                    "model_name": result["model_name"],
+                    "accuracy_strict": ko_accuracy,
+                    "correct_predictions": result.get('mmlu_prox_ko_correct', 0),
+                    "total_items": result.get('mmlu_prox_ko_total_items', 0)
+                }
+                ko_results_for_analysis.append(ko_analysis_result)
         
+        # Combined summary
         enhanced_summary = create_enhanced_summary(
             model_results=model_results_for_analysis,
             evaluation_info=summary_data["evaluation_info"],
             primary_metric="accuracy_strict",
             subject_metric=None  # MMLU_ProX doesn't have subject breakdown
         )
-        
-        # Merge with original summary data
         enhanced_summary["original_detailed_results"] = summary_data
         
+        # English-only summary
+        en_evaluation_info = summary_data["evaluation_info"].copy()
+        en_evaluation_info["dataset_language"] = "English"
+        en_evaluation_info["total_items"] = len(mmlu_prox_en_data)
+        en_enhanced_summary = create_enhanced_summary(
+            model_results=en_results_for_analysis,
+            evaluation_info=en_evaluation_info,
+            primary_metric="accuracy_strict",
+            subject_metric=None
+        )
+        
+        # Korean-only summary
+        ko_evaluation_info = summary_data["evaluation_info"].copy()
+        ko_evaluation_info["dataset_language"] = "Korean"
+        ko_evaluation_info["total_items"] = len(mmlu_prox_ko_data)
+        ko_enhanced_summary = create_enhanced_summary(
+            model_results=ko_results_for_analysis,
+            evaluation_info=ko_evaluation_info,
+            primary_metric="accuracy_strict",
+            subject_metric=None
+        )
+        
+        # Save all summaries
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
+        en_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_EN.json")
+        ko_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_KO.json")
+        
         with open(summary_filepath, 'w', encoding='utf-8') as f:
             json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
+        with open(en_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_enhanced_summary, f, indent=2, ensure_ascii=False)
+        with open(ko_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_enhanced_summary, f, indent=2, ensure_ascii=False)
             
         # Log key insights
         perf_analysis = enhanced_summary["performance_analysis"]
-        logger.info(f"🏆 Best performing model: {perf_analysis['best_model']}")
+        logger.info(f"🏆 Best performing model (Combined): {perf_analysis['best_model']}")
         logger.info(f"📊 Average combined accuracy: {perf_analysis['average_score']:.2f}%")
         logger.info(f"📈 Performance gap: {perf_analysis['performance_gap']:.2f}%p")
         
+        en_perf_analysis = en_enhanced_summary["performance_analysis"]
+        ko_perf_analysis = ko_enhanced_summary["performance_analysis"]
+        logger.info(f"🏆 Best performing model (English): {en_perf_analysis['best_model']}")
+        logger.info(f"🏆 Best performing model (Korean): {ko_perf_analysis['best_model']}")
+        
     else:
-        # Fallback to basic summary
+        # Fallback to basic summary with separate language files
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
+        en_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_EN.json")
+        ko_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_KO.json")
+        
+        # Create English-only summary
+        en_summary_data = {
+            "evaluation_info": summary_data["evaluation_info"].copy(),
+            "model_results": [{
+                "model_name": result["model_name"],
+                "mmlu_prox_en_accuracy_strict": result.get("mmlu_prox_en_accuracy_strict", 0),
+                "mmlu_prox_en_correct": result.get("mmlu_prox_en_correct", 0),
+                "mmlu_prox_en_total": result.get("mmlu_prox_en_total", 0),
+                "mmlu_prox_en_total_items": result.get("mmlu_prox_en_total_items", 0),
+                "mmlu_prox_en_errors_skipped": result.get("mmlu_prox_en_errors_skipped", 0)
+            } for result in all_model_results],
+            "summary_statistics": {
+                "best_mmlu_prox_en_model": summary_data["summary_statistics"]["best_mmlu_prox_en_model"],
+                "average_mmlu_prox_en_accuracy_strict": summary_data["summary_statistics"]["average_mmlu_prox_en_accuracy_strict"]
+            }
+        }
+        en_summary_data["evaluation_info"]["dataset_language"] = "English"
+        en_summary_data["evaluation_info"]["total_items"] = len(mmlu_prox_en_data)
+        
+        # Create Korean-only summary
+        ko_summary_data = {
+            "evaluation_info": summary_data["evaluation_info"].copy(),
+            "model_results": [{
+                "model_name": result["model_name"],
+                "mmlu_prox_ko_accuracy_strict": result.get("mmlu_prox_ko_accuracy_strict", 0),
+                "mmlu_prox_ko_correct": result.get("mmlu_prox_ko_correct", 0),
+                "mmlu_prox_ko_total": result.get("mmlu_prox_ko_total", 0),
+                "mmlu_prox_ko_total_items": result.get("mmlu_prox_ko_total_items", 0),
+                "mmlu_prox_ko_errors_skipped": result.get("mmlu_prox_ko_errors_skipped", 0)
+            } for result in all_model_results],
+            "summary_statistics": {
+                "best_mmlu_prox_ko_model": summary_data["summary_statistics"]["best_mmlu_prox_ko_model"],
+                "average_mmlu_prox_ko_accuracy_strict": summary_data["summary_statistics"]["average_mmlu_prox_ko_accuracy_strict"]
+            }
+        }
+        ko_summary_data["evaluation_info"]["dataset_language"] = "Korean"
+        ko_summary_data["evaluation_info"]["total_items"] = len(mmlu_prox_ko_data)
+        
+        # Save all summaries
         with open(summary_filepath, 'w', encoding='utf-8') as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
+        with open(en_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_summary_data, f, indent=2, ensure_ascii=False)
+        with open(ko_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_summary_data, f, indent=2, ensure_ascii=False)
 
     logger.info(f"Evaluation complete. Summary saved to: {summary_filepath}")
     logger.info("=== FINAL SUMMARY ===")

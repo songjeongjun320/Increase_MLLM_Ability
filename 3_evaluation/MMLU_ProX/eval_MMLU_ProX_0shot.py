@@ -634,6 +634,9 @@ def main():
     if create_enhanced_summary:
         # Prepare model results for analysis
         model_results_for_analysis = []
+        en_results_for_analysis = []
+        ko_results_for_analysis = []
+        
         for result in all_model_results:
             if 'error' not in result:
                 # Create combined accuracy metric for analysis
@@ -650,32 +653,129 @@ def main():
                     "total_items": result.get('mmlu_prox_en_total_items', 0) + result.get('mmlu_prox_ko_total_items', 0)
                 }
                 model_results_for_analysis.append(analysis_result)
+                
+                # Separate English and Korean results
+                en_analysis_result = {
+                    "model_name": result["model_name"],
+                    "accuracy_strict": en_accuracy,
+                    "correct_predictions": result.get('mmlu_prox_en_correct', 0),
+                    "total_items": result.get('mmlu_prox_en_total_items', 0)
+                }
+                en_results_for_analysis.append(en_analysis_result)
+                
+                ko_analysis_result = {
+                    "model_name": result["model_name"],
+                    "accuracy_strict": ko_accuracy,
+                    "correct_predictions": result.get('mmlu_prox_ko_correct', 0),
+                    "total_items": result.get('mmlu_prox_ko_total_items', 0)
+                }
+                ko_results_for_analysis.append(ko_analysis_result)
         
+        # Combined summary
         enhanced_summary = create_enhanced_summary(
             model_results=model_results_for_analysis,
             evaluation_info=summary_data["evaluation_info"],
             primary_metric="accuracy_strict",
             subject_metric=None  # MMLU_ProX doesn't have subject breakdown
         )
-        
-        # Merge with original summary data
         enhanced_summary["original_detailed_results"] = summary_data
         
+        # English-only summary
+        en_evaluation_info = summary_data["evaluation_info"].copy()
+        en_evaluation_info["dataset_language"] = "English"
+        en_evaluation_info["total_items"] = len(mmlu_prox_en_data)
+        en_enhanced_summary = create_enhanced_summary(
+            model_results=en_results_for_analysis,
+            evaluation_info=en_evaluation_info,
+            primary_metric="accuracy_strict",
+            subject_metric=None
+        )
+        
+        # Korean-only summary
+        ko_evaluation_info = summary_data["evaluation_info"].copy()
+        ko_evaluation_info["dataset_language"] = "Korean"
+        ko_evaluation_info["total_items"] = len(mmlu_prox_ko_data)
+        ko_enhanced_summary = create_enhanced_summary(
+            model_results=ko_results_for_analysis,
+            evaluation_info=ko_evaluation_info,
+            primary_metric="accuracy_strict",
+            subject_metric=None
+        )
+        
+        # Save all summaries
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
+        en_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_EN.json")
+        ko_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_KO.json")
+        
         with open(summary_filepath, 'w', encoding='utf-8') as f:
             json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
+        with open(en_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_enhanced_summary, f, indent=2, ensure_ascii=False)
+        with open(ko_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_enhanced_summary, f, indent=2, ensure_ascii=False)
             
         # Log key insights
         perf_analysis = enhanced_summary["performance_analysis"]
-        logger.info(f"🏆 Best performing model: {perf_analysis['best_model']}")
+        logger.info(f"🏆 Best performing model (Combined): {perf_analysis['best_model']}")
         logger.info(f"📊 Average combined accuracy: {perf_analysis['average_score']:.2f}%")
         logger.info(f"📈 Performance gap: {perf_analysis['performance_gap']:.2f}%p")
         
+        en_perf_analysis = en_enhanced_summary["performance_analysis"]
+        ko_perf_analysis = ko_enhanced_summary["performance_analysis"]
+        logger.info(f"🏆 Best performing model (English): {en_perf_analysis['best_model']}")
+        logger.info(f"🏆 Best performing model (Korean): {ko_perf_analysis['best_model']}")
+        
     else:
-        # Fallback to basic summary
+        # Fallback to basic summary with separate language files
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY.json")
+        en_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_EN.json")
+        ko_summary_filepath = os.path.join(BASE_OUTPUT_DIR, "SUMMARY_KO.json")
+        
+        # Create English-only summary
+        en_summary_data = {
+            "evaluation_info": summary_data["evaluation_info"].copy(),
+            "model_results": [{
+                "model_name": result["model_name"],
+                "mmlu_prox_en_accuracy_strict": result.get("mmlu_prox_en_accuracy_strict", 0),
+                "mmlu_prox_en_correct": result.get("mmlu_prox_en_correct", 0),
+                "mmlu_prox_en_total": result.get("mmlu_prox_en_total", 0),
+                "mmlu_prox_en_total_items": result.get("mmlu_prox_en_total_items", 0),
+                "mmlu_prox_en_errors_skipped": result.get("mmlu_prox_en_errors_skipped", 0)
+            } for result in all_model_results],
+            "summary_statistics": {
+                "best_mmlu_prox_en_model": summary_data["summary_statistics"]["best_mmlu_prox_en_model"],
+                "average_mmlu_prox_en_accuracy_strict": summary_data["summary_statistics"]["average_mmlu_prox_en_accuracy_strict"]
+            }
+        }
+        en_summary_data["evaluation_info"]["dataset_language"] = "English"
+        en_summary_data["evaluation_info"]["total_items"] = len(mmlu_prox_en_data)
+        
+        # Create Korean-only summary
+        ko_summary_data = {
+            "evaluation_info": summary_data["evaluation_info"].copy(),
+            "model_results": [{
+                "model_name": result["model_name"],
+                "mmlu_prox_ko_accuracy_strict": result.get("mmlu_prox_ko_accuracy_strict", 0),
+                "mmlu_prox_ko_correct": result.get("mmlu_prox_ko_correct", 0),
+                "mmlu_prox_ko_total": result.get("mmlu_prox_ko_total", 0),
+                "mmlu_prox_ko_total_items": result.get("mmlu_prox_ko_total_items", 0),
+                "mmlu_prox_ko_errors_skipped": result.get("mmlu_prox_ko_errors_skipped", 0)
+            } for result in all_model_results],
+            "summary_statistics": {
+                "best_mmlu_prox_ko_model": summary_data["summary_statistics"]["best_mmlu_prox_ko_model"],
+                "average_mmlu_prox_ko_accuracy_strict": summary_data["summary_statistics"]["average_mmlu_prox_ko_accuracy_strict"]
+            }
+        }
+        ko_summary_data["evaluation_info"]["dataset_language"] = "Korean"
+        ko_summary_data["evaluation_info"]["total_items"] = len(mmlu_prox_ko_data)
+        
+        # Save all summaries
         with open(summary_filepath, 'w', encoding='utf-8') as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
+        with open(en_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_summary_data, f, indent=2, ensure_ascii=False)
+        with open(ko_summary_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_summary_data, f, indent=2, ensure_ascii=False)
 
     logger.info(f"Evaluation complete. Summary saved to: {summary_filepath}")
     logger.info("=== FINAL SUMMARY ===")

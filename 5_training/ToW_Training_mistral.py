@@ -12,8 +12,8 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=4 ToW_Training_mistral.py
-torchrun --nproc_per_node=4 ToW_Training_mistral.py
+deepspeed --num_gpus=4 ToW_Training_deepseek.py
+torchrun --nproc_per_node=4 ToW_Training_deepseek.py
 """
 
 import os
@@ -132,7 +132,6 @@ class ToWTrainingConfig:
     per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
     gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
-
     
     # Smart text handling
     adaptive_max_length: bool = True
@@ -143,7 +142,7 @@ class ToWTrainingConfig:
     # Default settings
     max_sequence_length: int = 256
     warmup_ratio: float = 0.1
-    weight_decay: float = 0.1
+    weight_decay: float = 0.01
     
     # Other settings
     eval_strategy: str = "steps"
@@ -153,209 +152,24 @@ class ToWTrainingConfig:
     logging_steps: int = 500
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 1
+    dataloader_num_workers: int = 2
     remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True
-    gradient_checkpointing: bool = True
+    gradient_checkpointing: bool = False
 
 
 MODEL_CONFIGS = [
     ModelConfig(
-        name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        name="Mistral-7B-Instruct-v0.3-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-7B-Instruct-v0.3",
         use_quantization=True,
     ),
 ]
 
 
-class SmartToWDataProcessor:
-    """Smart data processor with adaptive length and ToW preservation"""
-    
-    def __init__(self, tokenizer, config: ToWTrainingConfig):
-        self.tokenizer = tokenizer
-        self.config = config
-        self.tow_start_token = "<ToW>"
-        self.tow_end_token = "</ToW>"
-    
-    def analyze_data_lengths(self, data: List[Dict]) -> int:
-        """Analyze data to determine optimal max length (converted format)"""
-        logger.info("Analyzing dataset lengths...")
-        
-        lengths = []
-        
-        for entry in tqdm(data, desc="Analyzing lengths"):
-            input_text = entry.get('input', '')
-            output_text = entry.get('output', '')
-            text = f"{input_text}{output_text}{self.tokenizer.eos_token}"
-            tokens = self.tokenizer.tokenize(text)
-            lengths.append(len(tokens))
-        
-        lengths = np.array(lengths)
-        
-        if len(lengths) == 0:
-            logger.warning("No data to analyze for lengths. Using default max_sequence_length.")
-            return self.config.max_sequence_length
-
-        logger.info(f"Length statistics:")
-        logger.info(f"  Mean: {lengths.mean():.1f} tokens")
-        logger.info(f"  Median: {np.median(lengths):.1f} tokens")
-        logger.info(f"  95th percentile: {np.percentile(lengths, 95):.1f} tokens")
-        logger.info(f"  Max: {lengths.max()} tokens")
-        
-        optimal_length = int(np.percentile(lengths, 98)) # Use 98th percentile for better coverage
-        optimal_length = max(256, min(optimal_length, self.tokenizer.model_max_length or 4096))
-        
-        logger.info(f"Setting adaptive max length to: {optimal_length} tokens")
-        return optimal_length
-    
-    def find_tow_positions(self, text: str) -> List[Tuple[int, int]]:
-        """This method is no longer needed in the new format but kept for compatibility."""
-        return []
-    
-    def smart_truncate(self, text: str, max_length: int) -> List[str]:
-        """Simplified truncation for context + tow + gold_label format"""
-        tokens = self.tokenizer.tokenize(text)
-        
-        if len(tokens) <= max_length:
-            return [text]
-        
-        # Simple truncation from the beginning if text is too long
-        truncated_tokens = tokens[-max_length:]
-        return [self.tokenizer.convert_tokens_to_string(truncated_tokens)]
-
-    def load_tow_data(self, data_paths: List[str]) -> List[Dict]:
-        """Load converted ToW dataset (input/output format) from file"""
-        logger.info(f"Loading converted ToW data from {len(data_paths)} files...")
-        
-        all_data = []
-        for data_path in data_paths:
-            path = Path(data_path)
-            if not path.exists():
-                logger.warning(f"Data file not found, skipping: {data_path}")
-                continue
-            
-            logger.info(f"  - Loading from {data_path}")
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        all_data.extend(data)
-                    else:
-                        logger.warning(f"Data in {data_path} is not a list, skipping.")
-            except json.JSONDecodeError:
-                logger.warning(f"Could not decode JSON from {data_path}. Skipping.")
-        
-        logger.info(f"Loaded a total of {len(all_data)} converted ToW entries")
-        return all_data
-    
-    def create_training_dataset(self, data: List[Dict]) -> Dataset:
-        """Create dataset for input -> output training (converted format)"""
-        logger.info("Creating training dataset for converted ToW training...")
-        
-        if self.config.adaptive_max_length:
-            optimal_length = self.analyze_data_lengths(data)
-            self.config.max_sequence_length = optimal_length
-        
-        processed_data = []
-        for entry in tqdm(data, desc="Processing data with corrected logic"):
-            original_sentence = entry.get('original_sentence', '')
-            context = entry.get('context', '')
-            tow = entry.get('tow', '')
-
-            if not original_sentence or not context or not tow:
-                continue
-            
-            # Ensure context is a prefix of the original sentence
-            if original_sentence.startswith(context):
-                remaining_sentence = original_sentence[len(context):]
-            else:
-                logger.warning(f"Context not a prefix of original_sentence for ID {entry.get('id', 'N/A')}. Skipping.")
-                continue
-
-            input_text = context
-            output_text = f"{tow}{remaining_sentence}"
-            
-            # Format: input -> output -> eos
-            full_text = f"{input_text}{output_text}{self.tokenizer.eos_token}"
-            
-            processed_data.append({
-                "input": input_text,
-                "full_text": full_text
-            })
-
-        logger.info(f"Created {len(processed_data)} training examples.")
-        
-        dataset = Dataset.from_list(processed_data)
-        
-        def tokenize_function(examples):
-            # The function now correctly handles batches of examples
-            
-            # Temporarily set truncation side to 'left' if supported
-            original_truncation_side = getattr(self.tokenizer, 'truncation_side', None)
-            if hasattr(self.tokenizer, 'truncation_side'):
-                self.tokenizer.truncation_side = 'left'
-            
-            input_tokens = self.tokenizer(
-                examples['input'],
-                add_special_tokens=False
-            )
-            full_tokens = self.tokenizer(
-                examples['full_text'],
-                truncation=True,
-                max_length=self.config.max_sequence_length,
-                padding='max_length',
-                return_attention_mask=True
-            )
-            
-            # Restore original truncation side
-            if original_truncation_side is not None:
-                self.tokenizer.truncation_side = original_truncation_side
-
-            all_labels = []
-            # Iterate over each example in the batch
-            for i in range(len(full_tokens['input_ids'])):
-                input_ids = full_tokens['input_ids'][i]
-                attention_mask = full_tokens['attention_mask'][i]
-                
-                # Get the length of the input for this specific example
-                input_len = len(input_tokens['input_ids'][i])
-                
-                labels = input_ids.copy()
-                
-                # Determine the actual number of input tokens to mask.
-                # This prevents index errors if the input itself was truncated.
-                mask_len = min(input_len, len(labels))
-
-                # Mask input tokens by setting them to -100
-                labels[:mask_len] = [-100] * mask_len
-                
-                # Also mask padding tokens
-                for j in range(len(labels)):
-                    if attention_mask[j] == 0:
-                        labels[j] = -100
-                
-                all_labels.append(labels)
-            
-            full_tokens['labels'] = all_labels
-            return full_tokens
-        
-        tokenized_dataset = dataset.map(
-            tokenize_function,
-            batched=True,  # Explicitly set batched=True
-            remove_columns=['input', 'full_text'],
-            desc="Tokenizing and creating labels"
-        )
-
-        logger.info("Checking tokenized sample lengths...")
-        for i in range(min(5, len(tokenized_dataset))):
-            input_ids_len = len(tokenized_dataset[i]['input_ids'])
-            labels_len = len(tokenized_dataset[i]['labels'])
-            # Count non-masked labels
-            actual_labels = sum(1 for label in tokenized_dataset[i]['labels'] if label != -100)
-            logger.info(f"Sample {i} - input_ids: {input_ids_len}, labels: {labels_len}, actual_labels: {actual_labels}")
-
-        return tokenized_dataset
+# Import the new caching utilities
+from dataset_cache_utils import SmartToWDataProcessor
 
 
 class ToWTrainer:
@@ -480,7 +294,7 @@ class ToWTrainer:
             save_strategy=self.training_config.save_strategy,
             save_steps=self.training_config.save_steps,
             save_total_limit=3,
-            ddp_find_unused_parameters=False, # Mistral 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
+            ddp_find_unused_parameters=False, # DeepSeek 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
             load_best_model_at_end=True,
             local_rank=int(os.getenv('LOCAL_RANK', -1)),
             metric_for_best_model="eval_loss",
@@ -493,7 +307,6 @@ class ToWTrainer:
             seed=42,
             data_seed=42,
             report_to=[],
-            # DeepSpeed ZeRO 설정 추가
             deepspeed="./deepspeed_config_mistral.json",
         )
     
@@ -504,10 +317,9 @@ class ToWTrainer:
         
         model, tokenizer = self.load_model_and_tokenizer()
         
-        data_processor = SmartToWDataProcessor(tokenizer, self.training_config)
-        tow_data = data_processor.load_tow_data(self.training_config.tow_data_paths)
+        data_processor = SmartToWDataProcessor(tokenizer, self.training_config, self.model_config.model_id)
         
-        train_dataset = data_processor.create_training_dataset(tow_data)
+        train_dataset = data_processor.create_training_dataset(self.training_config.tow_data_paths)
         
         train_test_split = train_dataset.train_test_split(test_size=0.1, seed=42)
         train_dataset = train_test_split['train']

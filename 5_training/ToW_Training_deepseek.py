@@ -128,9 +128,9 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
-    per_device_train_batch_size: int = 1  # Reduced for memory efficiency with DeepSpeed
-    per_device_eval_batch_size: int = 1  # Reduced for memory efficiency
-    gradient_accumulation_steps: int = 32  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
+    gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
     
     # Smart text handling

@@ -439,7 +439,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         # --- Load Model and Tokenizer ---
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR, padding_side='left')
         
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token

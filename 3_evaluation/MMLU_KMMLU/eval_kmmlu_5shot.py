@@ -802,47 +802,9 @@ def main():
     if all_results_summary:
         summary_filepath = os.path.join(BASE_OUTPUT_DIR, "summary.json")
         try:
-            # Enhanced summary with performance analysis
-            if create_enhanced_summary:
-                evaluation_info = {
-                    "evaluation_type": "5-shot Korean MMLU",
-                    "evaluation_date": datetime.now().isoformat(),
-                    "dataset_path": DATASET_PATH,
-                    "batch_size": BATCH_SIZE,
-                    "total_models_evaluated": len(all_results_summary)
-                }
-                
-                enhanced_summary = create_enhanced_summary(
-                    model_results=all_results_summary,
-                    evaluation_info=evaluation_info,
-                    primary_metric="accuracy_strict",
-                    subject_metric="subject_wise_accuracy"
-                )
-                
-                with open(summary_filepath, 'w', encoding='utf-8') as f:
-                    json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
-                logger.info(f"Enhanced summary with performance analysis saved to {summary_filepath}")
-                
-                # Log key insights
-                perf_analysis = enhanced_summary["performance_analysis"]
-                logger.info(f"🏆 Best performing model: {perf_analysis['best_model']}")
-                logger.info(f"📊 Average accuracy: {perf_analysis['average_score']:.2f}%")
-                logger.info(f"📈 Performance gap: {perf_analysis['performance_gap']:.2f}%p")
-                
-            else:
-                # Fallback to basic summary
-                basic_summary = {
-                    "evaluation_info": {
-                        "evaluation_type": "5-shot Korean MMLU",
-                        "evaluation_date": datetime.now().isoformat(),
-                        "total_models": len(all_results_summary)
-                    },
-                    "model_results": all_results_summary
-                }
-                with open(summary_filepath, 'w', encoding='utf-8') as f:
-                    json.dump(basic_summary, f, indent=2, ensure_ascii=False)
-                logger.info(f"Basic summary saved to {summary_filepath}")
-                
+            with open(summary_filepath, 'w', encoding='utf-8') as f:
+                json.dump(all_results_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Consolidated summary saved to {summary_filepath}")
         except Exception as e:
             logger.error(f"Failed to save consolidated summary: {e}")
 

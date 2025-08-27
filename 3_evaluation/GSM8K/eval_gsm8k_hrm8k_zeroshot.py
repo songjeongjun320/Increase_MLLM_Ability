@@ -199,6 +199,41 @@ def check_numerical_match(predicted, ground_truth, tolerance=1e-6):
     except (ValueError, TypeError):
         return False
 
+def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+    """
+    Process a single prompt with retry logic for failed answer extractions
+    """
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=512,
+                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                    temperature=1.0,
+                )
+            
+            input_lengths = inputs['input_ids'].shape[1]
+            output_only_tokens = outputs[:, input_lengths:]
+            generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+            
+            # Try to extract answer
+            extracted_answer = extract_numerical_answer(generated_text)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+                
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            if attempt == max_retries - 1:
+                return f"ERROR: {str(e)[:100]}", None
+            continue
+    
+    return f"EXTRACTION_FAILED after {max_retries} attempts", None
+
 def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_dir: str):
     """
     Evaluate single model on GSM8K dataset
@@ -342,7 +377,9 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process Korean version (translated question)
             if has_korean:
                 try:
-                    korean_prompt = create_gsm8k_prompt(question, is_korean=True)
+                    korean_prompt = create_gsm8k_0shot_prompt(question, is_korean=True)
+                    
+                    # First attempt with regular processing
                     inputs = tokenizer(korean_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
                     
                     with torch.no_grad():
@@ -362,15 +399,19 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                     korean_answer = extract_numerical_answer(korean_gen_text)
                     is_correct_korean = False
 
+                    # If extraction failed and it's not an error, try retry logic
+                    if korean_answer is None and not korean_gen_text.startswith("ERROR"):
+                        logger.info(f"Korean - Item {idx}: Initial extraction failed, retrying with individual processing...")
+                        korean_gen_text, korean_answer = process_single_with_retry(model, tokenizer, korean_prompt)
+
                     if korean_answer is not None:
                         total_predictions_korean += 1
                         if check_numerical_match(korean_answer, ground_truth):
                             correct_predictions_korean += 1
                             is_correct_korean = True
                     else:
-                        logger.warning(f"Korean - Item {idx}: Failed to extract answer from: '{korean_gen_text[:100]}...'")
+                        logger.warning(f"Korean - Item {idx}: Failed to extract answer after retry from: '{korean_gen_text[:100]}...'")
                         errors_or_skipped_korean += 1
-                        korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
 
                     results_details_korean.append({
                         "index": idx,
@@ -398,7 +439,9 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process English version (original question)  
             if original:
                 try:
-                    english_prompt = create_gsm8k_prompt(original, is_korean=False)
+                    english_prompt = create_gsm8k_0shot_prompt(original, is_korean=False)
+                    
+                    # First attempt with regular processing
                     inputs = tokenizer(english_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
                     
                     with torch.no_grad():
@@ -418,15 +461,19 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                     english_answer = extract_numerical_answer(english_gen_text)
                     is_correct_english = False
 
+                    # If extraction failed and it's not an error, try retry logic
+                    if english_answer is None and not english_gen_text.startswith("ERROR"):
+                        logger.info(f"English - Item {idx}: Initial extraction failed, retrying with individual processing...")
+                        english_gen_text, english_answer = process_single_with_retry(model, tokenizer, english_prompt)
+
                     if english_answer is not None:
                         total_predictions_english += 1
                         if check_numerical_match(english_answer, ground_truth):
                             correct_predictions_english += 1
                             is_correct_english = True
                     else:
-                        logger.warning(f"English - Item {idx}: Failed to extract answer from: '{english_gen_text[:100]}...'")
+                        logger.warning(f"English - Item {idx}: Failed to extract answer after retry from: '{english_gen_text[:100]}...'")
                         errors_or_skipped_english += 1
-                        english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
 
                     results_details_english.append({
                         "index": idx,

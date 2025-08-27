@@ -19,6 +19,24 @@ import gc
 import sys
 from pathlib import Path
 from datetime import datetime
+import time
+import random
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Global Configuration
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+CACHE_DIR = "../cache"  # Cache directory for models
+DATASET_PATH = "../1_datasets/GSM8K/test.json"  # Path to GSM8K dataset
+BASE_OUTPUT_DIR = "../4_evaluation_results/GSM8K_8shot"  # Output directory
 
 # Import performance analyzer
 try:
@@ -28,6 +46,29 @@ try:
 except ImportError:
     logger.warning("Performance analyzer not available. Using basic summary.")
     create_enhanced_summary = None
+
+# GSM8K 8-shot examples (placeholder - these should be defined with actual examples)
+GSM8K_8SHOT_KOR_COT_EXAMPLES = [
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
+    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"}
+]
+
+GSM8K_8SHOT_COT_EXAMPLES = [
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
+    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"}
+]
 
 # --- Model Configuration ---
 @dataclass
@@ -216,6 +257,55 @@ def check_numerical_match(predicted, ground_truth, tolerance=1e-6):
     except (ValueError, TypeError):
         return False
 
+def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+    """
+    Process a single prompt with retry logic for answer extraction failures
+    Only retries when answer extraction fails (not on genuine model errors)
+    """
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=512,
+                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                    temperature=1.0,
+                )
+            
+            input_lengths = inputs['input_ids'].shape[1]
+            output_only_tokens = outputs[:, input_lengths:]
+            generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+            
+            # Try to extract answer
+            extracted_answer = extract_numerical_answer(generated_text)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+            else:
+                # Answer extraction failed - try again if we have retries left
+                if attempt < max_retries - 1:
+                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
+                    # Small delay before retry
+                    time.sleep(0.1 + random.random() * 0.1)
+                    continue
+                else:
+                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
+                    return generated_text, None
+                    
+        except Exception as e:
+            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                continue
+            else:
+                # Return error info after all retries exhausted
+                return f"ERROR after {max_retries} attempts: {str(e)}", None
+    
+    return f"EXTRACTION_FAILED after {max_retries} attempts", None
+
 def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_dir: str):
     """
     Evaluate single model on GSM8K dataset
@@ -359,24 +449,10 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process Korean version (translated question)
             if has_korean:
                 try:
-                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES)
-                    inputs = tokenizer(korean_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
+                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True)
                     
-                    with torch.no_grad():
-                        outputs = model.generate(
-                            **inputs,
-                            max_new_tokens=256,
-                            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            do_sample=False,
-                            temperature=1.0,
-                        )
-                    
-                    input_lengths = inputs['input_ids'].shape[1]
-                    output_only_tokens = outputs[:, input_lengths:]
-                    korean_gen_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
-                    
-                    korean_answer = extract_numerical_answer(korean_gen_text)
+                    # Use retry logic for Korean processing
+                    korean_gen_text, korean_answer = process_single_with_retry(model, tokenizer, korean_prompt)
                     is_correct_korean = False
 
                     if korean_answer is not None:
@@ -385,9 +461,15 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                             correct_predictions_korean += 1
                             is_correct_korean = True
                     else:
-                        logger.warning(f"Korean - Item {idx}: Failed to extract answer from: '{korean_gen_text[:100]}...'")
-                        errors_or_skipped_korean += 1
-                        korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
+                        # Check if it was a genuine extraction failure vs error
+                        if not korean_gen_text.startswith("ERROR"):
+                            logger.warning(f"Korean - Item {idx}: Failed to extract answer after retries from: '{korean_gen_text[:100]}...'")
+                            errors_or_skipped_korean += 1
+                            korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
+                        else:
+                            # This was a model error, not extraction failure
+                            logger.error(f"Korean - Item {idx}: Model error: {korean_gen_text}")
+                            errors_or_skipped_korean += 1
 
                     results_details_korean.append({
                         "index": idx,
@@ -415,24 +497,10 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process English version (original question)  
             if original:
                 try:
-                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES)
-                    inputs = tokenizer(english_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
-
-                    with torch.no_grad():
-                        outputs = model.generate(
-                            **inputs,
-                            max_new_tokens=512,
-                            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            do_sample=False,
-                            temperature=1.0,
-                        )
+                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
                     
-                    input_lengths = inputs['input_ids'].shape[1]
-                    output_only_tokens = outputs[:, input_lengths:]
-                    english_gen_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
-                    
-                    english_answer = extract_numerical_answer(english_gen_text)
+                    # Use retry logic for English processing
+                    english_gen_text, english_answer = process_single_with_retry(model, tokenizer, english_prompt)
                     is_correct_english = False
 
                     if english_answer is not None:
@@ -441,9 +509,15 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                             correct_predictions_english += 1
                             is_correct_english = True
                     else:
-                        logger.warning(f"English - Item {idx}: Failed to extract answer from: '{english_gen_text[:100]}...'")
-                        errors_or_skipped_english += 1
-                        english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
+                        # Check if it was a genuine extraction failure vs error
+                        if not english_gen_text.startswith("ERROR"):
+                            logger.warning(f"English - Item {idx}: Failed to extract answer after retries from: '{english_gen_text[:100]}...'")
+                            errors_or_skipped_english += 1
+                            english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
+                        else:
+                            # This was a model error, not extraction failure
+                            logger.error(f"English - Item {idx}: Model error: {english_gen_text}")
+                            errors_or_skipped_english += 1
 
                     results_details_english.append({
                         "index": idx,
@@ -519,21 +593,51 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             }
         }
 
+        # Save Korean results
         try:
-            with open(results_filepath, 'w', encoding='utf-8') as f:
-                json.dump(final_summary, f, indent=2, ensure_ascii=False)
-            logger.info(f"Detailed results saved to {results_filepath}")
+            with open(results_korean_filepath, 'w', encoding='utf-8') as f:
+                korean_results = {
+                    "model_config": config_dict_serializable,
+                    "dataset_path": DATASET_PATH,
+                    "evaluation_type": "GSM8K (HRM8K Korean 8-shot)",
+                    "language": "Korean",
+                    "results": final_summary["korean_results"]
+                }
+                json.dump(korean_results, f, indent=2, ensure_ascii=False)
+            logger.info(f"Korean results saved to {results_korean_filepath}")
         except Exception as e:
-            logger.error(f"Failed to save results file {results_filepath}: {e}")
+            logger.error(f"Failed to save Korean results file {results_korean_filepath}: {e}")
+            
+        # Save English results
+        try:
+            with open(results_english_filepath, 'w', encoding='utf-8') as f:
+                english_results = {
+                    "model_config": config_dict_serializable,
+                    "dataset_path": DATASET_PATH,
+                    "evaluation_type": "GSM8K (HRM8K English 8-shot)",
+                    "language": "English",
+                    "results": final_summary["english_results"]
+                }
+                json.dump(english_results, f, indent=2, ensure_ascii=False)
+            logger.info(f"English results saved to {results_english_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save English results file {results_english_filepath}: {e}")
 
-        # Save Raw Generations
-        logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
+        # Save Raw Generations for Korean
         try:
-            with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
-                json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
-            logger.info(f"Raw generations saved successfully.")
+            with open(raw_gen_korean_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_korean_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"Korean raw generations saved to {raw_gen_korean_filepath}")
         except Exception as e:
-            logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
+            logger.error(f"Failed to save Korean raw generations file {raw_gen_korean_filepath}: {e}")
+            
+        # Save Raw Generations for English
+        try:
+            with open(raw_gen_english_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_english_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"English raw generations saved to {raw_gen_english_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save English raw generations file {raw_gen_english_filepath}: {e}")
 
         return final_summary
 

@@ -10,6 +10,26 @@ from dataclasses import dataclass, field
 import gc
 import sys
 from datetime import datetime
+import time
+import random
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Global Configuration
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+CACHE_DIR = "../cache"  # Cache directory for models
+DATASET_PATH = "../../2_datasets/MMLU_ProX/test/"  # Path to MMLU-ProX dataset
+KOREAN_DATASET_PATH = "../../2_datasets/MMLU_ProX/ko-test/"  # Path to Korean MMLU-ProX dataset
+BASE_OUTPUT_DIR = "../4_evaluation_results/MMLU_ProX_5shot"  # Output directory
+BATCH_SIZE = 8
 
 # Import performance analyzer
 try:
@@ -417,6 +437,61 @@ def extract_answer_first_token(model_output):
     
     return None
 
+def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+    """
+    Process a single prompt with retry logic for answer extraction failures
+    Only retries when answer extraction fails (not on genuine model errors)
+    """
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(
+                prompt,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=4096
+            ).to(DEVICE)
+
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=5,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                    return_dict_in_generate=True
+                )
+            
+            input_length = inputs['input_ids'].shape[1]
+            output_tokens = outputs['sequences'][0][input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            
+            # Try to extract answer
+            extracted_answer = extract_answer_first_token(generated_text)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+            else:
+                # Answer extraction failed - try again if we have retries left
+                if attempt < max_retries - 1:
+                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
+                    # Small delay before retry
+                    time.sleep(0.1 + random.random() * 0.1)
+                    continue
+                else:
+                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
+                    return generated_text, None
+                    
+        except Exception as e:
+            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                continue
+            else:
+                # Return error info after all retries exhausted
+                return f"ERROR after {max_retries} attempts: {str(e)}", None
+    
+    return f"EXTRACTION_FAILED after {max_retries} attempts", None
+
 def load_jsonl_dataset(filepath):
     """Loads dataset from a JSONL file."""
     try:
@@ -630,11 +705,32 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
             
-            for result, ground_truth in zip(batch_results, batch_ground_truths):
-                is_correct = result['extracted_answer'] == ground_truth if result['extracted_answer'] else False
+            for result, ground_truth, batch_prompt in zip(batch_results, batch_ground_truths, batch_prompts):
+                extracted_answer = result['extracted_answer']
+                raw_output = result['raw_output']
+                
+                # Retry logic for failed extractions
+                if not extracted_answer and not raw_output.startswith("ERROR"):
+                    logger.warning(f"Batch extraction failed for English item {result['index']}, attempting individual retry...")
+                    retry_text, retry_answer = process_single_with_retry(model, tokenizer, batch_prompt)
+                    
+                    if retry_answer is not None:
+                        extracted_answer = retry_answer
+                        raw_output = retry_text
+                        logger.info(f"English retry successful for item {result['index']}: extracted '{retry_answer}'")
+                    else:
+                        # Even retry failed
+                        if not retry_text.startswith("ERROR"):
+                            logger.warning(f"English item {result['index']}: Failed to extract answer after retries")
+                            raw_output = f"EXTRACTION_FAILED: {retry_text}"
+                        else:
+                            logger.error(f"English item {result['index']}: Model error: {retry_text}")
+                            raw_output = retry_text
+                
+                is_correct = extracted_answer == ground_truth if extracted_answer else False
                 
                 # Only count items with valid extracted answers for total
-                if result['extracted_answer']:
+                if extracted_answer:
                     all_results["mmlu_prox_en"]["total"] += 1
                     if is_correct:
                         all_results["mmlu_prox_en"]["correct"] += 1
@@ -642,17 +738,17 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 all_results["mmlu_prox_en"]["details"].append({
                     "index": result['index'],
                     "ground_truth": ground_truth,
-                    "predicted_answer": result['extracted_answer'],
+                    "predicted_answer": extracted_answer,
                     "is_correct": is_correct,
-                    "raw_output": result['raw_output']
+                    "raw_output": raw_output
                 })
                 
                 all_results["mmlu_prox_en"]["raw_generations"].append({
                     "index": result['index'],
                     "ground_truth": ground_truth,
-                    "raw_output": result['raw_output'],
-                    "full_generation": result.get('full_generation', result['raw_output']),
-                    "extracted_answer": result['extracted_answer']
+                    "raw_output": raw_output,
+                    "full_generation": raw_output,
+                    "extracted_answer": extracted_answer
                 })
             
             # Update progress bar with current error count
@@ -685,11 +781,32 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
             
-            for result, ground_truth in zip(batch_results, batch_ground_truths):
-                is_correct = result['extracted_answer'] == ground_truth if result['extracted_answer'] else False
+            for result, ground_truth, batch_prompt in zip(batch_results, batch_ground_truths, batch_prompts):
+                extracted_answer = result['extracted_answer']
+                raw_output = result['raw_output']
+                
+                # Retry logic for failed extractions
+                if not extracted_answer and not raw_output.startswith("ERROR"):
+                    logger.warning(f"Batch extraction failed for Korean item {result['index']}, attempting individual retry...")
+                    retry_text, retry_answer = process_single_with_retry(model, tokenizer, batch_prompt)
+                    
+                    if retry_answer is not None:
+                        extracted_answer = retry_answer
+                        raw_output = retry_text
+                        logger.info(f"Korean retry successful for item {result['index']}: extracted '{retry_answer}'")
+                    else:
+                        # Even retry failed
+                        if not retry_text.startswith("ERROR"):
+                            logger.warning(f"Korean item {result['index']}: Failed to extract answer after retries")
+                            raw_output = f"EXTRACTION_FAILED: {retry_text}"
+                        else:
+                            logger.error(f"Korean item {result['index']}: Model error: {retry_text}")
+                            raw_output = retry_text
+                
+                is_correct = extracted_answer == ground_truth if extracted_answer else False
                 
                 # Only count items with valid extracted answers for total
-                if result['extracted_answer']:
+                if extracted_answer:
                     all_results["mmlu_prox_ko"]["total"] += 1
                     if is_correct:
                         all_results["mmlu_prox_ko"]["correct"] += 1
@@ -697,17 +814,17 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 all_results["mmlu_prox_ko"]["details"].append({
                     "index": result['index'],
                     "ground_truth": ground_truth,
-                    "predicted_answer": result['extracted_answer'],
+                    "predicted_answer": extracted_answer,
                     "is_correct": is_correct,
-                    "raw_output": result['raw_output']
+                    "raw_output": raw_output
                 })
                 
                 all_results["mmlu_prox_ko"]["raw_generations"].append({
                     "index": result['index'],
                     "ground_truth": ground_truth,
-                    "raw_output": result['raw_output'],
-                    "full_generation": result.get('full_generation', result['raw_output']),
-                    "extracted_answer": result['extracted_answer']
+                    "raw_output": raw_output,
+                    "full_generation": raw_output,
+                    "extracted_answer": extracted_answer
                 })
             
             # Update progress bar with current error count

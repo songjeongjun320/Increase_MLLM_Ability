@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass, field
 import gc
 import sys
+import time
+import random
 
 # --- Model Configuration ---
 @dataclass
@@ -305,6 +307,54 @@ def create_3shot_prompt(item, examples, dataset_type="arc"):
     return "\n".join(prompt_parts)
 
 
+def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+    """
+    Process a single prompt with retry logic for answer extraction failures
+    Only retries when answer extraction fails (not on genuine model errors)
+    """
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=256,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                )
+            
+            input_lengths = inputs['input_ids'].shape[1]
+            output_only_tokens = outputs[:, input_lengths:]
+            generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+            
+            # Try to extract answer
+            extracted_answer = extract_answer_robust(generated_text)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+            else:
+                # Answer extraction failed - try again if we have retries left
+                if attempt < max_retries - 1:
+                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
+                    # Small delay before retry
+                    time.sleep(0.1 + random.random() * 0.1)
+                    continue
+                else:
+                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
+                    return generated_text, None
+                    
+        except Exception as e:
+            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                continue
+            else:
+                # Return error info after all retries exhausted
+                return f"ERROR after {max_retries} attempts: {str(e)}", None
+    
+    return f"EXTRACTION_FAILED after {max_retries} attempts", None
+
 def extract_answer_robust(model_output: str) -> str:
     """
     Extract the final answer (A, B, C, D) from model output using structured patterns first.
@@ -555,8 +605,30 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                 correct_predictions += 1
                                 is_correct_log = True
                         else:
-                            errors_or_skipped += 1
-                            generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
+                            # Batch extraction failed, try individual retry for this item
+                            logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
+                            prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
+                            retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
+                            
+                            if retry_answer is not None:
+                                generated_text_log = retry_text
+                                model_answer_log = retry_answer
+                                total_predictions += 1
+                                if model_answer_log == ground_truth:
+                                    correct_predictions += 1
+                                    is_correct_log = True
+                                logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
+                            else:
+                                # Even retry failed
+                                if not retry_text.startswith("ERROR"):
+                                    logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
+                                    errors_or_skipped += 1
+                                    generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
+                                else:
+                                    # This was a model error, not extraction failure  
+                                    logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
+                                    errors_or_skipped += 1
+                                    generated_text_log = retry_text
 
                         current_item_index = batch_start + j # or find a better way to get original index
                         results_details.append({

@@ -11,6 +11,25 @@ from dataclasses import dataclass, field
 import gc
 import sys # For version logging
 from datetime import datetime
+import time
+import random
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Global Configuration
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+CACHE_DIR = "../cache"  # Cache directory for models
+DATASET_PATH = "../../2_datasets/MMLU/data/"  # Path to MMLU dataset
+BASE_OUTPUT_DIR = "../4_evaluation_results/MMLU_5shot"  # Output directory
+BATCH_SIZE = 16
 
 # Import performance analyzer
 try:
@@ -225,6 +244,60 @@ def extract_answer_first_token(model_output, tokenizer):
             return char
     
     return None
+
+def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+    """
+    Process a single prompt with retry logic for answer extraction failures
+    Only retries when answer extraction fails (not on genuine model errors)
+    """
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(
+                prompt,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=2048
+            ).to(DEVICE)
+
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=5,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                )
+            
+            input_length = inputs['input_ids'].shape[1]
+            output_tokens = outputs[0][input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            
+            # Try to extract answer
+            extracted_answer = extract_answer_first_token(generated_text, tokenizer)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+            else:
+                # Answer extraction failed - try again if we have retries left
+                if attempt < max_retries - 1:
+                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
+                    # Small delay before retry
+                    time.sleep(0.1 + random.random() * 0.1)
+                    continue
+                else:
+                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
+                    return generated_text, None
+                    
+        except Exception as e:
+            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                continue
+            else:
+                # Return error info after all retries exhausted
+                return f"ERROR after {max_retries} attempts: {str(e)}", None
+    
+    return f"EXTRACTION_FAILED after {max_retries} attempts", None
 
 def load_mmlu_data(filepath):
     """JSON 파일에서 MMLU 데이터를 로드합니다."""
@@ -480,7 +553,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
 
-            for result, ground_truth, original_item in zip(batch_results, batch_ground_truths, batch_original_items):
+            for result, ground_truth, original_item, batch_prompt in zip(batch_results, batch_ground_truths, batch_original_items, batch_prompts):
                 generated_text_log = result['raw_output']
                 model_answer_log = result['extracted_answer']
                 is_correct_log = False
@@ -491,30 +564,55 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                         correct_predictions += 1
                         is_correct_log = True
                 else:
-                    errors_or_skipped += 1
-                    original_generated_text = generated_text_log
-                    if not generated_text_log.startswith("ERROR"):
-                        generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
-                        failure_type = "answer_extraction_failed"
+                    # Batch extraction failed, try individual retry for this item
+                    if not result['raw_output'].startswith("ERROR"):
+                        logger.warning(f"Batch extraction failed for item {result['index']}, attempting individual retry...")
+                        retry_text, retry_answer = process_single_with_retry(model, tokenizer, batch_prompt)
+                        
+                        if retry_answer is not None:
+                            generated_text_log = retry_text
+                            model_answer_log = retry_answer
+                            total_predictions += 1
+                            if model_answer_log == ground_truth:
+                                correct_predictions += 1
+                                is_correct_log = True
+                            logger.info(f"Retry successful for item {result['index']}: extracted '{retry_answer}'")
+                        else:
+                            # Even retry failed
+                            errors_or_skipped += 1
+                            original_generated_text = retry_text if retry_text else generated_text_log
+                            if not retry_text.startswith("ERROR"):
+                                logger.warning(f"Item {result['index']}: Failed to extract answer after retries")
+                                generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
+                                failure_type = "answer_extraction_failed"
+                            else:
+                                # This was a model error, not extraction failure  
+                                logger.error(f"Item {result['index']}: Model error: {retry_text}")
+                                generated_text_log = retry_text
+                                failure_type = "model_error"
                     else:
+                        # This was already a model error from batch processing
+                        errors_or_skipped += 1
+                        original_generated_text = generated_text_log
                         failure_type = "model_error"
-                    
-                    # Add to failure cases
-                    failure_cases_list.append({
-                        "index": result['index'],
-                        "subject": original_item.get("Subject", "unknown"),
-                        "question": original_item.get("Question", ""),
-                        "ground_truth": ground_truth,
-                        "failure_type": failure_type,
-                        "failure_reason": generated_text_log,
-                        "raw_output": original_generated_text,
-                        "choices": {
-                            "A": original_item.get("A", ""),
-                            "B": original_item.get("B", ""),
-                            "C": original_item.get("C", ""),
-                            "D": original_item.get("D", "")
-                        }
-                    })
+                        
+                    # Add to failure cases only if there's a failure
+                    if 'failure_type' in locals():
+                        failure_cases_list.append({
+                            "index": result['index'],
+                            "subject": original_item.get("Subject", "unknown"),
+                            "question": original_item.get("Question", ""),
+                            "ground_truth": ground_truth,
+                            "failure_type": failure_type,
+                            "failure_reason": generated_text_log,
+                            "raw_output": original_generated_text,
+                            "choices": {
+                                "A": original_item.get("A", ""),
+                                "B": original_item.get("B", ""),
+                                "C": original_item.get("C", ""),
+                                "D": original_item.get("D", "")
+                            }
+                        })
 
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,

@@ -43,6 +43,7 @@ GEMINI_COST_PER_1M_OUTPUT = 2.5  # gemini-flash 출력 비용
 # 배치 크기 및 저장 주기 설정
 # =================================================================
 BATCH_SIZE = 5 # 한 번에 처리할 요청의 수 (다중 ToW 생성으로 인해 감소)
+PARALLEL_REQUESTS = 3  # 동시 API 호출 수 (레이트 리밋 고려)
 SAVE_INTERVAL = 100 # 몇 개의 결과를 처리할 때마다 저장할지 결정
 MAX_TOW_RETRIES = 3  # 각 ToW 생성 최대 재시도 횟수
 
@@ -103,12 +104,17 @@ You are an expert literary critic and a language reasoning AI. Your mission is t
 # =================================================================
 # 수정: 지수 백오프(Exponential Backoff)를 적용한 API 호출 래퍼
 # =================================================================
+
+# API 레이트 리밋 제어용 세마포어
+api_semaphore = None
+
 async def generate_with_backoff(model, prompt, generation_config):
-    """지수 백오프를 사용하여 API를 호출하고, 실패 시 재시도합니다."""
+    """세마포어와 지수 백오프를 사용하여 API를 호출하고, 실패 시 재시도합니다."""
     max_retries = 5
     base_delay = 2  # 초
 
-    for i in range(max_retries):
+    async with api_semaphore:  # 세마포어로 동시 호출 수 제한
+        for i in range(max_retries):
         try:
             # model.generate_content_async를 사용하여 비동기 태스크 생성
             response = await model.generate_content_async(prompt, generation_config=generation_config)
@@ -119,10 +125,10 @@ async def generate_with_backoff(model, prompt, generation_config):
                 print(f"\n[ERROR] API 호출 최종 실패: {e}")
                 raise e
             
-            # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
-            delay = base_delay * (3 ** i) + random.uniform(0, 1)
-            print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
-            await asyncio.sleep(delay)
+                # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
+                delay = base_delay * (3 ** i) + random.uniform(0, 1)
+                print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
+                await asyncio.sleep(delay)
 
 def estimate_tokens(text):
     """텍스트의 대략적인 토큰 수를 추정합니다."""
@@ -260,6 +266,105 @@ def update_emergency_data(results):
     """현재 결과를 전역 응급 저장 데이터에 업데이트"""
     global current_results
     current_results = results[:]  # 복사본 저장
+
+# =================================================================
+# 진짜 병렬 배치 처리 함수들
+# =================================================================
+
+async def process_single_tow(model, prompt, generation_config, context_info):
+    """단일 ToW 생성을 처리하는 함수"""
+    try:
+        response = await generate_with_backoff(model, prompt, generation_config)
+        tow_content = response.text.strip()
+        
+        return {
+            'success': True,
+            'content': tow_content,
+            'input_tokens': estimate_tokens(prompt),
+            'output_tokens': estimate_tokens(tow_content),
+            'context_info': context_info
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'context_info': context_info
+        }
+
+async def process_item_parallel(item, model, generation_config, processed_data):
+    """단일 아이템의 모든 ToW를 병렬로 처리"""
+    original_sentence = item['original_sentence']
+    context = item['context']
+    gold_labels = item['gold_label']
+    item_id = item['id']
+    
+    # 기존 처리 결과 확인
+    if item_id in processed_data:
+        proc_data = processed_data[item_id]
+        tows = proc_data['tows'][:]
+        completed_indices = set(proc_data['completed_indices'])
+    else:
+        tows = [''] * len(gold_labels)
+        completed_indices = set()
+    
+    # 병렬 처리할 태스크들 생성
+    tasks = []
+    task_info = []
+    current_context = context
+    
+    for i, gold_label in enumerate(gold_labels):
+        if i in completed_indices:
+            # 이미 완료된 ToW는 context 업데이트만
+            if i < len(gold_labels) - 1:
+                next_gold_label = gold_labels[i + 1]
+                between_text = find_text_until_gold_label(original_sentence, gold_label, next_gold_label)
+                current_context = current_context + " " + tows[i] + " " + gold_label + between_text
+            continue
+        
+        # 프롬프트 생성
+        prompt = FEW_SHOT_PROMPT_TEMPLATE.format(context=current_context, gold_label=gold_label)
+        
+        # 태스크 생성
+        context_info = {
+            'item_id': item_id,
+            'gold_label_index': i,
+            'gold_label': gold_label,
+            'current_context': current_context
+        }
+        
+        task = process_single_tow(model, prompt, generation_config, context_info)
+        tasks.append(task)
+        task_info.append((i, gold_label))
+        
+        # 다음 context 예상 업데이트 (병렬이므로 실제로는 나중에 순서대로 업데이트)
+        if i < len(gold_labels) - 1:
+            next_gold_label = gold_labels[i + 1]
+            between_text = find_text_until_gold_label(original_sentence, gold_label, next_gold_label)
+            current_context = current_context + " [ToW_PLACEHOLDER] " + gold_label + between_text
+    
+    # 병렬 실행
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 결과 처리 (순서대로)
+        for (task_idx, (gold_idx, gold_label)), result in zip(enumerate(task_info), results):
+            if isinstance(result, Exception):
+                tows[gold_idx] = f"[ERROR] ToW generation failed for '{gold_label}': {str(result)}"
+            elif result['success']:
+                tows[gold_idx] = result['content']
+                completed_indices.add(gold_idx)
+            else:
+                tows[gold_idx] = f"[ERROR] ToW generation failed for '{gold_label}': {result['error']}"
+    
+    return {
+        'id': item_id,
+        'original_sentence': original_sentence,
+        'context': context,
+        'gold_label': gold_labels,
+        'tows': tows,
+        'completed_count': len([t for t in tows if not t.startswith('[ERROR]')]),
+        'total_count': len(gold_labels)
+    }
 
 # --- 메인 실행 로직 (비동기 배치 처리 및 주기적 저장) ---
 async def generate_multiple_tow_dataset_async():

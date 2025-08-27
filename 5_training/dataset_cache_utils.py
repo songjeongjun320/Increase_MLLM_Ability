@@ -166,9 +166,9 @@ class SmartToWDataProcessor:
         lengths = []
         
         for entry in tqdm(data, desc="Analyzing lengths"):
-            input_text = entry.get('input', '')
-            output_text = entry.get('output', '')
-            text = f"{input_text}{output_text}{self.tokenizer.eos_token}"
+            prompt = entry.get('prompt', '')         # ✅ 올바른 키
+            completion = entry.get('completion', '') # ✅ 올바른 키
+            text = f"{prompt}{completion}{self.tokenizer.eos_token}"
             tokens = self.tokenizer.tokenize(text)
             lengths.append(len(tokens))
         

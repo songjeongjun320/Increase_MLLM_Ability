@@ -12,7 +12,7 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=1 ToW_Training_deepseek.py
+deepspeed --num_gpus=2 ToW_Training_deepseek.py
 torchrun --nproc_per_node=4 ToW_Training_deepseek.py
 """
 
@@ -146,10 +146,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 500
+    eval_steps: int = 250
     save_strategy: str = "steps"
-    save_steps: int = 500
-    logging_steps: int = 500
+    save_steps: int = 250
+    logging_steps: int = 250
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 2

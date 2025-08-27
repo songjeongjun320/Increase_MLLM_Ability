@@ -16,11 +16,11 @@ MODEL_NAMES=(
 MODEL_PATHS=(
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"  # 수정: 경로 이름 맞춤
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
 )
 
@@ -35,20 +35,33 @@ ADAPTER_PATHS=(
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW"
 )
 
-TASKS=("piqa_en_custom" "piqa_ko_custom")
+# 기본 PIQA와 PIQA-KO 태스크 사용 (Hugging Face에서 제공)
+TASKS=("piqa" "piqa-ko")  # piqa와 piqa-ko 태스크를 추가
 RESULTS_DIR="./evaluation_results_piqa"
 mkdir -p $RESULTS_DIR
-NUM_FEWSHOT=0
+NUM_FEWSHOT=0  # Zero-shot 평가
 
 NUM_MODELS=${#MODEL_NAMES[@]}
 NUM_TASKS=${#TASKS[@]}
 TOTAL_RUNS=$((NUM_MODELS * NUM_TASKS))
 CURRENT_RUN=0
 
+echo "PIQA 평가 시작"
+echo "모델 수: $NUM_MODELS"
+echo "태스크 수: $NUM_TASKS" 
+echo "총 실행 횟수: $TOTAL_RUNS"
+echo "Few-shot: $NUM_FEWSHOT (Zero-shot)"
+echo ""
+
 for i in "${!MODEL_NAMES[@]}"; do
     NAME=${MODEL_NAMES[$i]}
     MODEL_PATH=${MODEL_PATHS[$i]}
     ADAPTER_PATH=${ADAPTER_PATHS[$i]}
+
+    echo "모델 정보:"
+    echo "  이름: $NAME"
+    echo "  경로: $MODEL_PATH"
+    echo "  어댑터: $ADAPTER_PATH"
 
     MODEL_ARGS="pretrained=$MODEL_PATH"
     if [ -n "$ADAPTER_PATH" ]; then
@@ -64,11 +77,11 @@ for i in "${!MODEL_NAMES[@]}"; do
 
         OUTPUT_FILE="$RESULTS_DIR/${NAME}_${TASK}.json"
 
+        # 기본 태스크 사용 시 --include_path 제거
         accelerate launch -m lm_eval \
             --model hf \
             --model_args $MODEL_ARGS \
             --tasks $TASK \
-            --include_path ./eval_configs \
             --num_fewshot $NUM_FEWSHOT \
             --batch_size auto \
             --output_path $OUTPUT_FILE \
@@ -82,10 +95,14 @@ done
 
 echo "모든 PIQA 평가가 완료되었습니다."
 
+# 생성된 파일들 확인
+echo "===================================================="
+echo "생성된 결과 파일들:"
+ls -la $RESULTS_DIR/*.json
+echo "===================================================="
+
 # 결과 요약 생성
-echo "===================================================="
 echo "결과 요약을 생성하는 중..."
-echo "===================================================="
 
 SUMMARY_FILE="$RESULTS_DIR/piqa_summary.json"
 
@@ -115,34 +132,39 @@ for i in "${!MODEL_NAMES[@]}"; do
             echo ',' >> $SUMMARY_FILE
         fi
         
-        # JSON 파일에서 정확도 추출
+        echo "처리 중: $RESULT_FILE"
+        
+        # JSON 파일에서 정확도 추출 (강화된 버전)
         if [ -f "$RESULT_FILE" ]; then
+            echo "파일 존재함. 분석 중..."
+            
             ACCURACY=$(python3 -c "
 import json
 try:
     with open('$RESULT_FILE', 'r') as f:
         data = json.load(f)
-    if 'results' in data and '$TASK' in data['results']:
-        task_results = data['results']['$TASK']
+    
+    if 'results' not in data:
+        print('N/A')
+        exit()
+    
+    task_key = None
+    if '$TASK' in data['results']:
+        task_key = '$TASK'
+    
+    if task_key:
+        task_results = data['results'][task_key]
         if 'acc' in task_results:
-            print(f'{task_results[\"acc\"]:.4f}')
+            print(f'{task_results[\"acc\"]:.3f}')
+        elif 'accuracy' in task_results:
+            print(f'{task_results[\"accuracy\"]:.3f}')
         else:
-            for key, value in task_results.items():
-                if isinstance(value, (int, float)) and key != 'alias':
-                    print(f'{value:.4f}')
-                    break
-            else:
-                print('null')
-    else:
-        print('null')
-except:
-    print('null')
+            print('N/A')
+except Exception as e:
+    print('N/A')
             ")
-        else
-            ACCURACY="null"
+            echo -n '        "'$TASK'": '$ACCURACY >> $SUMMARY_FILE
         fi
-        
-        echo -n '        "'$TASK'": '$ACCURACY >> $SUMMARY_FILE
         task_count=$((task_count + 1))
     done
     
@@ -167,7 +189,7 @@ echo "" >> $TEXT_SUMMARY
 
 printf "%-30s" "모델명" >> $TEXT_SUMMARY
 for TASK in "${TASKS[@]}"; do
-    printf "%-15s" "${TASK##*_}" >> $TEXT_SUMMARY
+    printf "%-15s" "${TASK}" >> $TEXT_SUMMARY
 done
 echo "" >> $TEXT_SUMMARY
 
@@ -183,20 +205,44 @@ import json
 try:
     with open('$RESULT_FILE', 'r') as f:
         data = json.load(f)
-    if 'results' in data and '$TASK' in data['results']:
+    
+    if 'results' not in data:
+        print('N/A')
+        exit()
+    
+    # 태스크 키 찾기 (동일한 로직)
+    task_key = None
+    task_results = None
+    
+    if '$TASK' in data['results']:
         task_results = data['results']['$TASK']
+    else:
+        for key in data['results'].keys():
+            if '$TASK' in key or key in '$TASK':
+                task_results = data['results'][key]
+                break
+    
+    if task_results and isinstance(task_results, dict):
         if 'acc' in task_results:
             print(f'{task_results[\"acc\"]:.3f}')
+        elif 'accuracy' in task_results:
+            print(f'{task_results[\"accuracy\"]:.3f}')
+        elif 'acc_norm' in task_results:
+            print(f'{task_results[\"acc_norm\"]:.3f}')
         else:
-            for key, value in task_results.items():
-                if isinstance(value, (int, float)) and key != 'alias':
+            found_value = False
+            for metric_key, value in task_results.items():
+                if isinstance(value, (int, float)) and metric_key not in ['alias', 'num_fewshot', 'stderr']:
                     print(f'{value:.3f}')
+                    found_value = True
                     break
-            else:
+            
+            if not found_value:
                 print('N/A')
     else:
         print('N/A')
-except:
+        
+except Exception as e:
     print('N/A')
             ")
         else
@@ -209,3 +255,14 @@ done
 
 echo ""
 echo "텍스트 요약이 $TEXT_SUMMARY 에 저장되었습니다."
+
+# 최종 요약 출력
+echo "===================================================="
+echo "PIQA 평가 최종 요약:"
+echo "- 평가된 모델 수: $NUM_MODELS"
+echo "- 평가된 태스크: ${TASKS[*]}" 
+echo "- Few-shot 설정: $NUM_FEWSHOT (Zero-shot)"
+echo "- 생성된 파일:"
+echo "  JSON 요약: $SUMMARY_FILE"
+echo "  텍스트 요약: $TEXT_SUMMARY"
+echo "===================================================="

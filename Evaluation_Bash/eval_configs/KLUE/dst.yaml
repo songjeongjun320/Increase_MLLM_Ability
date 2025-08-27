@@ -1,37 +1,53 @@
 task: dst
 dataset_path: klue
-dataset_name: wos  # Word-in-Context의 정확한 dataset_name
+dataset_name: wos  # DST(Dialogue State Tracking)의 정확한 dataset_name
 test_split: validation
 
-output_type: multiple_choice
+output_type: generate_until
+
+generation_kwargs:
+  until: ["\n\n", "\n대화:", "<|im_end|>"]
+  max_gen_toks: 200
+  temperature: 0.0
 
 metric_list:
-  - metric: acc
+  - metric: exact_match
     aggregation: mean
     higher_is_better: true
 
-description: "두 문장에서 대상 단어가 같은 의미로 사용되었는지 판단하세요."
+description: "대화에서 현재 상태의 슬롯-값 쌍을 예측하세요."
 
+# WoS 데이터는 복잡한 구조이므로 전체 대화를 제공하고 마지막 사용자 발언의 상태를 예측하도록 설계
 doc_to_text: |
-  문장1: {{context_1}}
-  문장2: {{context_2}}
-  대상 단어: {{word}}
+  다음 대화에서 마지막 사용자 발언 후의 대화 상태를 예측하세요.
   
-  두 문장에서 '{{word}}'가 같은 의미로 사용되었습니까?
-  A. 예 (같은 의미)
-  B. 아니오 (다른 의미)
+  {% for turn in dialogue %}
+  {% if turn.role == 'user' %}사용자: {{ turn.text }}
+  {% else %}시스템: {{ turn.text }}
+  {% endif %}
+  {% endfor %}
   
-  답:
+  현재 대화 상태 (형식: 도메인-슬롯-값):
 
-doc_to_choice: ["A", "B"]
+# 마지막 사용자 턴의 state를 target으로 사용
+doc_to_target: |
+  {% set last_user_state = [] %}
+  {% for turn in dialogue %}
+    {% if turn.role == 'user' and turn.state %}
+      {% set last_user_state = turn.state %}
+    {% endif %}
+  {% endfor %}
+  {{ last_user_state|join(', ') if last_user_state else 'none' }}
 
-# label이 0이면 B(다른 의미), 1이면 A(같은 의미)로 매핑
-doc_to_target: "{{['B', 'A'][label]}}"
+filter_list:
+  - name: "whitespace"
+    filter:
+      - function: "take_first"
 
 fewshot_config:
   sampler: first_n
 
-num_fewshot: 3
+num_fewshot: 1  # DST는 매우 복잡하므로 최소 few-shot
 should_decontaminate: true
 metadata:
   version: 1.0

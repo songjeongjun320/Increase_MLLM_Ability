@@ -7,14 +7,14 @@ output_type: generate_until
 
 generation_kwargs:
   until: ["\n\n", "\n질문:", "\n지문:", "<|im_end|>"]
-  max_gen_toks: 100  # MRC 답변은 보통 짧음
+  max_gen_toks: 100
   temperature: 0.0
 
 metric_list:
   - metric: exact_match
     aggregation: mean
     higher_is_better: true
-  - metric: f1
+  - metric: quasi_exact_match
     aggregation: mean
     higher_is_better: true
 
@@ -27,7 +27,14 @@ doc_to_text: |
   
   답변:
 
-# 답변 추출을 위한 필터 (공백 제거)
+# 첫 번째 답변의 텍스트 추출 (더 안전한 접근 방식)
+doc_to_target: |
+  {% if answers and answers|length > 0 and answers[0].text %}
+  {{ answers[0].text }}
+  {% else %}
+  
+  {% endif %}
+
 filter_list:
   - name: "whitespace"
     filter:
@@ -36,10 +43,7 @@ filter_list:
 fewshot_config:
   sampler: first_n
 
-# MRC의 타겟은 answers 리스트의 첫 번째 answer의 text 필드
-doc_to_target: "answers.0.text"  # 또는 "answers[0]['text']"
-
-num_fewshot: 2  # MRC는 복잡하므로 적게
+num_fewshot: 2
 should_decontaminate: true
 metadata:
   version: 1.0

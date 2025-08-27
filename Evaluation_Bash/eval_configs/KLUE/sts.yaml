@@ -11,7 +11,10 @@ generation_kwargs:
   do_sample: false
 
 metric_list:
-  - metric: pearsonr
+  - metric: spearmanr
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc
     aggregation: mean
     higher_is_better: true
 
@@ -37,8 +40,8 @@ filter_list:
 fewshot_config:
   sampler: first_n
 
-# 실제 점수 값 (0-5 범위의 실수)
-doc_to_target: "{{labels.real_label}}"
+# 실제 점수 값 (0-5 범위의 실수) - 하이픈 포함 필드명
+doc_to_target: "{{labels['real-label']}}"
 
 num_fewshot: 3
 should_decontaminate: true

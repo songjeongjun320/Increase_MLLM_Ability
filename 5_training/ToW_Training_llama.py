@@ -122,13 +122,13 @@ class ToWTrainingConfig:
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/single_tow_dataset.jsonl"
     ])
-    output_base_dir: str = "ToW_Models_2"
+    output_base_dir: str = "ToW_Models_3"
     
     # Training hyperparameters
-    learning_rate: float = 2e-5  # This will be a fallback
+    learning_rate: float = 1e-5  # This will be a fallback
     max_grad_norm = 1.0
-    num_train_epochs: int = 10
-    per_device_train_batch_size: int = 16  # Reduced for memory efficiency with DeepSpeed
+    num_train_epochs: int = 3
+    per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
     per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
     gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 

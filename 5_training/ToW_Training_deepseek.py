@@ -122,15 +122,15 @@ class ToWTrainingConfig:
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/single_tow_dataset.jsonl"
     ])
-    output_base_dir: str = "ToW_Models_2"
+    output_base_dir: str = "ToW_Models_3"
     
     # Training hyperparameters
-    learning_rate: float = 2e-5  # This will be a fallback
+    learning_rate: float = 1e-5  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
-    per_device_train_batch_size: int = 16  # Reduced for memory efficiency with DeepSpeed
-    per_device_eval_batch_size: int = 16  # Reduced for memory efficiency
-    gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
+    gradient_accumulation_steps: int = 16  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
     
     # Smart text handling
@@ -140,7 +140,7 @@ class ToWTrainingConfig:
     min_chunk_overlap: int = 50
     
     # Default settings
-    max_sequence_length: int = 256
+    max_sequence_length: int = 512
     warmup_ratio: float = 0.1
     weight_decay: float = 0.01
     
@@ -149,13 +149,13 @@ class ToWTrainingConfig:
     eval_steps: int = 250
     save_strategy: str = "steps"
     save_steps: int = 250
-    logging_steps: int = 250
-    early_stopping_patience: int = 3
+    logging_steps: int = 100
+    early_stopping_patience: int = 5
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 2
     remove_unused_columns: bool = True
-    fp16: bool = False
-    bf16: bool = True
+    fp16: bool = True
+    bf16: bool = False
     gradient_checkpointing: bool = False
 
 
@@ -256,7 +256,7 @@ class ToWTrainer:
             r=16,
             lora_alpha=32,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.1,
+            lora_dropout=0.2,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens

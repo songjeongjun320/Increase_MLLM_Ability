@@ -27,7 +27,7 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # =================================================================
 # GCP 프로젝트 및 Gemini 모델 설정
 # =================================================================
-PROJECT_ID = "gen-lang-client-0996841973"
+PROJECT_ID = "data-media-470315-k7"
 LOCATION = "us-central1"
 
 GEMINI_MODEL_ID = "gemini-2.5-flash"
@@ -43,9 +43,9 @@ GEMINI_COST_PER_1M_OUTPUT = 2.5  # gemini-flash 출력 비용
 # 배치 크기 및 저장 주기 설정
 # =================================================================
 BATCH_SIZE = 5 # 한 번에 처리할 요청의 수 (다중 ToW 생성으로 인해 감소)
-PARALLEL_REQUESTS = 3  # 동시 API 호출 수 (레이트 리밋 고려)
+PARALLEL_REQUESTS = 5  # 동시 API 호출 수 (레이트 리밋 고려)
 SAVE_INTERVAL = 100 # 몇 개의 결과를 처리할 때마다 저장할지 결정
-MAX_TOW_RETRIES = 3  # 각 ToW 생성 최대 재시도 횟수
+MAX_TOW_RETRIES = 5  # 각 ToW 생성 최대 재시도 횟수
 
 # =================================================================
 # 프롬프트는 질문에 제공된 내용을 그대로 사용합니다.

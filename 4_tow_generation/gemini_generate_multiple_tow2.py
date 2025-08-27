@@ -27,7 +27,7 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # =================================================================
 # GCP 프로젝트 및 Gemini 모델 설정
 # =================================================================
-PROJECT_ID = "gen-lang-client-0996841973"
+PROJECT_ID = "data-media-470315-k7"
 LOCATION = "us-central1"
 
 GEMINI_MODEL_ID = "gemini-2.5-flash"
@@ -43,9 +43,9 @@ GEMINI_COST_PER_1M_OUTPUT = 2.5  # gemini-flash 출력 비용
 # 배치 크기 및 저장 주기 설정
 # =================================================================
 BATCH_SIZE = 5 # 한 번에 처리할 요청의 수 (다중 ToW 생성으로 인해 감소)
-PARALLEL_REQUESTS = 3  # 동시 API 호출 수 (레이트 리밋 고려)
+PARALLEL_REQUESTS = 5  # 동시 API 호출 수 (레이트 리밋 고려)
 SAVE_INTERVAL = 100 # 몇 개의 결과를 처리할 때마다 저장할지 결정
-MAX_TOW_RETRIES = 3  # 각 ToW 생성 최대 재시도 횟수
+MAX_TOW_RETRIES = 5  # 각 ToW 생성 최대 재시도 횟수
 
 # =================================================================
 # 프롬프트는 질문에 제공된 내용을 그대로 사용합니다.
@@ -115,16 +115,16 @@ async def generate_with_backoff(model, prompt, generation_config):
 
     async with api_semaphore:  # 세마포어로 동시 호출 수 제한
         for i in range(max_retries):
-        try:
-            # model.generate_content_async를 사용하여 비동기 태스크 생성
-            response = await model.generate_content_async(prompt, generation_config=generation_config)
-            return response # 성공 시 결과 반환
-        except Exception as e:
-            if i == max_retries - 1:
-                # 마지막 재시도도 실패하면 예외를 다시 발생시킴
-                print(f"\n[ERROR] API 호출 최종 실패: {e}")
-                raise e
-            
+            try:
+                # model.generate_content_async를 사용하여 비동기 태스크 생성
+                response = await model.generate_content_async(prompt, generation_config=generation_config)
+                return response # 성공 시 결과 반환
+            except Exception as e:
+                if i == max_retries - 1:
+                    # 마지막 재시도도 실패하면 예외를 다시 발생시킴
+                    print(f"\n[ERROR] API 호출 최종 실패: {e}")
+                    raise e
+                
                 # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
                 delay = base_delay * (3 ** i) + random.uniform(0, 1)
                 print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
@@ -291,6 +291,7 @@ async def process_single_tow(model, prompt, generation_config, context_info):
             'context_info': context_info
         }
 
+# --- 개선된 부분: 예외 처리 강화 ---
 async def process_item_parallel(item, model, generation_config, processed_data):
     """단일 아이템의 모든 ToW를 병렬로 처리"""
     original_sentence = item['original_sentence']
@@ -306,7 +307,7 @@ async def process_item_parallel(item, model, generation_config, processed_data):
     else:
         tows = [''] * len(gold_labels)
         completed_indices = set()
-    
+
     # 병렬 처리할 태스크들 생성
     tasks = []
     task_info = []
@@ -366,12 +367,18 @@ async def process_item_parallel(item, model, generation_config, processed_data):
         'total_count': len(gold_labels)
     }
 
+
 # --- 메인 실행 로직 (비동기 배치 처리 및 주기적 저장) ---
 async def generate_multiple_tow_dataset_async():
-    """Gemini API를 비동기 배치로 호출하고 순차적으로 다중 ToW 데이터셋을 생성합니다."""
+    """Gemini API를 진짜 비동기 배치로 호출하고 병렬로 다중 ToW 데이터셋을 생성합니다."""
+    global api_semaphore
     
     # 응급 저장 시스템 활성화
     setup_emergency_handlers()
+
+    # API 세마포어 초기화
+    api_semaphore = asyncio.Semaphore(PARALLEL_REQUESTS)
+    print(f"[INFO] API 세마포어 초기화: 동시 요청 수 {PARALLEL_REQUESTS}")
 
     # Vertex AI 초기화
     print(f"[INFO] Vertex AI를 초기화합니다. (Project: {PROJECT_ID}, Location: {LOCATION})")
@@ -463,130 +470,61 @@ async def generate_multiple_tow_dataset_async():
 
     print(f"[INFO] 총 {len(tasks_to_run)}개의 신규 항목을 {BATCH_SIZE}개씩 배치로 처리를 시작합니다.")
 
-    # 배치 처리로 항목들을 처리
-    for batch_start in tqdm(range(0, len(tasks_to_run), BATCH_SIZE), desc="Processing batches"):
+    # 진짜 병렬 배치 처리
+    print(f"[INFO] 진짜 병렬 배치 처리 시작: 배치당 {BATCH_SIZE}개 항목, 동시 API 요청 {PARALLEL_REQUESTS}개")
+    
+    for batch_start in tqdm(range(0, len(tasks_to_run), BATCH_SIZE), desc="Processing batches in parallel"):
         batch_end = min(batch_start + BATCH_SIZE, len(tasks_to_run))
         batch_items = tasks_to_run[batch_start:batch_end]
         
-        print(f"\n[BATCH] 배치 {batch_start//BATCH_SIZE + 1}: {len(batch_items)}개 항목 처리 중...")
+        print(f"\n[BATCH] 배치 {batch_start//BATCH_SIZE + 1}: {len(batch_items)}개 항목 병렬 처리 중...")
         
-        # 배치 내의 각 항목을 순차적으로 처리 (다중 gold_label 처리를 위해)
-        for item_idx, item in enumerate(batch_items):
-            original_sentence = item['original_sentence']
-            context = item['context']
-            gold_labels = item['gold_label']  # 리스트 형태
-            item_id = item['id']
+        # 배치 내 모든 아이템을 병렬로 처리
+        batch_tasks = []
+        for item in batch_items:
+            task = process_item_parallel(item, model, generation_config, processed_data)
+            batch_tasks.append(task)
         
-            # 기존 처리 결과가 있는지 확인
-            if item_id in processed_data:
-                # 부분 완성된 항목 - 기존 결과를 가져와서 실패한 부분만 재시도
-                proc_data = processed_data[item_id]
-                tows = proc_data['tows'][:]
-                completed_indices = set(proc_data['completed_indices'])
-                print(f"[INFO] ID {item_id}: 부분 완성 항목 발견. {len(completed_indices)}/{len(gold_labels)} ToW 완료됨")
-            else:
-                # 새로운 항목
-                tows = [''] * len(gold_labels)  # 빈 리스트로 초기화
-                completed_indices = set()
+        try:
+            # 배치 내 모든 아이템을 병렬 실행
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
             
-            current_context = context
-        
-            # 각 gold_label에 대해 순차적으로 ToW 생성 또는 재시도
-            for i, gold_label in enumerate(gold_labels):
-                # 이미 성공한 ToW는 건너뛰기
-                if i in completed_indices:
-                    # 성공한 ToW를 사용해서 context 업데이트
-                    if i < len(gold_labels) - 1:
-                        next_gold_label = gold_labels[i + 1]
-                        between_text = find_text_until_gold_label(original_sentence, gold_label, next_gold_label)
-                        current_context = current_context + " " + tows[i] + " " + gold_label + between_text
-                    print(f"[SKIP] ID {item_id}: Gold Label {i+1}/{len(gold_labels)} '{gold_label}' 이미 완료됨")
+            # 결과 처리
+            for i, result in enumerate(batch_results):
+                if isinstance(result, Exception):
+                    print(f"[ERROR] 배치 항목 {i} 처리 실패: {result}")
+                    error_count += 1
                     continue
-            
-                # 실패했거나 새로운 ToW 생성 시도
-                tow_success = False
-                for retry_count in range(MAX_TOW_RETRIES):
-                    try:
-                        # 현재 context와 gold_label로 프롬프트 생성
-                        prompt = FEW_SHOT_PROMPT_TEMPLATE.format(context=current_context, gold_label=gold_label)
-                        
-                        # 입력 토큰 수 계산 및 로깅
-                        input_tokens = estimate_tokens(prompt)
-                        total_input_tokens += input_tokens
-                        
-                        # 입력 토큰 경고 (매우 긴 경우)
-                        if input_tokens > 10000:
-                            print(f"\n[WARNING] ID {item_id}, Gold Label {i+1}: 입력 토큰 수가 {input_tokens}개로 매우 큽니다.")
-                        
-                        # API 호출하여 ToW 생성
-                        response = await generate_with_backoff(model, prompt, generation_config)
-                        tow_content = response.text.strip()
-                    
-                        # 출력 토큰 수 계산 및 로깅
-                        output_tokens = estimate_tokens(tow_content)
-                        total_output_tokens += output_tokens
-                        
-                        # 성공적으로 생성됨
-                        tows[i] = tow_content
-                        completed_indices.add(i)
-                        tow_success = True
-                    
-                        # 다음 context 업데이트: 현재 context + ToW + current_gold_label + 다음 gold_label까지의 텍스트
-                        if i < len(gold_labels) - 1:  # 마지막이 아닌 경우만
-                            next_gold_label = gold_labels[i + 1]
-                            # current_gold_label 이후부터 next_gold_label 이전까지의 텍스트 가져오기
-                            between_text = find_text_until_gold_label(original_sentence, gold_label, next_gold_label)
-                            # 새로운 context = 이전 context + ToW + current_gold_label + between_text
-                            current_context = current_context + " " + tow_content + " " + gold_label + between_text
-                        
-                        retry_msg = f" (재시도 {retry_count + 1}/{MAX_TOW_RETRIES})" if retry_count > 0 else ""
-                        individual_cost = calculate_cost(input_tokens, output_tokens)
-                        total_cost = calculate_cost(total_input_tokens, total_output_tokens)
-                        print(f"[SUCCESS] ID {item_id}: Gold Label {i+1}/{len(gold_labels)} '{gold_label}' ToW 생성 완료{retry_msg}")
-                        print(f"         개별: {input_tokens} 입력, {output_tokens} 출력 토큰 (${individual_cost:.4f})")
-                        print(f"         누적: {total_input_tokens:,} 입력, {total_output_tokens:,} 출력 토큰 (${total_cost:.4f})")
-                        break
-                    
-                    except Exception as e:
-                        retry_msg = f" (재시도 {retry_count + 1}/{MAX_TOW_RETRIES})"
-                        current_cost = calculate_cost(total_input_tokens, total_output_tokens)
-                        if retry_count < MAX_TOW_RETRIES - 1:
-                            print(f"[RETRY] ID {item_id}, Gold Label '{gold_label}' ToW 생성 실패{retry_msg}: {e}")
-                            print(f"        누적 토큰: {total_input_tokens:,} 입력, {total_output_tokens:,} 출력 (${current_cost:.4f})")
-                            sleep_time = random.uniform(1,3)
-                            print(f"        {sleep_time:.1f}초 대기 후 재시도합니다...")
-                            await asyncio.sleep(sleep_time)  # 재시도 전 대기
-                        else:
-                            print(f"[FAILED] ID {item_id}, Gold Label '{gold_label}' ToW 생성 최종 실패{retry_msg}: {e}")
-                            print(f"         누적 토큰: {total_input_tokens:,} 입력, {total_output_tokens:,} 출력 (${current_cost:.4f})")
-                            tows[i] = f"[ERROR] ToW generation failed for '{gold_label}' after {MAX_TOW_RETRIES} retries: {str(e)}"
-                            error_count += 1
-        
-            # 결과 저장 (부분 성공이어도 저장)
-            result_item = {
-                'id': item_id,
-                'original_sentence': original_sentence,
-                'context': context,
-                'gold_label': gold_labels,
-                'tows': tows,  # 각 gold_label에 대한 ToW 리스트 (성공/실패 혼재 가능)
-                'completed_count': len([t for t in tows if not t.startswith('[ERROR]')]),
-                'total_count': len(gold_labels)
-            }
-        
-            # 기존 results에서 같은 id 항목 제거하고 새로운 결과 추가
-            results = [r for r in results if r['id'] != item_id]
-            results.append(result_item)
+                
+                item_id = result['id']
+                
+                # 토큰 카운팅 (간단화)
+                for tow in result['tows']:
+                    if not tow.startswith('[ERROR]'):
+                        total_output_tokens += estimate_tokens(tow)
+                        total_input_tokens += 1000  # 추정값
+                
+                # 기존 results에서 같은 id 항목 제거하고 새로운 결과 추가
+                results = [r for r in results if r['id'] != item_id]
+                results.append(result)
+                
+                # 진행 상황 출력
+                session_cost = calculate_cost(total_input_tokens, total_output_tokens)
+                print(f"[PARALLEL COMPLETED] ID {item_id}: {result['completed_count']}/{result['total_count']} ToW 완료")
             
             # 응급 저장용 데이터 업데이트
             update_emergency_data(results)
             
-            # 항목 완료 후 누적 정보 표시
+            # 배치 완료 후 누적 정보 표시
             session_cost = calculate_cost(total_input_tokens, total_output_tokens)
-            print(f"[ITEM COMPLETED] ID {item_id}: {result_item['completed_count']}/{result_item['total_count']} ToW 완료")
-            print(f"                 세션 누적: {total_input_tokens:,} 입력, {total_output_tokens:,} 출력 토큰")
-            print(f"                 예상 비용: ${session_cost:.4f} USD")
+            print(f"[BATCH COMPLETED] 배치 {batch_start//BATCH_SIZE + 1}: {len(batch_items)}개 항목 병렬 처리 완료")
+            print(f"                  세션 누적: {total_input_tokens:,} 입력, {total_output_tokens:,} 출력 토큰")
+            print(f"                  예상 비용: ${session_cost:.4f} USD")
+            
+        except Exception as e:
+            print(f"[ERROR] 배치 {batch_start//BATCH_SIZE + 1} 처리 실패: {e}")
+            error_count += len(batch_items)
         
-        # 배치 완료 후 주기적 저장 및 대기
         if len(results) - last_save_count >= SAVE_INTERVAL:
             print(f"\n[INFO] 중간 저장: {len(results)}개의 누적 결과를 파일에 저장합니다.")
             try:
@@ -597,9 +535,9 @@ async def generate_multiple_tow_dataset_async():
             except Exception as e:
                 print(f"[ERROR] 중간 저장 실패: {e}")
         
-        # 배치 간 API 속도 제한을 피하기 위한 대기
-        print(f"[BATCH] 배치 {batch_start//BATCH_SIZE + 1} 완료. {len(batch_items)}개 항목 처리 완료")
-        await asyncio.sleep(random.uniform(1, 3))  # 배치 간 대기 시간 증가
+        # 배치 간 쿨다운
+        print(f"[BATCH] 배치 간 쿨다운...")
+        await asyncio.sleep(random.uniform(0.5, 1.5))  # 병렬 처리로 더 짧은 대기
 
     # 모든 배치가 끝난 후 최종 저장
     print(f"\n[SUCCESS] 다중 ToW 데이터셋 생성이 완료되었습니다.")

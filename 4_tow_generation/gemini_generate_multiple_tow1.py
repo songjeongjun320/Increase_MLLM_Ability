@@ -16,6 +16,8 @@ import atexit
 from tqdm import tqdm
 import random
 import re
+import traceback
+import sys
 
 # =================================================================
 # Vertex AI SDK 임포트
@@ -27,7 +29,7 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # =================================================================
 # GCP 프로젝트 및 Gemini 모델 설정
 # =================================================================
-PROJECT_ID = "gen-lang-client-0996841973"
+PROJECT_ID = "data-media-470315-k7"
 LOCATION = "us-central1"
 
 GEMINI_MODEL_ID = "gemini-2.5-flash"
@@ -42,10 +44,10 @@ GEMINI_COST_PER_1M_OUTPUT = 2.5  # gemini-flash 출력 비용
 # =================================================================
 # 배치 크기 및 저장 주기 설정
 # =================================================================
-BATCH_SIZE = 3 # 한 번에 처리할 요청의 수 (다중 ToW 생성으로 인해 감소)
-PARALLEL_REQUESTS = 3  # 동시 API 호출 수 (레이트 리밋 고려)
+BATCH_SIZE = 5 # 한 번에 처리할 요청의 수 (다중 ToW 생성으로 인해 감소)
+PARALLEL_REQUESTS = 5  # 동시 API 호출 수 (레이트 리밋 고려)
 SAVE_INTERVAL = 100 # 몇 개의 결과를 처리할 때마다 저장할지 결정
-MAX_TOW_RETRIES = 3  # 각 ToW 생성 최대 재시도 횟수
+MAX_TOW_RETRIES = 5  # 각 ToW 생성 최대 재시도 횟수
 
 # =================================================================
 # 프롬프트는 질문에 제공된 내용을 그대로 사용합니다.
@@ -120,14 +122,28 @@ async def generate_with_backoff(model, prompt, generation_config):
                 response = await model.generate_content_async(prompt, generation_config=generation_config)
                 return response # 성공 시 결과 반환
             except Exception as e:
+                # 상세 오류 정보 수집
+                exc_type = type(e).__name__
+                exc_msg = str(e)
+                exc_traceback = traceback.format_exc()
+                
                 if i == max_retries - 1:
-                    # 마지막 재시도도 실패하면 예외를 다시 발생시킴
-                    print(f"\n[ERROR] API 호출 최종 실패: {e}")
+                    # 마지막 재시도도 실패하면 상세 오류 정보와 함께 예외를 다시 발생시킴
+                    print(f"\n[ERROR] API 호출 최종 실패:")
+                    print(f"[ERROR] - 예외 타입: {exc_type}")
+                    print(f"[ERROR] - 예외 메시지: {exc_msg}")
+                    print(f"[ERROR] - 재시도 횟수: {i+1}/{max_retries}")
+                    print(f"[ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
                     raise e
                 
                 # 지수적으로 대기 시간 증가 (+ 약간의 무작위성 추가)
                 delay = base_delay * (3 ** i) + random.uniform(0, 1)
-                print(f"\n[Warning] API 오류 발생. {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
+                print(f"\n[Warning] API 오류 발생:")
+                print(f"[Warning] - 예외 타입: {exc_type}")
+                print(f"[Warning] - 예외 메시지: {exc_msg}")
+                print(f"[Warning] - {delay:.2f}초 후 재시도합니다... (시도 {i+1}/{max_retries})")
+                if '--verbose' in sys.argv:
+                    print(f"[Warning] - 상세 스택 트레이스:\n{exc_traceback}")
                 await asyncio.sleep(delay)
 
 def estimate_tokens(text):
@@ -218,7 +234,13 @@ def emergency_save(results=None):
         print(f"[EMERGENCY] 재시작 시 이 파일을 사용하여 작업을 이어갈 수 있습니다.")
         
     except Exception as e:
-        print(f"[EMERGENCY ERROR] 응급 저장 실패: {e}")
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        exc_traceback = traceback.format_exc()
+        print(f"[EMERGENCY ERROR] 응급 저장 실패:")
+        print(f"[EMERGENCY ERROR] - 예외 타입: {exc_type}")
+        print(f"[EMERGENCY ERROR] - 예외 메시지: {exc_msg}")
+        print(f"[EMERGENCY ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
         # 최후의 수단으로 pickle로 시도
         try:
             import pickle
@@ -227,7 +249,13 @@ def emergency_save(results=None):
                 pickle.dump(results, f)
             print(f"[EMERGENCY] 백업: pickle 형태로 저장됨 - {pickle_filename}")
         except Exception as pickle_error:
-            print(f"[EMERGENCY ERROR] 백업 저장도 실패: {pickle_error}")
+            pickle_exc_type = type(pickle_error).__name__
+            pickle_exc_msg = str(pickle_error)
+            pickle_exc_traceback = traceback.format_exc()
+            print(f"[EMERGENCY ERROR] 백업 저장도 실패:")
+            print(f"[EMERGENCY ERROR] - 예외 타입: {pickle_exc_type}")
+            print(f"[EMERGENCY ERROR] - 예외 메시지: {pickle_exc_msg}")
+            print(f"[EMERGENCY ERROR] - 상세 스택 트레이스:\n{pickle_exc_traceback}")
 
 def setup_emergency_handlers():
     """시그널 핸들러와 종료 핸들러를 설정합니다"""
@@ -255,7 +283,11 @@ def setup_emergency_handlers():
         if hasattr(signal, 'SIGBREAK'):  # Windows
             signal.signal(signal.SIGBREAK, signal_handler)  # Ctrl+Break
     except Exception as e:
-        print(f"[WARNING] 일부 시그널 핸들러 등록 실패: {e}")
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        print(f"[WARNING] 일부 시그널 핸들러 등록 실패:")
+        print(f"[WARNING] - 예외 타입: {exc_type}")
+        print(f"[WARNING] - 예외 메시지: {exc_msg}")
     
     # atexit 핸들러 등록
     atexit.register(exit_handler)
@@ -285,9 +317,24 @@ async def process_single_tow(model, prompt, generation_config, context_info):
             'context_info': context_info
         }
     except Exception as e:
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        exc_traceback = traceback.format_exc()
+        error_info = f"[{exc_type}] {exc_msg}"
+        print(f"\n[ERROR] ToW 생성 실패:")
+        print(f"[ERROR] - 예외 타입: {exc_type}")
+        print(f"[ERROR] - 예외 메시지: {exc_msg}")
+        print(f"[ERROR] - Context Info: {context_info}")
+        if '--verbose' in sys.argv:
+            print(f"[ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
         return {
             'success': False,
-            'error': str(e),
+            'error': error_info,
+            'detailed_error': {
+                'type': exc_type,
+                'message': exc_msg,
+                'traceback': exc_traceback
+            },
             'context_info': context_info
         }
 
@@ -397,8 +444,22 @@ async def generate_multiple_tow_dataset_async():
     try:
         with open(INPUT_JSON_PATH, 'r', encoding='utf-8') as f:
             data = json.load(f)
-    except FileNotFoundError:
-        print(f"[ERROR] 입력 파일을 찾을 수 없습니다: {INPUT_JSON_PATH}")
+    except FileNotFoundError as e:
+        print(f"[ERROR] 입력 파일을 찾을 수 없습니다:")
+        print(f"[ERROR] - 파일 경로: {INPUT_JSON_PATH}")
+        print(f"[ERROR] - 예외 메시지: {str(e)}")
+        print(f"[ERROR] - 현재 작업 디렉토리: {os.getcwd()}")
+        print(f"[ERROR] - 파일 존재 여부: {os.path.exists(INPUT_JSON_PATH)}")
+        return
+    except Exception as e:
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        exc_traceback = traceback.format_exc()
+        print(f"[ERROR] 입력 파일 로드 실패:")
+        print(f"[ERROR] - 파일 경로: {INPUT_JSON_PATH}")
+        print(f"[ERROR] - 예외 타입: {exc_type}")
+        print(f"[ERROR] - 예외 메시지: {exc_msg}")
+        print(f"[ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
         return
     
 
@@ -436,8 +497,31 @@ async def generate_multiple_tow_dataset_async():
                 }
             
             print(f"[INFO] {len(results)}개의 항목을 발견했습니다 (완전/부분 처리 포함).")
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"[WARNING] 기존 출력 파일에 문제가 있습니다. 새로 시작합니다: {e}")
+        except json.JSONDecodeError as e:
+            print(f"[WARNING] 기존 출력 파일 JSON 파싱 오류:")
+            print(f"[WARNING] - 파일 경로: {OUTPUT_JSON_PATH}")
+            print(f"[WARNING] - 예외 메시지: {str(e)}")
+            print(f"[WARNING] - 오류 위치: line {e.lineno}, column {e.colno}")
+            print(f"[WARNING] - 새로 시작합니다.")
+            results = []
+            processed_data = {}
+        except KeyError as e:
+            print(f"[WARNING] 기존 출력 파일 구조 오류:")
+            print(f"[WARNING] - 파일 경로: {OUTPUT_JSON_PATH}")
+            print(f"[WARNING] - 누락된 키: {str(e)}")
+            print(f"[WARNING] - 새로 시작합니다.")
+            results = []
+            processed_data = {}
+        except Exception as e:
+            exc_type = type(e).__name__
+            exc_msg = str(e)
+            exc_traceback = traceback.format_exc()
+            print(f"[WARNING] 기존 출력 파일 처리 오류:")
+            print(f"[WARNING] - 파일 경로: {OUTPUT_JSON_PATH}")
+            print(f"[WARNING] - 예외 타입: {exc_type}")
+            print(f"[WARNING] - 예외 메시지: {exc_msg}")
+            print(f"[WARNING] - 상세 스택 트레이스:\n{exc_traceback}")
+            print(f"[WARNING] - 새로 시작합니다.")
             results = []
             processed_data = {}
     else:
@@ -445,18 +529,36 @@ async def generate_multiple_tow_dataset_async():
 
     # 처리해야 할 데이터 분석 (완전히 새로운 것 + 부분 완성된 것)
     tasks_to_run = []
-    for item in data:
-        item_id = item['id']
-        if item_id not in processed_data:
-            # 완전히 새로운 항목
-            tasks_to_run.append(item)
-        else:
-            # 부분 완성된 항목 - 실패한 ToW가 있는지 확인
-            proc_data = processed_data[item_id]
-            gold_labels = item['gold_label']
-            if len(proc_data['completed_indices']) < len(gold_labels):
-                # 아직 완성되지 않은 ToW가 있음
+    for i, item in enumerate(data):
+        try:
+            item_id = item['id']
+            if item_id not in processed_data:
+                # 완전히 새로운 항목
                 tasks_to_run.append(item)
+            else:
+                # 부분 완성된 항목 - 실패한 ToW가 있는지 확인
+                proc_data = processed_data[item_id]
+                gold_labels = item['gold_label']
+                if len(proc_data['completed_indices']) < len(gold_labels):
+                    # 아직 완성되지 않은 ToW가 있음
+                    tasks_to_run.append(item)
+        except KeyError as e:
+            print(f"[WARNING] 데이터 항목 {i} 처리 오류 (누락된 필드):")
+            print(f"[WARNING] - 누락된 키: {str(e)}")
+            print(f"[WARNING] - 항목 내용: {item}")
+            print(f"[WARNING] - 해당 항목을 건너뜕니다.")
+            continue
+        except Exception as e:
+            exc_type = type(e).__name__
+            exc_msg = str(e)
+            exc_traceback = traceback.format_exc()
+            print(f"[WARNING] 데이터 항목 {i} 처리 오류:")
+            print(f"[WARNING] - 예외 타입: {exc_type}")
+            print(f"[WARNING] - 예외 메시지: {exc_msg}")
+            print(f"[WARNING] - 항목 내용: {item}")
+            print(f"[WARNING] - 상세 스택 트레이스:\n{exc_traceback}")
+            print(f"[WARNING] - 해당 항목을 건너뜅니다.")
+            continue
     if not tasks_to_run:
         print("[SUCCESS] 모든 항목이 이미 처리되었습니다. 프로그램을 종료합니다.")
         return
@@ -520,7 +622,15 @@ async def generate_multiple_tow_dataset_async():
             print(f"                  예상 비용: ${session_cost:.4f} USD")
             
         except Exception as e:
-            print(f"[ERROR] 배치 {batch_start//BATCH_SIZE + 1} 처리 실패: {e}")
+            exc_type = type(e).__name__
+            exc_msg = str(e)
+            exc_traceback = traceback.format_exc()
+            batch_num = batch_start//BATCH_SIZE + 1
+            print(f"\n[ERROR] 배치 {batch_num} 처리 실패:")
+            print(f"[ERROR] - 예외 타입: {exc_type}")
+            print(f"[ERROR] - 예외 메시지: {exc_msg}")
+            print(f"[ERROR] - 배치 크기: {len(batch_items)}개 항목")
+            print(f"[ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
             error_count += len(batch_items)
         
         # 배치 완료 후 주기적 저장
@@ -532,7 +642,14 @@ async def generate_multiple_tow_dataset_async():
                 last_save_count = len(results)
                 print(f"[INFO] 중간 저장 완료: {OUTPUT_JSON_PATH}")
             except Exception as e:
-                print(f"[ERROR] 중간 저장 실패: {e}")
+                exc_type = type(e).__name__
+                exc_msg = str(e)
+                exc_traceback = traceback.format_exc()
+                print(f"[ERROR] 중간 저장 실패:")
+                print(f"[ERROR] - 예외 타입: {exc_type}")
+                print(f"[ERROR] - 예외 메시지: {exc_msg}")
+                print(f"[ERROR] - 저장 경로: {OUTPUT_JSON_PATH}")
+                print(f"[ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
         
         # 배치 간 쿨다운
         print(f"[BATCH] 배치 간 쿨다운...")
@@ -576,7 +693,14 @@ async def generate_multiple_tow_dataset_async():
             json.dump(results, f, ensure_ascii=False, indent=2)
         print(f"[SUCCESS] 최종 저장 완료: {OUTPUT_JSON_PATH}")
     except Exception as e:
-        print(f"[ERROR] 최종 저장 실패: {e}")
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        exc_traceback = traceback.format_exc()
+        print(f"[ERROR] 최종 저장 실패:")
+        print(f"[ERROR] - 예외 타입: {exc_type}")
+        print(f"[ERROR] - 예외 메시지: {exc_msg}")
+        print(f"[ERROR] - 저장 경로: {OUTPUT_JSON_PATH}")
+        print(f"[ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
         # 백업 파일로 저장 시도
         backup_path = OUTPUT_JSON_PATH.replace('.json', '_backup.json')
         try:
@@ -584,7 +708,14 @@ async def generate_multiple_tow_dataset_async():
                 json.dump(results, f, ensure_ascii=False, indent=2)
             print(f"[INFO] 백업 파일로 저장: {backup_path}")
         except Exception as backup_e:
-            print(f"[ERROR] 백업 저장도 실패: {backup_e}")
+            backup_exc_type = type(backup_e).__name__
+            backup_exc_msg = str(backup_e)
+            backup_exc_traceback = traceback.format_exc()
+            print(f"[ERROR] 백업 저장도 실패:")
+            print(f"[ERROR] - 예외 타입: {backup_exc_type}")
+            print(f"[ERROR] - 예외 메시지: {backup_exc_msg}")
+            print(f"[ERROR] - 백업 경로: {backup_path}")
+            print(f"[ERROR] - 상세 스택 트레이스:\n{backup_exc_traceback}")
     
     # 정상 완료 시 응급 저장 시스템 비활성화
     global emergency_save_enabled
@@ -596,11 +727,27 @@ if __name__ == "__main__":
     # 스크립트 실행 전, 터미널에서 GCP 인증이 필요합니다:
     # gcloud auth application-default login
     
+    # 상세한 스택 트레이스를 보려면 --verbose 플래그를 사용하세요:
+    # python gemini_generate_multiple_tow1.py --verbose
+    
+    print(f"[INFO] 스크립트 시작 - Python 버전: {sys.version}")
+    print(f"[INFO] 현재 작업 디렉토리: {os.getcwd()}")
+    print(f"[INFO] 명령행 인수: {sys.argv}")
+    if '--verbose' in sys.argv:
+        print(f"[INFO] 상세 모드가 활성화되었습니다. 모든 스택 트레이스가 출력됩니다.")
+    
     # asyncio.run()을 사용하여 비동기 함수 실행
     try:
         asyncio.run(generate_multiple_tow_dataset_async())
     except Exception as e:
-        print(f"\n[CRITICAL ERROR] 예기치 못한 오류로 프로그램이 종료됩니다: {e}")
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        exc_traceback = traceback.format_exc()
+        print(f"\n[CRITICAL ERROR] 예기치 못한 오류로 프로그램이 종료됩니다:")
+        print(f"[CRITICAL ERROR] - 예외 타입: {exc_type}")
+        print(f"[CRITICAL ERROR] - 예외 메시지: {exc_msg}")
+        print(f"[CRITICAL ERROR] - Python 버전: {sys.version}")
+        print(f"[CRITICAL ERROR] - 상세 스택 트레이스:\n{exc_traceback}")
         emergency_save()
         print(f"[CRITICAL ERROR] 응급 저장 완료. 프로그램을 종료합니다.")
         raise

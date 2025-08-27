@@ -205,6 +205,60 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         logger.error(f"Batch processing error: {e}", exc_info=False)
         return [{'index': idx, 'raw_output': f"ERROR: {str(e)[:100]}", 'extracted_answer': None} for idx in batch_indices]
 
+def process_single_with_retry(model, tokenizer, prompt, index, max_retries=5):
+    """Process a single prompt with retry logic for answer extraction failures."""
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(
+                prompt,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=1024
+            ).to(DEVICE)
+
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=5,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                )
+            
+            input_length = inputs['input_ids'].shape[1]
+            output_tokens = outputs[0][input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            extracted_answer = extract_korean_answer_first_token(generated_text)
+            
+            if extracted_answer is not None:
+                return {
+                    'index': index,
+                    'raw_output': generated_text,
+                    'extracted_answer': extracted_answer,
+                    'retry_count': attempt
+                }
+            else:
+                logger.debug(f"Retry {attempt + 1}/{max_retries} for index {index}: Failed to extract answer from '{generated_text}'")
+                
+        except Exception as e:
+            logger.error(f"Error on attempt {attempt + 1} for index {index}: {e}")
+            if attempt == max_retries - 1:
+                return {
+                    'index': index,
+                    'raw_output': f"ERROR after {max_retries} attempts: {str(e)[:100]}",
+                    'extracted_answer': None,
+                    'retry_count': attempt
+                }
+    
+    # If all retries failed to extract answer
+    return {
+        'index': index,
+        'raw_output': f"EXTRACTION_FAILED after {max_retries} attempts: {generated_text}",
+        'extracted_answer': None,
+        'retry_count': max_retries - 1
+    }
+
 # --- Single Model Evaluation Function with 0-shot Prompting ---
 def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_output_dir: str):
     """
@@ -300,11 +354,35 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                 continue
             
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
+            
+            # Retry logic for failed answer extractions
+            retry_indices = []
+            retry_prompts = []
+            retry_ground_truths = []
+            
+            for i, result in enumerate(batch_results):
+                if result['extracted_answer'] is None and not result['raw_output'].startswith("ERROR"):
+                    # Need to retry this one
+                    retry_indices.append(i)
+                    retry_prompts.append(batch_prompts[i])
+                    retry_ground_truths.append(batch_ground_truths[i])
+            
+            # Process retries individually
+            if retry_indices:
+                logger.info(f"Retrying {len(retry_indices)} failed extractions with individual processing...")
+                for j, retry_idx in enumerate(retry_indices):
+                    retry_result = process_single_with_retry(
+                        model, tokenizer, retry_prompts[j], 
+                        batch_results[retry_idx]['index']
+                    )
+                    # Update the original result
+                    batch_results[retry_idx] = retry_result
 
             for result, ground_truth in zip(batch_results, batch_ground_truths):
                 generated_text_log = result['raw_output']
                 model_answer_log = result['extracted_answer']
                 is_correct_log = False
+                retry_info = f" (after {result.get('retry_count', 0) + 1} attempts)" if 'retry_count' in result else ""
 
                 if model_answer_log:
                     total_predictions += 1
@@ -315,8 +393,11 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                     errors_or_skipped += 1
                     original_generated_text = generated_text_log
                     if not generated_text_log.startswith("ERROR"):
-                        generated_text_log = f"EXTRACTION_FAILED: {generated_text_log}"
-                        failure_type = "answer_extraction_failed"
+                        if generated_text_log.startswith("EXTRACTION_FAILED"):
+                            failure_type = "answer_extraction_failed"
+                        else:
+                            generated_text_log = f"EXTRACTION_FAILED{retry_info}: {generated_text_log}"
+                            failure_type = "answer_extraction_failed"
                     else:
                         failure_type = "model_error"
                     
@@ -330,6 +411,7 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
                         "failure_type": failure_type,
                         "failure_reason": generated_text_log,
                         "raw_output": original_generated_text,
+                        "retry_count": result.get('retry_count', 0),
                         "choices": {
                             "A": original_item.get("A", ""),
                             "B": original_item.get("B", ""),
@@ -340,12 +422,12 @@ def evaluate_single_model(config: ModelConfig, kmmlu_data: list, model_specific_
 
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text_log,
-                    "predicted_answer": model_answer_log, "is_correct": is_correct_log
+                    "predicted_answer": model_answer_log, "is_correct": is_correct_log, "retry_count": result.get('retry_count', 0)
                 })
                 original_item = test_data[result['index']]
                 raw_generations_list.append({
                     "index": result['index'], "subject": original_item.get("Subject", "unknown"), "ground_truth": ground_truth,
-                    "raw_output": generated_text_log, "extracted_answer": model_answer_log
+                    "raw_output": generated_text_log, "extracted_answer": model_answer_log, "retry_count": result.get('retry_count', 0)
                 })
 
             pbar.set_description(f"Evaluating {config.name} (0-shot Korean, errors: {errors_or_skipped})")

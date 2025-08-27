@@ -48,6 +48,7 @@ klue_tc_results/
 
 
 __pycache__
+cached_datasets
 
 # RESULT FILES
 mmlu_baseline*

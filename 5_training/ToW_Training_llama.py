@@ -12,8 +12,8 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=4 ToW_Training_deepseek.py
-torchrun --nproc_per_node=4 ToW_Training_deepseek.py
+deepspeed --num_gpus=2 ToW_Training_llama.py
+torchrun --nproc_per_node=4 ToW_Training_llama.py
 """
 
 import os
@@ -128,7 +128,7 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
-    per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
+    per_device_train_batch_size: int = 16  # Reduced for memory efficiency with DeepSpeed
     per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
     gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
@@ -161,8 +161,8 @@ class ToWTrainingConfig:
 
 MODEL_CONFIGS = [
     ModelConfig(
-        name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.1-8B-Instruct",
+        name="Llama-3.2-3B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
         use_quantization=True,
     ),
 ]
@@ -203,7 +203,8 @@ class ToWTrainer:
         tokenizer = AutoTokenizer.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
-            padding_side='right'
+            padding_side='right',
+            local_files_only=True  # 로컬 파일만 사용
         )
 
         if tokenizer.pad_token is None:

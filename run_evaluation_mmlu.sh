@@ -3,25 +3,25 @@
 export TRANSFORMERS_VERBOSITY=debug
 
 MODEL_NAMES=(
-    "Qwen2.5-7B-Instruct"
-    "Mistral-8B-Instruct-2410"
-    "Llama-3.1-8B-Instruct"
-    "DeepSeek-R1-0528-Qwen3-8B"
-    "Qwen2.5-7B-Instruct-ToW"
-    "Mistral-8B-Instruct-2410-ToW"
-    "Llama-3.1-8B-Instruct-ToW"
-    "DeepSeek-R1-0528-Qwen3-8B-ToW"
+    "DeepSeek-R1-Distill-Qwen-1.5B"
+    "google_gemma-3-4b-it"
+    "Qwen2.5-3B-Instruct"
+    "Llama-3.2-3B-Instruct"
+    # "DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+    # "google_gemma-3-4b-it-ToW"
+    # "Qwen2.5-3B-Instruct-ToW"
+    # "Llama-3.2-3B-Instruct-ToW"
 )
 
 MODEL_PATHS=(
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
 )
 
 ADAPTER_PATHS=(
@@ -29,10 +29,10 @@ ADAPTER_PATHS=(
     ""
     ""
     ""
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/google_gemma-3-4b-it-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-3B-Instruct-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW"
 )
 
 TASKS=("mmlu_ko_custom" "mmlu_en_custom")

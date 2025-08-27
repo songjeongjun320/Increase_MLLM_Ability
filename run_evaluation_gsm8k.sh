@@ -4,38 +4,43 @@
 export TRANSFORMERS_VERBOSITY=debug
 
 MODEL_NAMES=(
-    "Qwen2.5-7B-Instruct"
-    "Mistral-8B-Instruct-2410"
-    "Llama-3.1-8B-Instruct"
-    "DeepSeek-R1-0528-Qwen3-8B"
-    "Qwen2.5-7B-Instruct-ToW"
-    "Mistral-8B-Instruct-2410-ToW"
-    "Llama-3.1-8B-Instruct-ToW"
-    "DeepSeek-R1-0528-Qwen3-8B-ToW"
-)
-MODEL_PATHS=(
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B"
-)
-ADAPTER_PATHS=(
-    "" "" "" ""
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW"
+    "DeepSeek-R1-Distill-Qwen-1.5B"
+    "google_gemma-3-4b-it"
+    "Qwen2.5-3B-Instruct"
+    "Llama-3.2-3B-Instruct"
+    # "DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+    # "google_gemma-3-4b-it-ToW"
+    # "Qwen2.5-3B-Instruct-ToW"
+    # "Llama-3.2-3B-Instruct-ToW"
 )
 
-# Hugging Face 데이터셋 사용으로 변경
-TASKS=("gsm8k_en_hf" "gsm8k_ko_hf")
+MODEL_PATHS=(
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
+)
+
+ADAPTER_PATHS=(
+    ""
+    ""
+    ""
+    ""
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/google_gemma-3-4b-it-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-3B-Instruct-ToW"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW"
+)
+
+# 영어는 내장 태스크, 한국어는 커스텀 설정 사용
+TASKS=("gsm8k" "gsm8k_ko_hf")
 RESULTS_DIR="./evaluation_results_gsm8k_hf"
 mkdir -p $RESULTS_DIR
-NUM_FEWSHOT=8
+NUM_FEWSHOT=8  # 8-shot으로 변경
 
 NUM_MODELS=${#MODEL_NAMES[@]}
 NUM_TASKS=${#TASKS[@]}
@@ -175,7 +180,7 @@ echo "" >> $TEXT_SUMMARY
 
 printf "%-35s" "모델명" >> $TEXT_SUMMARY
 for TASK in "${TASKS[@]}"; do
-    if [[ $TASK == *"en"* ]]; then
+    if [[ $TASK == "gsm8k" ]]; then
         printf "%-15s" "영어(GSM8K)" >> $TEXT_SUMMARY
     else
         printf "%-15s" "한국어(GSM8K)" >> $TEXT_SUMMARY
@@ -232,3 +237,8 @@ echo "한국어 데이터셋: kuotient/gsm8k-ko"
 echo "Few-shot 예제: $NUM_FEWSHOT 개"
 echo "총 모델 수: $NUM_MODELS"
 echo "총 태스크 수: $NUM_TASKS"
+echo ""
+echo "=== 파일 저장 위치 ==="
+echo "설정 파일을 다음 위치에 저장하세요:"
+echo "- ./eval_configs/gsm8k_ko_hf.yaml (한국어만 필요)"
+echo "- gsm8k (영어)는 lm-eval 내장 태스크 사용"

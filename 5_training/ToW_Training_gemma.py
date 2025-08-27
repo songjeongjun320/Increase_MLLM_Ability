@@ -12,8 +12,8 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=1 ToW_Training_deepseek.py
-torchrun --nproc_per_node=4 ToW_Training_deepseek.py
+deepspeed --num_gpus=1 ToW_Training_gemma.py
+torchrun --nproc_per_node=4 ToW_Training_gemma.py
 """
 
 import os
@@ -128,8 +128,8 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
-    per_device_train_batch_size: int = 16  # Reduced for memory efficiency with DeepSpeed
-    per_device_eval_batch_size: int = 16  # Reduced for memory efficiency
+    per_device_train_batch_size: int = 32  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 32  # Reduced for memory efficiency
     gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
     
@@ -161,8 +161,8 @@ class ToWTrainingConfig:
 
 MODEL_CONFIGS = [
     ModelConfig(
-        name="DeepSeek-R1-Distill-Qwen-1.5B-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
+        name="google_gemma-3-4b-it-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
         use_quantization=True,
     ),
 ]
@@ -307,7 +307,7 @@ class ToWTrainer:
             seed=42,
             data_seed=42,
             report_to=[],
-            deepspeed="./deepspeed_config_deepseek.json",
+            deepspeed="./deepspeed_config_mistral.json",
         )
     
     def train(self):

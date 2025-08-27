@@ -12,20 +12,24 @@ metric_list:
     aggregation: mean
     higher_is_better: true
 description: "수학 문제를 단계별로 해결하고 최종 숫자 답을 제공하세요."
+
 doc_to_text: |
   질문: {{question}}
   
   단계별로 해결해보겠습니다:
+
 filter_list:
-  - name: "get-answer"
+  - name: "extract-answer"
     filter:
       - function: "regex"
-        regex_pattern: "(?:답은|답:|따라서|정답은|결과는|#### )\\s*([+-]?(?:\\d+(?:,\\d{3})*(?:\\.\\d+)?\\.\\d+))"
+        # #### 형태와 한국어 답변 형태 모두 포착
+        regex_pattern: "(?:답은?|정답은?|따라서|결과는|총합은|총액은|합계는|####)\\s*([+-]?\\d+(?:,\\d{3})*(?:\\.\\d+)?)"
       - function: "take_first"
+
 fewshot_config:
   sampler: first_n
 doc_to_target: "answer"
-num_fewshot: 5
+num_fewshot: 8
 should_decontaminate: true
 metadata:
   version: 1.0

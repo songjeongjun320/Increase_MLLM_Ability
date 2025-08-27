@@ -12,7 +12,7 @@ ToW Training with Smart Text Handling - Fixed Version
 module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=4 ToW_Training_qwen.py
+deepspeed --num_gpus=2 ToW_Training_qwen.py
 torchrun --nproc_per_node=2 ToW_Training_qwen.py
 """
 
@@ -128,9 +128,9 @@ class ToWTrainingConfig:
     learning_rate: float = 2e-5  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10  # Increased epochs for more training time
-    per_device_train_batch_size: int = 4  # Reduced for memory efficiency with DeepSpeed
-    per_device_eval_batch_size: int = 4  # Reduced for memory efficiency
-    gradient_accumulation_steps: int = 4  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 16  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 16  # Reduced for memory efficiency
+    gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
     
     # Smart text handling
@@ -146,11 +146,10 @@ class ToWTrainingConfig:
     
     # Other settings
     eval_strategy: str = "steps"
-    eval_steps: int = 10  # Evaluation frequency
-    eval_steps: int = 500
+    eval_steps: int = 500  # Evaluation frequency
     save_strategy: str = "steps"
-    save_steps: int = 10  # Save frequency
-    logging_steps: int = 10  # Logging frequency
+    save_steps: int = 500  # Save frequency
+    logging_steps: int = 500  # Logging frequency
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 2
@@ -162,8 +161,8 @@ class ToWTrainingConfig:
 
 MODEL_CONFIGS = [
     ModelConfig(
-        name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        name="Qwen2.5-3B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
         use_quantization=True,
     ),
 ]

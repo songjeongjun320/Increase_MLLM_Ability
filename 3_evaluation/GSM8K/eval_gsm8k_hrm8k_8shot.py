@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GSM8K (HRM8K) Evaluation Script (0-shot)
+GSM8K (HRM8K) Evaluation Script
 - Evaluates mathematical reasoning capability on Korean translated GSM8K dataset
 - Extracts numerical answers from model outputs
 - Saves detailed results per model and creates final summary
@@ -18,6 +18,16 @@ from dataclasses import dataclass, field
 import gc
 import sys
 from pathlib import Path
+from datetime import datetime
+
+# Import performance analyzer
+try:
+    import sys
+    sys.path.append('../')
+    from performance_analyzer import create_enhanced_summary
+except ImportError:
+    logger.warning("Performance analyzer not available. Using basic summary.")
+    create_enhanced_summary = None
 
 # --- Model Configuration ---
 @dataclass
@@ -29,96 +39,54 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # Base Models
+    # Base Models (commented out for now)
     ModelConfig(
-        name="Qwen2.5-7B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        name="Qwen2.5-3B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
         use_quantization=False
     ),
     ModelConfig(
-        name="Mistral-8B-Instruct-2410",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        name="google_gemma-3-4b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
         use_quantization=False
     ),
     ModelConfig(
-        name="Llama-3.1-8B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        name="Llama-3.2-3B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
         use_quantization=False
     ),
     ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        use_quantization=False
-    ),
-
-    # TOW Model
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        name="DeepSeek-R1-Distill-Qwen-1.5B",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
         use_quantization=False
     ),
 
-    # TOW Model 2
+    # ToW Trained Models
     # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Qwen2.5-7B-Instruct-ToW",
+    #     name="Qwen2.5-3B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-3B-Instruct-ToW",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Mistral-8B-Instruct-2410-ToW",
+    #     name="google_gemma-3-4b-it-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/google_gemma-3-4b-it-ToW",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.1-8B-Instruct-ToW",
+    #     name="Llama-3.2-3B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-0528-Qwen3-8B-ToW",
+    #     name="DeepSeek-R1-Distill-Qwen-1.5B-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-Distill-Qwen-1.5B-ToW",
     #     use_quantization=False
     # ),
 ]
-
-# --- Configuration ---
-DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "gsm8k_hrm8k_zeroshot_results"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
-BATCH_SIZE = 32
-
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger(__name__)
-
 
 # --- Helper Functions ---
 def load_gsm8k_data(filepath):
@@ -142,23 +110,46 @@ def load_gsm8k_data(filepath):
         logger.error(f"Error loading data: {e}")
         return None
 
-def create_gsm8k_0shot_prompt(text, is_korean=False):
-    """(개선된 버전) GSM8K 평가를 위한 Zero-Shot CoT 프롬프트"""
+def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
+    """
+    (개선된 최종 버전)
+    딕셔너리 리스트 형태의 few-shot 예제를 사용하여
+    GSM8K 8-shot CoT 평가 프롬프트를 동적으로 생성합니다.
+    """
+    prompt_parts = []
+
+    # 1. 루프를 통해 8개의 예제를 동적으로 구성합니다.
+    for example in few_shot_examples:
+        question = example["question"]
+        cot_content = example["cot_content"] # 예제 딕셔너리의 cot_content를 사용
+        answer = example["answer"]
+        
+        if is_korean:
+            full_answer_block = f"Response: {cot_content} #### 따라서 정답은 {answer}. #### {answer}"
+            example_block = f"문제: {question}\n {full_answer_block}"
+        else:
+            full_answer_block = f"응답: {cot_content} #### So the answer is {answer}. #### {answer}"
+            example_block = f"Question: {question}\n {full_answer_block}"
+
+        # 최종 예제 블록을 조립합니다.
+        prompt_parts.append(example_block)
+
+    # 2. 모든 예제를 하나의 문자열로 합칩니다. (예제 사이에 두 줄 띄어쓰기)
+    final_examples_str = "\n\n".join(prompt_parts)
+
+    # 3. 최종 프롬프트를 완성합니다: [8개 예제] + [실제 문제] + [CoT 시작 유도]
     if is_korean:
-        instruction = "다음 수학 문제를 단계적으로 생각하여 풀이 과정을 설명하고, 최종 숫자 답변을 '#### [숫자]' 형식으로 제시해주세요."
-        question_header = "문제:"
-        cot_trigger = "응답답: 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
-        
-        prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
-        
-    else: # English version
-        instruction = "Solve the following math problem by thinking step-by-step and providing the final numerical answer in the format '#### [number]'."
-        question_header = "Question:"
-        cot_trigger = "Response: Let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
-        
-        prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
+        final_prompt = f"""{final_examples_str}
+
+문제: {text}
+응답: 단계별로 생각해봅시다."""
+    else:
+        final_prompt = f"""{final_examples_str}
+
+Question: {text}
+Response: Let's think step by step."""
     
-    return prompt
+    return final_prompt
 
 def extract_numerical_answer(model_output):
     """
@@ -368,7 +359,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process Korean version (translated question)
             if has_korean:
                 try:
-                    korean_prompt = create_gsm8k_prompt(question, is_korean=True)
+                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES)
                     inputs = tokenizer(korean_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
                     
                     with torch.no_grad():
@@ -424,9 +415,9 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process English version (original question)  
             if original:
                 try:
-                    english_prompt = create_gsm8k_prompt(original, is_korean=False)
+                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES)
                     inputs = tokenizer(english_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
-                    
+
                     with torch.no_grad():
                         outputs = model.generate(
                             **inputs,
@@ -503,73 +494,9 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard_english:.2f}%")
         logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict_english:.2f}%")
 
-        # Save Results - Separate Korean and English
+        # Save Results
         config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
-        
-        # Korean results
-        korean_summary = {
-            "model_config": config_dict_serializable,
-            "dataset_path": DATASET_PATH,
-            "evaluation_type": "GSM8K (HRM8K Korean)",
-            "total_questions": len(gsm8k_data),
-            "language": "Korean",
-            "results": {
-                "valid_predictions": total_predictions_korean,
-                "correct_predictions": correct_predictions_korean,
-                "errors_or_skipped": errors_or_skipped_korean,
-                "accuracy_standard": accuracy_standard_korean,
-                "accuracy_strict": accuracy_strict_korean,
-                "details": results_details_korean
-            }
-        }
-        
-        # English results
-        english_summary = {
-            "model_config": config_dict_serializable,
-            "dataset_path": DATASET_PATH,
-            "evaluation_type": "GSM8K (HRM8K English)",
-            "total_questions": len(gsm8k_data),
-            "language": "English",
-            "results": {
-                "valid_predictions": total_predictions_english,
-                "correct_predictions": correct_predictions_english,
-                "errors_or_skipped": errors_or_skipped_english,
-                "accuracy_standard": accuracy_standard_english,
-                "accuracy_strict": accuracy_strict_english,
-                "details": results_details_english
-            }
-        }
-
-        try:
-            with open(results_korean_filepath, 'w', encoding='utf-8') as f:
-                json.dump(korean_summary, f, indent=2, ensure_ascii=False)
-            logger.info(f"Korean results saved to {results_korean_filepath}")
-            
-            with open(results_english_filepath, 'w', encoding='utf-8') as f:
-                json.dump(english_summary, f, indent=2, ensure_ascii=False)
-            logger.info(f"English results saved to {results_english_filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save results files: {e}")
-
-        # Save Raw Generations - Separate Korean and English
-        logger.info(f"Saving Korean raw generations to {raw_gen_korean_filepath}...")
-        try:
-            with open(raw_gen_korean_filepath, 'w', encoding='utf-8') as f:
-                json.dump(raw_generations_korean_list, f, indent=2, ensure_ascii=False)
-            logger.info(f"Korean raw generations saved successfully.")
-        except Exception as e:
-            logger.error(f"Failed to save Korean raw generations file: {e}")
-            
-        logger.info(f"Saving English raw generations to {raw_gen_english_filepath}...")
-        try:
-            with open(raw_gen_english_filepath, 'w', encoding='utf-8') as f:
-                json.dump(raw_generations_english_list, f, indent=2, ensure_ascii=False)
-            logger.info(f"English raw generations saved successfully.")
-        except Exception as e:
-            logger.error(f"Failed to save English raw generations file: {e}")
-
-        # Return combined summary for compatibility with main function
-        combined_summary = {
+        final_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
             "evaluation_type": "GSM8K (HRM8K Korean and English Separate)",
@@ -591,7 +518,24 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 "details": results_details_english
             }
         }
-        return combined_summary
+
+        try:
+            with open(results_filepath, 'w', encoding='utf-8') as f:
+                json.dump(final_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Detailed results saved to {results_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save results file {results_filepath}: {e}")
+
+        # Save Raw Generations
+        logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
+        try:
+            with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"Raw generations saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
+
+        return final_summary
 
     except Exception as e:
         logger.exception(f"Critical error during evaluation for {config.name}: {e}")
@@ -678,9 +622,60 @@ def create_final_summary(all_results: list, base_output_dir: str):
     
     final_json_path = os.path.join(base_output_dir, "final_gsm8k_results.json")
     try:
-        with open(final_json_path, 'w', encoding='utf-8') as f:
-            json.dump(final_summary, f, indent=2, ensure_ascii=False)
-        logger.info(f"Final summary saved to {final_json_path}")
+        # Enhanced summary with performance analysis
+        if create_enhanced_summary and final_results_korean and final_results_english:
+            evaluation_info = {
+                "evaluation_type": "GSM8K (HRM8K Korean and English Separate Evaluation)",
+                "evaluation_date": datetime.now().isoformat(),
+                "dataset_path": DATASET_PATH,
+                "total_models_evaluated": len(final_results_korean)
+            }
+            
+            # Analyze Korean results
+            korean_enhanced = create_enhanced_summary(
+                model_results=final_results_korean,
+                evaluation_info=evaluation_info,
+                primary_metric="accuracy_strict",
+                subject_metric=None  # GSM8K doesn't have subject breakdown
+            )
+            
+            # Analyze English results
+            english_enhanced = create_enhanced_summary(
+                model_results=final_results_english,
+                evaluation_info=evaluation_info,
+                primary_metric="accuracy_strict",
+                subject_metric=None
+            )
+            
+            # Combine analyses
+            enhanced_summary = {
+                "evaluation_info": evaluation_info,
+                "korean_analysis": korean_enhanced,
+                "english_analysis": english_enhanced,
+                "original_summary": final_summary,
+                "language_comparison": {
+                    "korean_avg_score": korean_enhanced["performance_analysis"]["average_score"],
+                    "english_avg_score": english_enhanced["performance_analysis"]["average_score"],
+                    "korean_best_model": korean_enhanced["performance_analysis"]["best_model"],
+                    "english_best_model": english_enhanced["performance_analysis"]["best_model"],
+                    "performance_difference": english_enhanced["performance_analysis"]["average_score"] - korean_enhanced["performance_analysis"]["average_score"]
+                }
+            }
+            
+            with open(final_json_path, 'w', encoding='utf-8') as f:
+                json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
+                
+            # Log key insights
+            logger.info(f"🏆 Best Korean model: {korean_enhanced['performance_analysis']['best_model']} ({korean_enhanced['performance_analysis']['average_score']:.2f}%)")
+            logger.info(f"🏆 Best English model: {english_enhanced['performance_analysis']['best_model']} ({english_enhanced['performance_analysis']['average_score']:.2f}%)")
+            logger.info(f"📈 Language performance gap: {abs(enhanced_summary['language_comparison']['performance_difference']):.2f}%p")
+            
+        else:
+            # Fallback to basic summary
+            with open(final_json_path, 'w', encoding='utf-8') as f:
+                json.dump(final_summary, f, indent=2, ensure_ascii=False)
+                
+        logger.info(f"Summary saved to {final_json_path}")
         
         # Also create separate CSV files for Korean and English results
         korean_csv_path = os.path.join(base_output_dir, "gsm8k_results_korean.csv")

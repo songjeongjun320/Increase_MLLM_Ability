@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GSM8K (HRM8K) Evaluation Script
+GSM8K (HRM8K) Evaluation Script (0-shot)
 - Evaluates mathematical reasoning capability on Korean translated GSM8K dataset
 - Extracts numerical answers from model outputs
 - Saves detailed results per model and creates final summary
@@ -18,16 +18,6 @@ from dataclasses import dataclass, field
 import gc
 import sys
 from pathlib import Path
-from datetime import datetime
-
-# Import performance analyzer
-try:
-    import sys
-    sys.path.append('../')
-    from performance_analyzer import create_enhanced_summary
-except ImportError:
-    logger.warning("Performance analyzer not available. Using basic summary.")
-    create_enhanced_summary = None
 
 # --- Model Configuration ---
 @dataclass
@@ -39,84 +29,58 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # Base Models
+    # Base Models (commented out for now)
     ModelConfig(
-        name="Qwen2.5-7B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        name="Qwen2.5-3B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
         use_quantization=False
     ),
     ModelConfig(
-        name="Mistral-8B-Instruct-2410",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
+        name="google_gemma-3-4b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
         use_quantization=False
     ),
     ModelConfig(
-        name="Llama-3.1-8B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
+        name="Llama-3.2-3B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
         use_quantization=False
     ),
     ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        use_quantization=False
-    ),
-
-    # TOW Model
-    ModelConfig(
-        name="Qwen2.5-7B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-7B-Instruct-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Mistral-8B-Instruct-2410-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Mistral-8B-Instruct-2410-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.1-8B-Instruct-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.1-8B-Instruct-ToW",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-0528-Qwen3-8B-ToW",
+        name="DeepSeek-R1-Distill-Qwen-1.5B",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
         use_quantization=False
     ),
 
-    # TOW Model 2
+    # ToW Trained Models
     # ModelConfig(
-    #     name="Qwen2.5-7B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Qwen2.5-7B-Instruct-ToW",
+    #     name="Qwen2.5-3B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Qwen2.5-3B-Instruct-ToW",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="Mistral-8B-Instruct-2410-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Mistral-8B-Instruct-2410",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Mistral-8B-Instruct-2410-ToW",
+    #     name="google_gemma-3-4b-it-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/google_gemma-3-4b-it-ToW",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="Llama-3.1-8B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.1-8B-Instruct-ToW",
+    #     name="Llama-3.2-3B-Instruct-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="DeepSeek-R1-0528-Qwen3-8B-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-0528-Qwen3-8B",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-0528-Qwen3-8B-ToW",
+    #     name="DeepSeek-R1-Distill-Qwen-1.5B-ToW",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-Distill-Qwen-1.5B-ToW",
     #     use_quantization=False
     # ),
 ]
 
 # --- Configuration ---
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "gsm8k_hrm8k_8shot_results"
+BASE_OUTPUT_DIR = "gsm8k_hrm8k_zeroshot_results"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BATCH_SIZE = 32
@@ -129,92 +93,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-GSM8K_8SHOT_COT_EXAMPLES = [
-    {
-        "question": "There are 15 trees in the grove. Grove workers will plant trees in the grove today. After they are done, there will be 21 trees. How many trees did the grove workers plant today?",
-        "cot_content": "Let's think step by step. There are 15 trees originally. Then there were 21 trees after some more were planted. So there must have been 21 - 15 = 6.",
-        "answer": "6"
-    },
-    {
-        "question": "If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?",
-        "cot_content": "Let's think step by step. There are originally 3 cars. 2 more cars arrive. 3 + 2 = 5.",
-        "answer": "5"
-    },
-    {
-        "question": "Leah had 32 chocolates and her sister had 42. If they ate 35, how many pieces do they have left in total?",
-        "cot_content": "Let's think step by step. Originally, Leah had 32 chocolates. Her sister had 42. So in total they had 32 + 42 = 74. After eating 35, they had 74 - 35 = 39.",
-        "answer": "39"
-    },
-    {
-        "question": "Jason had 20 lollipops. He gave Denny some lollipops. Now Jason has 12 lollipops. How many lollipops did Jason give to Denny?",
-        "cot_content": "Let's think step by step. Jason started with 20 lollipops. Then he had 12 after giving some to Denny. So he gave Denny 20 - 12 = 8.",
-        "answer": "8"
-    },
-    {
-        "question": "Shawn has five toys. For Christmas, he got two toys each from his mom and dad. How many toys does he have now?",
-        "cot_content": "Let's think step by step. Shawn started with 5 toys. If he got 2 toys each from his mom and dad, then that is 2 * 2 = 4 more toys. 5 + 4 = 9.",
-        "answer": "9"
-    },
-    {
-        "question": "There were nine computers in the server room. Five more computers were installed each day, from monday to thursday. How many computers are now in the server room?",
-        "cot_content": "Let's think step by step. There were originally 9 computers. For each of 4 days, 5 more computers were added. So 5 * 4 = 20 computers were added. 9 + 20 = 29.",
-        "answer": "29"
-    },
-    {
-        "question": "Michael had 58 golf balls. On tuesday, he lost 23 golf balls. On wednesday, he lost 2 more. How many golf balls did he have at the end of wednesday?",
-        "cot_content": "Let's think step by step. Michael started with 58 golf balls. After losing 23 on tuesday, he had 58 - 23 = 35. After losing 2 more on wednesday, he had 35 - 2 = 33 golf balls.",
-        "answer": "33"
-    },
-    {
-        "question": "Olivia has $23. She bought five bagels for $3 each. How much money does she have left?",
-        "cot_content": "Let's think step by step. Olivia had 23 dollars. 5 bagels for 3 dollars each will be 5 * 3 = 15 dollars. So she has 23 - 15 = 8 dollars left.",
-        "answer": "8"
-    }
-]
-
-GSM8K_8SHOT_KOR_COT_EXAMPLES = [
-    {
-        "question": "숲에 15그루의 나무가 있습니다. 숲 관리인들이 오늘 숲에 나무를 심을 예정입니다. 작업이 끝나면 21그루의 나무가 있을 것입니다. 숲 관리인들이 오늘 몇 그루의 나무를 심었나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. 원래 15그루의 나무가 있었습니다. 나무를 더 심은 후에는 21그루가 되었습니다. 따라서 21 - 15 = 6그루를 심었습니다.",
-        "answer": "6"
-    },
-    {
-        "question": "주차장에 3대의 차가 있고 2대의 차가 더 도착했다면, 주차장에는 몇 대의 차가 있나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. 원래 3대의 차가 있었습니다. 2대의 차가 더 도착했습니다. 따라서 3 + 2 = 5입니다.",
-        "answer": "5"
-    },
-    {
-        "question": "Leah는 32개의 초콜릿을 가지고 있었고 그녀의 여동생은 42개를 가지고 있었습니다. 그들이 35개를 먹었다면, 총 몇 개가 남았나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. 원래 Leah는 32개의 초콜릿을 가지고 있었습니다. 그녀의 여동생은 42개를 가지고 있었습니다. 따라서 총합은 32 + 42 = 74개였습니다. 따라서 35개를 먹은 후에는 74 - 35 = 39개가 남았습니다.",
-        "answer": "39"
-    },
-    {
-        "question": "Jason은 20개의 막대사탕을 가지고 있었습니다. 그는 Denny에게 몇 개의 막대사탕을 주었습니다. 이제 Jason은 12개의 막대사탕을 가지고 있습니다. Jason이 Denny에게 몇 개의 막대사탕을 주었나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. Jason은 처음에 20개의 막대사탕을 가지고 있었습니다. Denny에게 몇 개를 준 후에는 12개가 남았습니다. 따라서 Denny에게 20 - 12 = 8개를 주었습니다.",
-        "answer": "8"
-    },
-    {
-        "question": "Shawn은 5개의 장난감을 가지고 있습니다. 크리스마스에 그는 엄마와 아빠로부터 각각 2개씩의 장난감을 받았습니다. 이제 그는 몇 개의 장난감을 가지고 있나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. Shawn은 처음에 5개의 장난감을 가지고 있었습니다. 엄마와 아빠로부터 각각 2개씩 받았다면, 그것은 2 * 2 = 4개의 추가 장난감입니다. 따라서 5 + 4 = 9입니다.",
-        "answer": "9"
-    },
-    {
-        "question": "서버실에 9대의 컴퓨터가 있었습니다. 월요일부터 목요일까지 매일 5대씩 더 설치되었습니다. 이제 서버실에는 몇 대의 컴퓨터가 있나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. 원래 9대의 컴퓨터가 있었습니다. 4일 동안 매일 5대씩 추가되었습니다. 따라서 5 * 4 = 20대의 컴퓨터가 추가되었습니다. 따라서 9 + 20 = 29입니다.",
-        "answer": "29"
-    },
-    {
-        "question": "Michael은 58개의 골프공을 가지고 있었습니다. 화요일에 그는 23개의 골프공을 잃어버렸습니다. 수요일에는 2개를 더 잃어버렸습니다. 수요일 끝에 그는 몇 개의 골프공을 가지고 있었나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. Michael은 처음에 58개의 골프공을 가지고 있었습니다. 화요일에 23개를 잃어버린 후, 그는 58 - 23 = 35개를 가지고 있었습니다. 수요일에 2개를 더 잃어버린 후, 따라서 그는 35 - 2 = 33개의 골프공을 가지고 있었습니다.",
-        "answer": "33"
-    },
-    {
-        "question": "Olivia는 23달러를 가지고 있습니다. 그녀는 개당 3달러인 베이글 5개를 샀습니다. 그녀에게 얼마가 남았나요?",
-        "cot_content": "이제 단계별로 생각해봅시다. Olivia는 23달러를 가지고 있었습니다. 개당 3달러인 베이글 5개는 5 * 3 = 15달러입니다. 따라서 그녀에게는 23 - 15 = 8달러가 남았습니다.",
-        "answer": "8"
-    }
-]
 
 # --- Helper Functions ---
 def load_gsm8k_data(filepath):
@@ -238,46 +116,23 @@ def load_gsm8k_data(filepath):
         logger.error(f"Error loading data: {e}")
         return None
 
-def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
-    """
-    (개선된 최종 버전)
-    딕셔너리 리스트 형태의 few-shot 예제를 사용하여
-    GSM8K 8-shot CoT 평가 프롬프트를 동적으로 생성합니다.
-    """
-    prompt_parts = []
-
-    # 1. 루프를 통해 8개의 예제를 동적으로 구성합니다.
-    for example in few_shot_examples:
-        question = example["question"]
-        cot_content = example["cot_content"] # 예제 딕셔너리의 cot_content를 사용
-        answer = example["answer"]
-        
-        if is_korean:
-            full_answer_block = f"Response: {cot_content} #### 따라서 정답은 {answer}. #### {answer}"
-            example_block = f"문제: {question}\n {full_answer_block}"
-        else:
-            full_answer_block = f"응답: {cot_content} #### So the answer is {answer}. #### {answer}"
-            example_block = f"Question: {question}\n {full_answer_block}"
-
-        # 최종 예제 블록을 조립합니다.
-        prompt_parts.append(example_block)
-
-    # 2. 모든 예제를 하나의 문자열로 합칩니다. (예제 사이에 두 줄 띄어쓰기)
-    final_examples_str = "\n\n".join(prompt_parts)
-
-    # 3. 최종 프롬프트를 완성합니다: [8개 예제] + [실제 문제] + [CoT 시작 유도]
+def create_gsm8k_0shot_prompt(text, is_korean=False):
+    """(개선된 버전) GSM8K 평가를 위한 Zero-Shot CoT 프롬프트"""
     if is_korean:
-        final_prompt = f"""{final_examples_str}
-
-문제: {text}
-응답: 단계별로 생각해봅시다."""
-    else:
-        final_prompt = f"""{final_examples_str}
-
-Question: {text}
-Response: Let's think step by step."""
+        instruction = "다음 수학 문제를 단계적으로 생각하여 풀이 과정을 설명하고, 최종 숫자 답변을 '#### [숫자]' 형식으로 제시해주세요."
+        question_header = "문제:"
+        cot_trigger = "응답답: 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
+        
+        prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
+        
+    else: # English version
+        instruction = "Solve the following math problem by thinking step-by-step and providing the final numerical answer in the format '#### [number]'."
+        question_header = "Question:"
+        cot_trigger = "Response: Let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
+        
+        prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
     
-    return final_prompt
+    return prompt
 
 def extract_numerical_answer(model_output):
     """
@@ -487,7 +342,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process Korean version (translated question)
             if has_korean:
                 try:
-                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES)
+                    korean_prompt = create_gsm8k_prompt(question, is_korean=True)
                     inputs = tokenizer(korean_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
                     
                     with torch.no_grad():
@@ -543,9 +398,9 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             # Process English version (original question)  
             if original:
                 try:
-                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES)
+                    english_prompt = create_gsm8k_prompt(original, is_korean=False)
                     inputs = tokenizer(english_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
-
+                    
                     with torch.no_grad():
                         outputs = model.generate(
                             **inputs,
@@ -622,9 +477,73 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard_english:.2f}%")
         logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict_english:.2f}%")
 
-        # Save Results
+        # Save Results - Separate Korean and English
         config_dict_serializable = {k: str(v) if isinstance(v, torch.dtype) else v for k, v in config.__dict__.items()}
-        final_summary = {
+        
+        # Korean results
+        korean_summary = {
+            "model_config": config_dict_serializable,
+            "dataset_path": DATASET_PATH,
+            "evaluation_type": "GSM8K (HRM8K Korean)",
+            "total_questions": len(gsm8k_data),
+            "language": "Korean",
+            "results": {
+                "valid_predictions": total_predictions_korean,
+                "correct_predictions": correct_predictions_korean,
+                "errors_or_skipped": errors_or_skipped_korean,
+                "accuracy_standard": accuracy_standard_korean,
+                "accuracy_strict": accuracy_strict_korean,
+                "details": results_details_korean
+            }
+        }
+        
+        # English results
+        english_summary = {
+            "model_config": config_dict_serializable,
+            "dataset_path": DATASET_PATH,
+            "evaluation_type": "GSM8K (HRM8K English)",
+            "total_questions": len(gsm8k_data),
+            "language": "English",
+            "results": {
+                "valid_predictions": total_predictions_english,
+                "correct_predictions": correct_predictions_english,
+                "errors_or_skipped": errors_or_skipped_english,
+                "accuracy_standard": accuracy_standard_english,
+                "accuracy_strict": accuracy_strict_english,
+                "details": results_details_english
+            }
+        }
+
+        try:
+            with open(results_korean_filepath, 'w', encoding='utf-8') as f:
+                json.dump(korean_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Korean results saved to {results_korean_filepath}")
+            
+            with open(results_english_filepath, 'w', encoding='utf-8') as f:
+                json.dump(english_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"English results saved to {results_english_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save results files: {e}")
+
+        # Save Raw Generations - Separate Korean and English
+        logger.info(f"Saving Korean raw generations to {raw_gen_korean_filepath}...")
+        try:
+            with open(raw_gen_korean_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_korean_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"Korean raw generations saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save Korean raw generations file: {e}")
+            
+        logger.info(f"Saving English raw generations to {raw_gen_english_filepath}...")
+        try:
+            with open(raw_gen_english_filepath, 'w', encoding='utf-8') as f:
+                json.dump(raw_generations_english_list, f, indent=2, ensure_ascii=False)
+            logger.info(f"English raw generations saved successfully.")
+        except Exception as e:
+            logger.error(f"Failed to save English raw generations file: {e}")
+
+        # Return combined summary for compatibility with main function
+        combined_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
             "evaluation_type": "GSM8K (HRM8K Korean and English Separate)",
@@ -646,24 +565,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 "details": results_details_english
             }
         }
-
-        try:
-            with open(results_filepath, 'w', encoding='utf-8') as f:
-                json.dump(final_summary, f, indent=2, ensure_ascii=False)
-            logger.info(f"Detailed results saved to {results_filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save results file {results_filepath}: {e}")
-
-        # Save Raw Generations
-        logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
-        try:
-            with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
-                json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
-            logger.info(f"Raw generations saved successfully.")
-        except Exception as e:
-            logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
-
-        return final_summary
+        return combined_summary
 
     except Exception as e:
         logger.exception(f"Critical error during evaluation for {config.name}: {e}")
@@ -750,60 +652,9 @@ def create_final_summary(all_results: list, base_output_dir: str):
     
     final_json_path = os.path.join(base_output_dir, "final_gsm8k_results.json")
     try:
-        # Enhanced summary with performance analysis
-        if create_enhanced_summary and final_results_korean and final_results_english:
-            evaluation_info = {
-                "evaluation_type": "GSM8K (HRM8K Korean and English Separate Evaluation)",
-                "evaluation_date": datetime.now().isoformat(),
-                "dataset_path": DATASET_PATH,
-                "total_models_evaluated": len(final_results_korean)
-            }
-            
-            # Analyze Korean results
-            korean_enhanced = create_enhanced_summary(
-                model_results=final_results_korean,
-                evaluation_info=evaluation_info,
-                primary_metric="accuracy_strict",
-                subject_metric=None  # GSM8K doesn't have subject breakdown
-            )
-            
-            # Analyze English results
-            english_enhanced = create_enhanced_summary(
-                model_results=final_results_english,
-                evaluation_info=evaluation_info,
-                primary_metric="accuracy_strict",
-                subject_metric=None
-            )
-            
-            # Combine analyses
-            enhanced_summary = {
-                "evaluation_info": evaluation_info,
-                "korean_analysis": korean_enhanced,
-                "english_analysis": english_enhanced,
-                "original_summary": final_summary,
-                "language_comparison": {
-                    "korean_avg_score": korean_enhanced["performance_analysis"]["average_score"],
-                    "english_avg_score": english_enhanced["performance_analysis"]["average_score"],
-                    "korean_best_model": korean_enhanced["performance_analysis"]["best_model"],
-                    "english_best_model": english_enhanced["performance_analysis"]["best_model"],
-                    "performance_difference": english_enhanced["performance_analysis"]["average_score"] - korean_enhanced["performance_analysis"]["average_score"]
-                }
-            }
-            
-            with open(final_json_path, 'w', encoding='utf-8') as f:
-                json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
-                
-            # Log key insights
-            logger.info(f"🏆 Best Korean model: {korean_enhanced['performance_analysis']['best_model']} ({korean_enhanced['performance_analysis']['average_score']:.2f}%)")
-            logger.info(f"🏆 Best English model: {english_enhanced['performance_analysis']['best_model']} ({english_enhanced['performance_analysis']['average_score']:.2f}%)")
-            logger.info(f"📈 Language performance gap: {abs(enhanced_summary['language_comparison']['performance_difference']):.2f}%p")
-            
-        else:
-            # Fallback to basic summary
-            with open(final_json_path, 'w', encoding='utf-8') as f:
-                json.dump(final_summary, f, indent=2, ensure_ascii=False)
-                
-        logger.info(f"Summary saved to {final_json_path}")
+        with open(final_json_path, 'w', encoding='utf-8') as f:
+            json.dump(final_summary, f, indent=2, ensure_ascii=False)
+        logger.info(f"Final summary saved to {final_json_path}")
         
         # Also create separate CSV files for Korean and English results
         korean_csv_path = os.path.join(base_output_dir, "gsm8k_results_korean.csv")

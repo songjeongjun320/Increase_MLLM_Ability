@@ -35,7 +35,7 @@ ADAPTER_PATHS=(
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW"
 )
 
-# KLUE 전체 8개 태스크 (klue_re_custom을 re로 변경)
+# KLUE 전체 8개 태스크
 TASKS=("tc" "sts" "nli" "mrc" "ner" "re" "dp" "dst")
 
 RESULTS_DIR="./evaluation_results_klue"

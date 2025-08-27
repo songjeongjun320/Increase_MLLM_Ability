@@ -1,3 +1,4 @@
+# KLUE STS - 회귀 태스크 (Pearson 상관계수 사용)
 task: sts
 dataset_path: klue
 dataset_name: sts
@@ -22,25 +23,24 @@ doc_to_text: |
   문장2: {{sentence2}}
   
   위 두 문장의 의미적 유사성을 0점(전혀 유사하지 않음)부터 5점(완전히 동일함)까지의 점수로 평가하세요.
-  숫자만 답하세요.
   
   점수:
 
-# 더 포괄적인 숫자 추출 패턴
+# 실수값 추출을 위한 필터 개선
 filter_list:
   - name: "get-score"
     filter:
       - function: "regex"
-        regex_pattern: r"([0-5](?:\.[0-9]+)?)"
+        regex_pattern: r"(?:점수[:\s]*|평가[:\s]*|결과[:\s]*)?([0-5](?:\.[0-9]+)?)"
+        group_select: 1
       - function: "take_first"
 
 fewshot_config:
   sampler: first_n
 
-# 실제 점수 값 (0-5 범위의 실수)
-doc_to_target: "{{labels.real_label}}"
-
-num_fewshot: 3
+# KLUE STS 타겟은 labels.label (반올림된 라벨, 0-5 범위)
+doc_to_target: "labels.label"  # 반올림된 라벨 사용 (0-5 범위)
+num_fewshot: 3  # STS는 복잡하므로 적은 few-shot 사용
 should_decontaminate: true
 metadata:
   version: 1.0

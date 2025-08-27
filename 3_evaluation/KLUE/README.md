@@ -1,288 +1,163 @@
-# KLUE Benchmark Evaluation
+# KLUE 벤치마크 평가 실행 가이드
 
-This directory contains a comprehensive implementation of the KLUE (Korean Language Understanding Evaluation) benchmark for evaluating Korean language understanding capabilities of large language models.
+이 디렉토리는 완전히 개선된 KLUE (Korean Language Understanding Evaluation) 벤치마크 평가를 위한 파일들을 포함합니다.
 
-## Overview
-
-KLUE consists of 8 diverse Korean natural language understanding tasks:
-
-1. **Topic Classification (TC)** - News article topic classification
-2. **Sentence Textual Similarity (STS)** - Semantic similarity between sentence pairs
-3. **Natural Language Inference (NLI)** - Logical reasoning and inference
-4. **Named Entity Recognition (NER)** - Named entity identification and classification
-5. **Relation Extraction (RE)** - Relation classification between entities
-6. **Dependency Parsing (DP)** - Syntactic parsing of Korean sentences
-7. **Machine Reading Comprehension (MRC)** - Reading comprehension and question answering
-8. **Dialogue State Tracking (DST)** - Dialogue state tracking for task-oriented dialogue
-
-## File Structure
+## 📁 파일 구조
 
 ```
-EVALUATION/KLUE/
-├── config.py              # Common configuration and model definitions
-├── utils.py               # Utility functions and model loading
-├── tc.py                  # Topic Classification evaluation
-├── sts.py                 # Sentence Textual Similarity evaluation
-├── nli.py                 # Natural Language Inference evaluation
-├── ner.py                 # Named Entity Recognition evaluation
-├── re.py                  # Relation Extraction evaluation
-├── dp.py                  # Dependency Parsing evaluation
-├── mrc.py                 # Machine Reading Comprehension evaluation
-├── dst.py                 # Dialogue State Tracking evaluation
-├── run_all_klue.py        # Run all tasks sequentially
-├── run_model_klue.py      # Run all tasks for a specific model
-└── README.md              # This file
+klue_evaluation/
+├── tc.yaml              # Topic Classification 설정
+├── sts.yaml             # Semantic Textual Similarity 설정  
+├── nli.yaml             # Natural Language Inference 설정
+├── re.yaml              # Relation Extraction 설정 (새로 완성)
+├── dp.yaml              # Dependency Parsing 설정 (수정됨)
+├── mrc.yaml             # Machine Reading Comprehension 설정 (수정됨)
+├── dst.yaml             # Dialogue State Tracking 설정 (수정됨)
+├── model_configs.yaml   # 모델 설정 파일
+├── run_klue_evaluation.py           # 🚀 메인 실행 스크립트
+├── klue_data_preprocessor.py        # 데이터 전처리 유틸리티
+├── validate_klue_config.py          # 설정 검증 스크립트
+└── README.md           # 이 파일
 ```
 
-## Model Configuration
+## 🚀 빠른 시작
 
-Models are configured in `config.py`. The current setup includes:
-
-### Base Models
-- Qwen2.5-7B-Instruct
-- Mistral-8B-Instruct-2410
-- Llama-3.1-8B-Instruct
-- DeepSeek-R1-0528-Qwen3-8B
-
-### ToW Trained Models
-- Qwen2.5-7B-Instruct-ToW
-- Mistral-8B-Instruct-2410-ToW
-- Llama-3.1-8B-Instruct-ToW
-- DeepSeek-R1-0528-Qwen3-8B-ToW
-
-## Data Format
-
-The benchmark expects data files in the `../klue_all_tasks_json/` directory:
-
-- `klue_tc_validation.json` - Topic Classification validation data
-- `klue_sts_validation.json` - STS validation data
-- `klue_nli_validation.json` - NLI validation data
-- `klue_ner_validation.json` - NER validation data
-- `klue_re_validation.json` - RE validation data
-- `klue_dp_validation.json` - DP validation data
-- `klue_mrc_validation.json` - MRC validation data
-- `klue_dst_validation.json` - DST validation data
-
-## Usage
-
-### 1. Individual Task Evaluation
-
-Run evaluation for a specific task:
-
+### 1. 환경 설정
 ```bash
-# Topic Classification
-python tc.py
+# 필요한 패키지 설치
+pip install lm-eval transformers datasets torch pyyaml
 
-# Sentence Textual Similarity
-python sts.py
-
-# Natural Language Inference
-python nli.py
-
-# Named Entity Recognition
-python ner.py
-
-# Relation Extraction
-python re.py
-
-# Dependency Parsing
-python dp.py
-
-# Machine Reading Comprehension
-python mrc.py
-
-# Dialogue State Tracking
-python dst.py
+# accelerate 설정 (GPU 사용 시)
+accelerate config
 ```
 
-### 2. Complete Benchmark (All Tasks)
+### 2. 모델 경로 설정
+`model_configs.yaml` 파일을 수정해서 실제 모델 경로를 입력하세요:
 
-Run all tasks sequentially:
+```yaml
+models:
+  - name: "your-model-name"
+    path: "/path/to/your/model"
+    adapter: ""  # LoRA 어댑터 경로 (선택사항)
+```
 
+### 3. 전체 평가 실행
 ```bash
-python run_all_klue.py
+# 모든 모델에 대해 모든 KLUE 태스크 평가
+python run_klue_evaluation.py
+
+# 결과 저장 디렉토리 지정
+python run_klue_evaluation.py --results_dir ./my_results
 ```
 
-Options:
-- `--tasks`: Specify which tasks to run (default: all)
-- `--skip-evaluation`: Only collect existing results without running evaluation
+### 4. 결과 확인
+평가 완료 후 `klue_evaluation_results/` 디렉토리에서 결과를 확인할 수 있습니다:
+- `모델명_태스크명.json`: 개별 결과 파일
+- `klue_evaluation_summary_YYYYMMDD_HHMMSS.json`: 전체 결과 요약
 
-Examples:
+## 🔧 고급 사용법
+
+### 개별 태스크만 실행
 ```bash
-# Run only TC, STS, and NLI tasks
-python run_all_klue.py --tasks tc sts nli
-
-# Collect results without running evaluation
-python run_all_klue.py --skip-evaluation
+# 단일 태스크만 평가하고 싶은 경우
+python -m lm_eval \
+    --model hf \
+    --model_args pretrained=/path/to/your/model \
+    --tasks tc \
+    --num_fewshot 3 \
+    --batch_size auto \
+    --output_path ./tc_results.json
 ```
 
-### 3. Model-wise Evaluation
-
-Evaluate a specific model on all tasks (memory-efficient):
-
+### 설정 검증
 ```bash
-# Evaluate a specific model
-python run_model_klue.py --model "Qwen2.5-7B-Instruct"
-
-# Evaluate all models
-python run_model_klue.py
-
-# Evaluate with limited samples for testing
-python run_model_klue.py --model "Qwen2.5-7B-Instruct" --max-samples 100
+# 평가 전에 설정이 올바른지 확인
+python validate_klue_config.py
 ```
 
-Options:
-- `--model`: Specify model name to evaluate (default: all models)
-- `--tasks`: Specify which tasks to run (default: all)
-- `--max-samples`: Limit number of samples per task for testing
-
-## Evaluation Metrics
-
-Each task uses specific evaluation metrics:
-
-| Task | Primary Metric | Secondary Metrics |
-|------|----------------|------------------|
-| TC   | **Macro F1** (Official)      | Accuracy |
-| STS  | Pearson Correlation | P-value |
-| NLI  | Accuracy       | F1-Macro |
-| NER  | F1 Score       | Precision, Recall |
-| RE   | **Micro F1** (Official)      | Macro F1, Accuracy |
-| DP   | LAS (Labeled Attachment Score) | UAS (Unlabeled Attachment Score) |
-| MRC  | F1 Score       | Exact Match |
-| DST  | Joint Goal Accuracy | Slot Accuracy |
-
-## Output Structure
-
-Results are saved with the following structure:
-
-```
-klue_evaluation_results/
-├── task_evaluation_YYYYMMDD_HHMMSS/
-│   ├── {model_name}_{task}_results.json
-│   └── {task}_summary.json
-├── klue_full_benchmark_YYYYMMDD_HHMMSS/
-│   ├── klue_benchmark_results.csv
-│   ├── klue_benchmark_results.json
-│   └── model_results/
-└── klue_model_wise_YYYYMMDD_HHMMSS/
-    ├── model_{model_name}/
-    │   ├── {model_name}_{task}_results.json
-    │   └── {model_name}_klue_summary.json
-    └── overall_summary.json
+### 모델 설정 템플릿 생성
+```bash
+# 새로운 model_configs.yaml 템플릿 생성
+python run_klue_evaluation.py --create_template
 ```
 
-## Result Files
+## 📊 평가 태스크 상세
 
-### Individual Task Results
-- `{model_name}_{task}_results.json`: Detailed results for a model on a specific task
-- `{task}_summary.json`: Summary of all models' performance on a task
+| 태스크 | 설명 | Few-shot | 메트릭 | 예상 시간 |
+|--------|------|----------|--------|-----------|
+| **TC** | 주제 분류 (뉴스 제목 → 7개 카테고리) | 3 | Accuracy | ~10분 |
+| **STS** | 의미 유사성 (문장 쌍 → 0-5점) | 3 | Pearson r | ~15분 |
+| **NLI** | 자연어 추론 (전제-가설 → 함의/모순/중립) | 3 | Accuracy | ~15분 |
+| **RE** | 관계 추출 (문장+개체 → 30개 관계) | 2 | macro F1 | ~20분 |
+| **DP** | 구문 분석 (문장 → head 인덱스) | 1 | Exact Match | ~30분 |
+| **MRC** | 기계 독해 (지문+질문 → 답변) | 2 | EM, F1 | ~25분 |
+| **DST** | 대화 상태 추적 (대화 → 슬롯-값) | 1 | Exact Match | ~20분 |
 
-### Comprehensive Results
-- `klue_benchmark_results.csv`: Results table in CSV format
-- `klue_benchmark_results.json`: Complete results in JSON format
-- `overall_summary.json`: Overall evaluation summary
+**총 예상 시간: 모델당 ~2-3시간** (GPU 성능에 따라 차이)
 
-## Example Result Structure
+## ⚡ 성능 최적화
 
-```json
-{
-  "task_type": "tc",
-  "model_name": "Qwen2.5-7B-Instruct",
-  "num_samples": 3003,
-  "metrics": {
-    "accuracy": 0.8542,
-    "f1_macro": 0.8398
-  },
-  "timestamp": "2024-01-15T10:30:00"
-}
+### GPU 메모리 최적화
+```bash
+# 배치 크기 자동 조정
+--batch_size auto
+
+# 수동 배치 크기 설정 (메모리 부족 시)
+--batch_size 4
 ```
 
-## Memory Management
-
-The evaluation system includes automatic memory management:
-
-- Models are loaded and unloaded for each task to prevent OOM errors
-- GPU memory is cleared between model evaluations
-- Batch processing for large datasets
-
-## Customization
-
-### Adding New Models
-
-Add new model configurations to `config.py`:
-
-```python
-ModelConfig(
-    name="YourModel",
-    model_id="/path/to/your/model",
-    adapter_path="/path/to/adapter",  # Optional
-    use_quantization=False
-)
+### 병렬 처리
+```bash
+# accelerate로 멀티 GPU 사용
+accelerate launch -m lm_eval --model hf --model_args pretrained=/path/to/model --tasks tc,sts,nli
 ```
 
-### Modifying Prompts
+## 📋 체크리스트
 
-Update prompt templates in `config.py`:
+평가 실행 전에 다음을 확인하세요:
 
-```python
-PROMPT_TEMPLATES = {
-    'task_name': """Your custom prompt template with {placeholder}""",
-    # ...
-}
+- [ ] 모든 YAML 설정 파일이 같은 디렉토리에 있음
+- [ ] `model_configs.yaml`에 올바른 모델 경로 설정
+- [ ] 충분한 디스크 공간 (결과 파일용)
+- [ ] GPU 메모리 충분함 (최소 8GB 권장)
+- [ ] 인터넷 연결 (KLUE 데이터셋 다운로드용)
+
+## 🐛 문제 해결
+
+### 일반적인 오류
+
+**1. 모델 로딩 실패**
+```
+❌ 모델 경로 없음: /path/to/model
+```
+→ `model_configs.yaml`에서 올바른 경로 확인
+
+**2. KLUE 데이터셋 로딩 실패**
+```
+❌ datasets.exceptions.DatasetNotFoundError
+```
+→ 인터넷 연결 확인, `datasets` 라이브러리 최신 버전 설치
+
+**3. GPU 메모리 부족**
+```
+torch.cuda.OutOfMemoryError
+```
+→ `--batch_size 1` 또는 더 작은 값 사용
+
+**4. 특정 태스크 실패**
+- **DP (Dependency Parsing)**: 가장 복잡한 태스크, 실패 가능성 높음
+- **DST (Dialogue State Tracking)**: 복잡한 대화 구조로 인한 파싱 오류 가능
+
+### 로그 확인
+```bash
+# 자세한 로그 출력
+python run_klue_evaluation.py --verbosity DEBUG
 ```
 
-### Adjusting Evaluation Parameters
+## 📈 결과 해석
 
-- Modify `max_new_tokens`, `temperature` in evaluation functions
-- Adjust sample limits for testing
-- Configure quantization settings per model
-
-## Requirements
-
-- Python 3.8+
-- PyTorch
-- Transformers
-- PEFT
-- scikit-learn
-- scipy
-- pandas
-- numpy
-- tqdm
-
-## Performance Tips
-
-1. **Memory Usage**: Use `--max-samples` for testing to avoid OOM
-2. **Model Loading**: Use model-wise evaluation (`run_model_klue.py`) for better memory management
-3. **Quantization**: Enable quantization for large models if VRAM is limited
-4. **Batch Size**: Adjust batch sizes based on available GPU memory
-
-## Troubleshooting
-
-### Common Issues
-
-1. **CUDA OOM**: Reduce `max_samples` or enable quantization
-2. **Model Loading Errors**: Check model paths in `config.py`
-3. **Data Loading Errors**: Verify data files exist in correct directory
-4. **Import Errors**: Ensure all dependencies are installed
-
-### Debug Mode
-
-Enable detailed logging:
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-## Citation
-
-If you use this evaluation code, please cite the original KLUE paper:
-
-```
-@inproceedings{park2021klue,
-  title={KLUE: Korean Language Understanding Evaluation},
-  author={Park, Sungjoon and Moon, Jihyung and Kim, Sungdong and Cho, Won Ik and Han, Jiyoon and Park, Jangwon and Song, Chisung and Kim, Junseong and Song, Yongsook and Taek, Oh and others},
-  booktitle={Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 2)},
-  year={2021}
-}
-```
+### 태스크별 성능 기준
+- **TC**: 85%+ (우수), 80%+ (보통)
+- **STS**: 0.85+ (우수), 0.80+ (보통)  
+- **NLI**: 80%+ (우수), 75%+ (보통)
+- **RE**: 70%+ (우수), 65%+ (보통

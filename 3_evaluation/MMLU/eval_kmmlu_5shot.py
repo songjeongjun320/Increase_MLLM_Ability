@@ -82,7 +82,7 @@ MODEL_CONFIGS = [
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
 DATASET_PATH = "../../2_datasets/MMLU/MMLU_KO_Openai.json"
-BASE_OUTPUT_DIR = "kmmlu_tow_model1_5shot" # Base dir for ALL model results
+BASE_OUTPUT_DIR = "kmmlu_5shot_results" # Base dir for ALL model results
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"

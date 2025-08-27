@@ -1,0 +1,28 @@
+# KLUE 평가를 위한 모델 설정 파일
+# 실제 모델 경로로 수정해서 사용하세요
+
+models:
+  - name: "DeepSeek-R1-Distill-Qwen-1.5B"
+    path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+    adapter: ""  # LoRA 어댑터 경로 (선택사항)
+    
+  - name: "google_gemma-3-4b-it"
+    path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+    adapter: ""
+    
+  - name: "Qwen2.5-3B-Instruct"
+    path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
+    adapter: ""
+    
+  - name: "Llama-3.2-3B-Instruct"
+    path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
+    adapter: ""
+
+# LoRA 어댑터가 있는 모델 예시 (주석 해제해서 사용)
+#  - name: "DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+#    path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+#    adapter: "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+#    
+#  - name: "google_gemma-3-4b-it-ToW"
+#    path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+#    adapter: "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/google_gemma-3-4b-it-ToW"

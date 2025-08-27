@@ -2,7 +2,6 @@
 
 export TRANSFORMERS_VERBOSITY=info
 
-
 MODEL_NAMES=(
     "DeepSeek-R1-Distill-Qwen-1.5B"
     "google_gemma-3-4b-it"
@@ -17,11 +16,11 @@ MODEL_NAMES=(
 MODEL_PATHS=(
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"  # 수정: 경로 이름 맞춤
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
 )
 
@@ -36,7 +35,7 @@ ADAPTER_PATHS=(
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models/Llama-3.2-3B-Instruct-ToW"
 )
 
-# KLUE 전체 8개 태스크
+# KLUE 전체 8개 태스크 (klue_re_custom을 re로 변경)
 TASKS=("tc" "sts" "nli" "mrc" "ner" "re" "dp" "dst")
 
 RESULTS_DIR="./evaluation_results_klue"

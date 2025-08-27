@@ -1,0 +1,47 @@
+task: mrc
+dataset_path: klue
+dataset_name: mrc
+test_split: validation
+
+output_type: generate_until
+
+generation_kwargs:
+  until: ["\n\n", "\n질문:", "\n지문:", "<|im_end|>"]
+  max_gen_toks: 100  # MRC 답변은 보통 짧음
+  temperature: 0.0
+  do_sample: false
+
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+  - metric: f1
+    aggregation: mean
+    higher_is_better: true
+
+description: "주어진 지문을 읽고 질문에 답하세요. 답할 수 없으면 '답할 수 없음'이라고 하세요."
+
+doc_to_text: |
+  지문: {{context}}
+  
+  질문: {{question}}
+  
+  답변:
+
+# 답변 추출을 위한 필터 (공백 제거)
+filter_list:
+  - name: "whitespace"
+    filter:
+      - function: "take_first"
+
+fewshot_config:
+  sampler: first_n
+
+# MRC의 타겟은 answers 리스트의 첫 번째 answer의 text 필드
+# KLUE MRC 구조: {"answers": [{"text": "답변", "answer_start": 시작위치}]}
+doc_to_target: "answers.text"  # answers 리스트의 첫 번째 요소의 text 필드
+
+num_fewshot: 2  # MRC는 복잡하므로 적게
+should_decontaminate: true
+metadata:
+  version: 1.0

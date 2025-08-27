@@ -1,6 +1,6 @@
 task: dst
 dataset_path: klue
-dataset_name: dst  # Word-in-Context
+dataset_name: wos  # Word-in-Context의 정확한 dataset_name
 test_split: validation
 
 output_type: multiple_choice
@@ -24,7 +24,9 @@ doc_to_text: |
   답:
 
 doc_to_choice: ["A", "B"]
-doc_to_target: "label"  # 0: False(다른 의미), 1: True(같은 의미)
+
+# label이 0이면 B(다른 의미), 1이면 A(같은 의미)로 매핑
+doc_to_target: "{{['B', 'A'][label]}}"
 
 fewshot_config:
   sampler: first_n

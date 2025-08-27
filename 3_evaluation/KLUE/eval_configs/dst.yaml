@@ -1,0 +1,54 @@
+task: dst
+dataset_path: klue
+dataset_name: wos  # DST는 WoS(Wizard-of-Seoul) 데이터셋 사용
+test_split: validation
+
+output_type: generate_until
+
+generation_kwargs:
+  until: ["\n\n", "\n대화:", "\n사용자:", "<|im_end|>"]
+  max_gen_toks: 300
+  temperature: 0.0
+  do_sample: false
+
+metric_list:
+  - metric: exact_match  # JGA (Joint Goal Accuracy) 대신 사용
+    aggregation: mean
+    higher_is_better: true
+
+description: "대화에서 사용자의 의도와 슬롯을 추적하세요."
+
+# DST는 복잡한 구조이므로 전체 대화 히스토리를 고려해야 함
+doc_to_text: |
+  다음 대화에서 마지막 사용자 발화 이후의 대화 상태를 예측하세요.
+  도메인: {{domains}}
+  
+  대화:
+  {% for turn in dialogue %}
+  {% if turn.role == "user" %}사용자: {{turn.text}}{% endif %}
+  {% if turn.role == "sys" %}시스템: {{turn.text}}{% endif %}
+  {% endfor %}
+  
+  마지막 사용자 발화 이후의 대화 상태 (DOMAIN-SLOT-VALUE 형식):
+
+# WoS 데이터에서 마지막 user turn의 state를 추출
+# 예: ['관광-종류-박물관', '관광-지역-서울 중앙']
+filter_list:
+  - name: "extract-state"
+    filter:
+      - function: "regex"
+        regex_pattern: r"([가-힣]+-[가-힣]+-[가-힣\s]+)"
+        group_select: -1
+      - function: "take_first"
+
+# 마지막 사용자 턴의 상태를 타겟으로 사용
+# 실제 구현에서는 dialogue의 마지막 user turn의 state를 추출하는 로직 필요
+doc_to_target: "dialogue.-1.state"  # 마지막 사용자 턴의 상태
+
+fewshot_config:
+  sampler: first_n
+
+num_fewshot: 1  # DST는 매우 복잡하므로 최소화
+should_decontaminate: true
+metadata:
+  version: 1.0

@@ -1,0 +1,47 @@
+task: dp
+dataset_path: klue
+dataset_name: dp
+test_split: validation
+
+output_type: generate_until
+
+generation_kwargs:
+  until: ["\n\n", "\n문장:", "\n단어:", "<|im_end|>"]
+  max_gen_toks: 200
+  temperature: 0.0
+  do_sample: false
+
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+
+description: "문장의 의존성 파싱 결과를 예측하세요."
+
+# 단순화된 형태로 head 정보만 예측 (공백으로 구분된 정수 리스트)
+doc_to_text: |
+  문장: {{sentence}}
+  단어: {{word_form}}
+  
+  각 단어의 head 인덱스를 순서대로 나열하세요 (공백으로 구분, root는 0):
+
+# head 리스트를 공백으로 구분된 문자열로 변환
+# head: [2, 3, 14, 5, 14, 7, 10, 10, 10, 11, 12, 14, 14, 0] → "2 3 14 5 14 7 10 10 10 11 12 14 14 0"
+filter_list:
+  - name: "extract-numbers"
+    filter:
+      - function: "regex"
+        regex_pattern: r"([0-9]+(?:\s+[0-9]+)*)"
+      - function: "take_first"
+
+# head 리스트를 문자열로 변환하여 비교
+# KLUE DP 데이터셋에서 head는 리스트 형태이므로 전처리 필요
+doc_to_target: "head"  # 이는 후처리에서 리스트를 문자열로 변환해야 함
+
+fewshot_config:
+  sampler: first_n
+
+num_fewshot: 1  # DP는 매우 복잡하므로 최소화
+should_decontaminate: true
+metadata:
+  version: 1.0

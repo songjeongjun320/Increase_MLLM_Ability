@@ -1,0 +1,68 @@
+task: re
+dataset_path: klue
+dataset_name: re
+test_split: validation
+
+output_type: multiple_choice
+metric_list:
+  - metric: f1
+    aggregation: macro
+    higher_is_better: true
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+
+description: "문장에서 두 개체 간의 관계를 분류하세요."
+
+doc_to_text: |
+  문장: {{sentence}}
+  주체 개체: {{subject_entity.word}} ({{subject_entity.type}})
+  목적 개체: {{object_entity.word}} ({{object_entity.type}})
+  
+  위 두 개체 간의 관계를 선택하세요:
+  A. no_relation (관계 없음)
+  B. org:dissolved (조직 해체)
+  C. org:founded (조직 설립)
+  D. org:place_of_headquarters (본사 위치)
+  E. org:alternate_names (조직 다른 이름)
+  F. org:member_of (소속 조직)
+  G. org:members (구성원)
+  H. org:political/religious_affiliation (정치/종교 소속)
+  I. org:product (조직 제품)
+  J. org:founded_by (조직 설립자)
+  K. org:top_members/employees (주요 구성원/직원)
+  L. org:number_of_employees/members (직원/구성원 수)
+  M. per:date_of_birth (출생일)
+  N. per:date_of_death (사망일)
+  O. per:place_of_birth (출생지)
+  P. per:place_of_death (사망지)
+  Q. per:place_of_residence (거주지)
+  R. per:origin (출신)
+  S. per:employee_of (소속 회사)
+  T. per:schools_attended (출신 학교)
+  U. per:alternate_names (다른 이름)
+  V. per:parents (부모)
+  W. per:children (자녀)
+  X. per:siblings (형제/자매)
+  Y. per:spouse (배우자)
+  Z. per:other_family (기타 가족)
+  AA. per:colleagues (동료)
+  BB. per:product (개인 제품)
+  CC. per:religion (종교)
+  DD. per:title (직책)
+  
+  답:
+
+doc_to_choice: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "BB", "CC", "DD"]
+doc_to_target: "label"
+
+target_delimiter: " "
+fewshot_delimiter: "\n\n"
+
+fewshot_config:
+  sampler: first_n
+
+num_fewshot: 2  # RE는 복잡하므로 적게 설정
+should_decontaminate: true
+metadata:
+  version: 1.0

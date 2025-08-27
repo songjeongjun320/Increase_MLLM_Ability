@@ -1,0 +1,37 @@
+task: nli
+dataset_path: klue
+dataset_name: nli
+test_split: validation
+
+output_type: multiple_choice
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+
+description: "전제와 가설 사이의 논리적 관계를 판단하세요."
+
+doc_to_text: |
+  전제: {{premise}}
+  가설: {{hypothesis}}
+  
+  전제가 참일 때, 가설의 참/거짓을 판단하세요.
+  A. 참 (함의)
+  B. 알 수 없음 (중립)
+  C. 거짓 (모순)
+  
+  답:
+
+doc_to_choice: ["A", "B", "C"]
+doc_to_target: "label"
+
+target_delimiter: " "
+fewshot_delimiter: "\n\n"
+
+fewshot_config:
+  sampler: first_n
+
+num_fewshot: 3  # NLI는 복잡하므로 적게
+should_decontaminate: true
+metadata:
+  version: 1.0

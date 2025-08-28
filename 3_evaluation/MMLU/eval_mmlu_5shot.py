@@ -488,6 +488,11 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
 
+        # Gemma 모델에서만 컴파일 비활성화
+        if "gemma" in config.name.lower():
+            torch._dynamo.config.disable = True
+            logger.info("Disabled torch compilation for Gemma model")
+            
         # --- Run Evaluation ---
         correct_predictions = 0
         total_predictions = 0 # 유효한 예측 시도 횟수

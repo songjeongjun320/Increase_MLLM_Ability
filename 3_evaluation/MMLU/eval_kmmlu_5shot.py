@@ -32,26 +32,26 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    ModelConfig(
-        name="Qwen2.5-3B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="google_gemma-3-4b-it",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.2-3B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-Distill-Qwen-1.5B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-3B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="google_gemma-3-4b-it",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-Distill-Qwen-1.5B",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
+    #     use_quantization=False
+    # ),
 
     # ToW Trained Models
     # ModelConfig(

@@ -19,9 +19,8 @@ description: "문장의 의존성 파싱 결과를 예측하세요."
 
 doc_to_text: |
   문장: {{sentence}}
-  토큰: {{tokens|join(' ')}}
   
-  각 토큰의 head 인덱스를 순서대로 나열하세요 (공백으로 구분, 루트는 0):
+  각 단어의 head 인덱스를 순서대로 나열하세요 (공백으로 구분, 루트는 0):
 
 # head 리스트를 공백으로 구분된 문자열로 변환
 doc_to_target: "{{head|join(' ')}}"

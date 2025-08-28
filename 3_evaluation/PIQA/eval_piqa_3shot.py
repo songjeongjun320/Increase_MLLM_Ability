@@ -28,7 +28,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
 PIQA_DATASET_PATH = "../../2_datasets/PIQA/validation.json"  # Path to PIQA dataset
 KOPIQA_DATASET_PATH = "../../2_datasets/PIQA/Ko-PIQA_validation.json"  # Path to Ko-PIQA dataset
-BASE_OUTPUT_DIR = "../4_evaluation_results/PIQA_5shot"  # Output directory
+BASE_OUTPUT_DIR = "../4_evaluation_results/PIQA_3shot"  # Output directory
 BATCH_SIZE = 16
 
 # --- Model Configuration ---
@@ -113,71 +113,52 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
         "goal": "How to separate egg whites from egg yolks?",
         "sol1": "Crack the egg and pour the contents from one half of the shell to the other, allowing the white to fall into a bowl below while keeping the yolk in the shell.",
         "sol2": "Crack the egg and pour everything into a bowl, then use a spoon to fish out the yolk.",
-        "label": 0
+        "label": 0,
+        "reasoning": "When separating eggs, the goal is to keep the yolk intact while collecting the white. Method A uses the traditional shell-transfer technique which naturally allows the white to flow out while the yolk stays contained in the shell due to its thicker consistency. Method B would work but is messier and risks breaking the yolk when fishing it out with a spoon, potentially contaminating the white."
     },
     {
         "goal": "To make a simple bookmark",
         "sol1": "Cut a piece of cardboard to size, decorate it, and punch a hole at the top to thread a ribbon through.",
         "sol2": "Cut a piece of paper to size, fold it in half, and staple the open edges together.",
-        "label": 0
+        "label": 0,
+        "reasoning": "For a bookmark to be functional, it should be durable and have a way to easily locate it. Method A creates a sturdy cardboard bookmark with a ribbon that can hang out of the book, making it easy to find. Method B creates a paper pocket that would be less durable and doesn't provide a way to easily locate the bookmark in a closed book."
     },
     {
         "goal": "How to remove a splinter from your finger?",
         "sol1": "Use sterilized tweezers to gently pull the splinter out in the same direction it entered the skin.",
         "sol2": "Push the splinter deeper into the skin until it comes out the other side.",
-        "label": 0
-    },
-    {
-        "goal": "To keep cut avocados from browning",
-        "sol1": "Sprinkle lemon juice on the cut surface and store in an airtight container.",
-        "sol2": "Leave the cut avocado exposed to air to let it naturally preserve itself.",
-        "label": 0
-    },
-    {
-        "goal": "How to water plants while away for vacation?",
-        "sol1": "Set up a self-watering system using a plastic bottle with holes poked in the cap, inserted upside down into the soil.",
-        "sol2": "Water the plants heavily before leaving and hope they survive until you return.",
-        "label": 0
+        "label": 0,
+        "reasoning": "Safe splinter removal requires minimizing tissue damage and infection risk. Method A follows proper first aid by using sterile tools and removing the splinter along its entry path, which minimizes tissue tearing. Method B is dangerous as it would cause unnecessary injury, push bacteria deeper, and potentially break the splinter inside the tissue."
     }
 ]
-
 KOREAN_FEW_SHOT_EXAMPLES = [
     {
         "goal": "달걀 흰자와 달걀 노른자를 어떻게 분리하나요?",
         "sol1": "달걀을 깨서 껍데기 반쪽에서 다른 반쪽으로 내용물을 부으면서 노른자는 껍데기에 유지하고 흰자는 아래 그릇으로 떨어뜨린다.",
         "sol2": "달걀을 깨서 모든 것을 그릇에 부은 다음 숟가락으로 노른자를 건져낸다.",
-        "label": 0
+        "label": 0,
+        "reasoning": "달걀을 분리할 때 목표는 노른자를 터뜨리지 않으면서 흰자를 분리하는 것입니다. 방법 A는 전통적인 껍데기 이동 기법으로, 노른자의 더 진한 농도 때문에 껍데기에 머물면서 흰자만 자연스럽게 흘러내립니다. 방법 B도 가능하지만 숟가락으로 건져낼 때 노른자가 터질 위험이 있어 흰자를 오염시킬 수 있습니다."
     },
     {
         "goal": "간단한 책갈피를 만들려면",
         "sol1": "판지를 크기에 맞게 자르고 장식한 다음 위쪽에 구멍을 뚫어 리본을 끼운다.",
         "sol2": "종이를 크기에 맞게 자르고 반으로 접은 다음 열린 가장자리를 함께 스테이플러로 고정한다.",
-        "label": 0
+        "label": 0,
+        "reasoning": "책갈피가 실용적이려면 내구성이 있고 쉽게 찾을 수 있어야 합니다. 방법 A는 튼튼한 판지로 만들고 리본이 책 밖으로 나와 쉽게 찾을 수 있습니다. 방법 B는 종이 주머니를 만드는 것으로 내구성이 떨어지고 닫힌 책에서 책갈피를 쉽게 찾을 수 있는 방법을 제공하지 않습니다."
     },
     {
         "goal": "손가락에서 가시를 어떻게 제거하나요?",
         "sol1": "멸균된 핀셋을 사용하여 가시가 피부에 들어간 같은 방향으로 부드럽게 뽑아낸다.",
         "sol2": "가시를 피부 깊숙이 밀어넣어서 반대편으로 나오게 한다.",
-        "label": 0
-    },
-    {
-        "goal": "자른 아보카도가 갈색으로 변하는 것을 방지하려면",
-        "sol1": "자른 표면에 레몬즙을 뿌리고 밀폐용기에 보관한다.",
-        "sol2": "자른 아보카도를 공기에 노출시켜 자연적으로 보존되도록 둔다.",
-        "label": 0
-    },
-    {
-        "goal": "휴가로 집을 비운 동안 식물에 물을 주려면?",
-        "sol1": "뚜껑에 구멍을 뚫은 플라스틱 병을 거꾸로 흙에 꽂아서 자동 급수 시스템을 만든다.",
-        "sol2": "떠나기 전에 식물에 물을 많이 주고 돌아올 때까지 살아있기를 바란다.",
-        "label": 0
+        "label": 0,
+        "reasoning": "가시를 제거하는 가장 적절한 방법은 가시가 피부에 들어간 방향과 같은 방향으로 부드럽게 뽑아내는 것입니다. 이 방법은 가시가 피부 내부에서 더 깊게 밀려 들어가지 않도록 하고, 피부를 상처내지 않으면서 가시를 효과적으로 제거할 수 있습니다. 반면, 가시를 피부 깊숙이 밀어넣어 반대편으로 나오게 하는 방법은 가시가 더 깊은 부위로 밀리거나 제거하기 더 어려워질 수 있기 때문에 위험할 수 있습니다. 또한, 이 방법은 추가적인 상처나 감염을 유발할 수 있습니다. 따라서 첫 번째 방법인 멸균된 핀셋을 사용하여 가시가 들어간 방향으로 부드럽게 뽑아내는 방법이 가장 안전하고 효과적입니다."
     }
 ]
 
 # --- Helper Functions ---
-def create_5shot_prompt(item, few_shot_examples, language="en"):
+def create_3shot_prompt(item, few_shot_examples, language="en"):
     """
-    Creates a 5-shot PIQA prompt for a given test item.
+    Creates a 5-shot PIQA prompt with actual reasoning examples.
     """
     if language == "ko":
         prompt_parts = ["다음은 물리적 상식에 대한 다지선다형 질문입니다."]
@@ -186,20 +167,22 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     
     prompt_parts.append("")
     
-    # Add few-shot examples
-    for example in few_shot_examples:
+    # Add few-shot examples with actual reasoning
+    for example in few_shot_examples[:5]:  # Only use first 5 examples
         goal = example["goal"]
         sol1 = example["sol1"]
         sol2 = example["sol2"]
+        reasoning = example["reasoning"]
         correct_answer = "A" if example["label"] == 0 else "B"
         
         prompt_parts.append(f"Goal: {goal}")
         prompt_parts.append(f"A. {sol1}")
         prompt_parts.append(f"B. {sol2}")
+        
         if language == "ko":
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: {correct_answer}. #### {correct_answer}.")
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. {reasoning} #### 따라서 정답: {correct_answer}. #### {correct_answer}")
         else:
-            prompt_parts.append(f"Response: Let's think step by step. [thinking process] #### Therefore Answer: {correct_answer}. #### {correct_answer}.")
+            prompt_parts.append(f"Response: Let's think step by step. {reasoning} #### Therefore Answer: {correct_answer}. #### {correct_answer}")
         prompt_parts.append("")
     
     # Add the test question
@@ -210,12 +193,11 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append(f"Goal: {goal}")
     prompt_parts.append(f"A. {sol1}")
     prompt_parts.append(f"B. {sol2}")
-    prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("응답: 단계적으로 생각해봅시다. [사고 과정] #### 따라서 정답: [답]. #### [답].")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
     else:
-        prompt_parts.append("Response: Let's think step by step. [thinking process] #### Therefore Answer: [ANSWER]. #### [ANSWER].")
+        prompt_parts.append("Response: Let's think step by step.")
     
     return "\n".join(prompt_parts)
 
@@ -539,7 +521,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, ENGLISH_FEW_SHOT_EXAMPLES, "en")
+                prompt = create_3shot_prompt(item, ENGLISH_FEW_SHOT_EXAMPLES, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -614,7 +596,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 if ground_truth is None:
                     continue
                     
-                prompt = create_5shot_prompt(item, KOREAN_FEW_SHOT_EXAMPLES, "ko")
+                prompt = create_3shot_prompt(item, KOREAN_FEW_SHOT_EXAMPLES, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -819,7 +801,7 @@ def main():
     }
 
     # Save summary
-    summary_filepath = os.path.join(BASE_OUTPUT_DIR, "piqa_ko-piqa_summary.json")
+    summary_filepath = os.path.join(BASE_OUTPUT_DIR, "piqa_summary.json")
     with open(summary_filepath, 'w', encoding='utf-8') as f:
         json.dump(summary_data, f, indent=2, ensure_ascii=False)
 

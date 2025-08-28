@@ -416,6 +416,12 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
+        
+        # Gemma 모델에서만 컴파일 비활성화
+        if "gemma" in config.name.lower():
+            torch._dynamo.config.disable = True
+            logger.info("Disabled torch compilation for Gemma model")
+
 
         # Run Evaluation
         correct_predictions_korean = 0

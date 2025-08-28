@@ -23,14 +23,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global Configuration
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-CACHE_DIR = "../cache"  # Cache directory for models
-DATASET_PATH = "../../2_datasets/MMLU_ProX/test/"  # Path to MMLU-ProX dataset
-KOREAN_DATASET_PATH = "../../2_datasets/MMLU_ProX/ko-test/"  # Path to Korean MMLU-ProX dataset
-BASE_OUTPUT_DIR = "../4_evaluation_results/MMLU_ProX_5shot"  # Output directory
-BATCH_SIZE = 8
-
 # Import performance analyzer
 try:
     import sys
@@ -73,18 +65,18 @@ MODEL_CONFIGS = [
     ),
 
     # ToW Trained Models
-    # ModelConfig(
-    #     name="Qwen2.5-3B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Qwen2.5-3B-Instruct-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="google_gemma-3-4b-it-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/google_gemma-3-4b-it-ToW",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-3B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Qwen2.5-3B-Instruct-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="google_gemma-3-4b-it-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/google_gemma-3-4b-it-ToW",
+        use_quantization=False
+    ),
     ModelConfig(
         name="Llama-3.2-3B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
@@ -101,7 +93,7 @@ MODEL_CONFIGS = [
 
 # --- General Configuration ---
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
-MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_Ko.json"
+MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.json"
 BASE_OUTPUT_DIR = "mmlu_prox_5shot"
 BATCH_SIZE = 1
 MAX_NEW_TOKENS = 512
@@ -675,6 +667,11 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
 
+        # Gemma 모델에서만 컴파일 비활성화
+        if "gemma" in config.name.lower():
+            torch._dynamo.config.disable = True
+            logger.info("Disabled torch compilation for Gemma model")
+            
         # Prepare results storage
         all_results = {
             "mmlu_prox_en": {"correct": 0, "total": 0, "details": [], "raw_generations": []},

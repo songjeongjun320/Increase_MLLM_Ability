@@ -393,7 +393,7 @@ class ToWTrainingConfig:
     output_base_dir: str = "ToW_Models_3"
     
     # Training hyperparameters
-    learning_rate: float = 1e-5  # This will be a fallback
+    learning_rate: float = 5e-6  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
     per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
@@ -410,7 +410,7 @@ class ToWTrainingConfig:
     # Default settings
     max_sequence_length: int = 512
     warmup_ratio: float = 0.1
-    weight_decay: float = 0.01
+    weight_decay: float = 0.05
     
     # Other settings
     eval_strategy: str = "steps"
@@ -418,8 +418,8 @@ class ToWTrainingConfig:
     save_strategy: str = "steps"
     save_steps: int = 250
     logging_steps: int = 100
-    early_stopping_patience: int = 5
-    early_stopping_threshold: float = 0.0
+    early_stopping_patience: int = 2
+    early_stopping_threshold: float = 0.005
     dataloader_num_workers: int = 2
     remove_unused_columns: bool = True
     fp16: bool = False
@@ -732,7 +732,7 @@ class ToWTrainer:
             r=64,
             lora_alpha=16,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.1,
+            lora_dropout=0.2,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens
@@ -769,7 +769,7 @@ class ToWTrainer:
             eval_steps=self.training_config.eval_steps,
             save_strategy=self.training_config.save_strategy,
             save_steps=self.training_config.save_steps,
-            save_total_limit=3,
+            save_total_limit=6,
             ddp_find_unused_parameters=False, # DeepSeek 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
             load_best_model_at_end=True,
             local_rank=int(os.getenv('LOCAL_RANK', -1)),

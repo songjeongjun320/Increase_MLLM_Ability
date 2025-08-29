@@ -558,7 +558,7 @@ class ToWTrainer:
             eval_steps=self.training_config.eval_steps,
             save_strategy=self.training_config.save_strategy,
             save_steps=self.training_config.save_steps,
-            save_total_limit=3,
+            save_total_limit=6,
             ddp_find_unused_parameters=False, # DeepSeek 모델과 LoRA 사용 시 이 옵션이 필요할 수 있습니다.
             load_best_model_at_end=True,
             local_rank=int(os.getenv('LOCAL_RANK', -1)),

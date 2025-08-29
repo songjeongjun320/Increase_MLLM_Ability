@@ -11,11 +11,38 @@ def process_single_item(item):
     gold_labels = item['gold_label']
     tows = item['tows']
     
+    # Filter out ToWs containing [ERROR] and check word count before each ToW
+    filtered_data = []
+    for i, (gold_label, tow) in enumerate(zip(gold_labels, tows)):
+        if '[ERROR]' in tow:
+            print(f"Warning: Skipping ToW with [ERROR]: {tow[:50]}...")
+            continue
+        
+        # Find position of this gold_label in the sentence
+        gold_pos = original_sentence.find(gold_label)
+        if gold_pos == -1:
+            print(f"Warning: Could not find '{gold_label}' in the sentence")
+            continue
+        
+        # Count words before this position
+        text_before = original_sentence[:gold_pos]
+        words_before = text_before.split()
+        
+        if len(words_before) < 5:
+            print(f"Warning: Skipping ToW with only {len(words_before)} words before it: '{gold_label}'")
+            continue
+        
+        if len(words_before) > 15:
+            print(f"Warning: Skipping ToW with too many ({len(words_before)}) words before it: '{gold_label}'")
+            continue
+        
+        filtered_data.append((gold_label, tow))
+    
     # Build the completion by inserting ToWs at gold_label positions
     completion_parts = []
     current_pos = 0
     
-    for gold_label, tow in zip(gold_labels, tows):
+    for gold_label, tow in filtered_data:
         # Find the gold label in the remaining part of the sentence
         gold_pos = original_sentence.find(gold_label, current_pos)
         

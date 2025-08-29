@@ -7,10 +7,10 @@ MODEL_NAMES=(
     "google_gemma-3-4b-it"
     "Qwen2.5-3B-Instruct"
     "Llama-3.2-3B-Instruct"
-    # "DeepSeek-R1-Distill-Qwen-1.5B-ToW"
-    # "google_gemma-3-4b-it-ToW"
-    # "Qwen2.5-3B-Instruct-ToW"
-    # "Llama-3.2-3B-Instruct-ToW"
+    "DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+    "google_gemma-3-4b-it-ToW"
+    "Qwen2.5-3B-Instruct-ToW"
+    "Llama-3.2-3B-Instruct-ToW"
 )
 
 MODEL_PATHS=(
@@ -19,8 +19,8 @@ MODEL_PATHS=(
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
     "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
 )
 
@@ -29,10 +29,10 @@ ADAPTER_PATHS=(
     ""
     ""
     ""
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/DeepSeek-R1-Distill-Qwen-1.5B-ToW"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/google_gemma-3-4b-it-ToW"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Qwen2.5-3B-Instruct-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Llama-3.2-3B-Instruct-ToW"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-Distill-Qwen-1.5B-ToW"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/google_gemma-3-4b-it-ToW"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Qwen2.5-3B-Instruct-ToW"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.2-3B-Instruct-ToW"
 )
 
 # KLUE 전체 8개 태스크

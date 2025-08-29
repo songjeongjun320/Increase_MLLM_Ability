@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import torch
+import warnings 
+import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from tqdm import tqdm
@@ -11,6 +13,11 @@ import gc
 import sys
 import time
 import random
+
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+transformers.logging.set_verbosity_error()
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
+
 
 # --- Model Configuration ---
 @dataclass
@@ -137,38 +144,6 @@ ARC_5SHOT_EXAMPLES = [
 5. Option C, the amount of sunlight, is the one thing the student is purposefully changing to observe its effect on growth. Therefore, it is the independent variable.""",
         "answer": "C"
     },
-#     {
-#         "question": "Which of these is an example of a chemical change?",
-#         "options": {
-#             "A": "boiling water",
-#             "B": "dissolving salt in water",
-#             "C": "the rusting of iron",
-#             "D": "tearing a piece of paper"
-#         },
-#         "cot_content": """Let's think step by step.
-# 1. A chemical change produces a new substance with new chemical properties. A physical change only alters the form or appearance of a substance.
-# 2. Option A, boiling water, changes liquid water to gaseous water (steam). It is still H₂O. This is a physical change.
-# 3. Option B, dissolving salt in water, creates a mixture. The salt and water are not chemically changed and can be separated by evaporation. This is a physical change.
-# 4. Option D, tearing paper, changes the size and shape of the paper, but it is still made of paper. This is a physical change.
-# 5. Option C, the rusting of iron, is a process where iron (Fe) reacts with oxygen (O₂) to form a new substance, iron oxide (Fe₂O₃), which is rust. A new substance is formed, so this is a chemical change.""",
-#         "answer": "C"
-#     },
-#     {
-#         "question": "Which layer of the Earth is composed primarily of liquid iron and nickel?",
-#         "options": {
-#             "A": "Crust",
-#             "B": "Mantle",
-#             "C": "Outer Core",
-#             "D": "Inner Core"
-#         },
-#         "cot_content": """Let's think step by step.
-# 1. The question asks to identify the liquid layer of the Earth's core made of iron and nickel.
-# 2. Option A, the Crust, is the outermost solid rock layer. This is incorrect.
-# 3. Option B, the Mantle, is a layer of hot, semi-solid rock beneath the crust. It is not a liquid metal core. This is incorrect.
-# 4. The Earth has two core layers. The Inner Core is solid due to immense pressure, even though it's very hot. So, Option D is incorrect.
-# 5. The Outer Core surrounds the solid inner core. It is under less pressure than the inner core, allowing the iron and nickel to exist in a liquid state. This liquid layer is responsible for Earth's magnetic field. This matches the description.""",
-#         "answer": "C"
-#     }
 ]
 
 KO_ARC_5SHOT_EXAMPLES = [
@@ -221,41 +196,9 @@ KO_ARC_5SHOT_EXAMPLES = [
 5. 선택지 C, 햇빛의 양은 학생이 성장에 미치는 영향을 관찰하기 위해 의도적으로 변화시키는 유일한 것입니다. 따라서 이것이 독립 변인입니다.""",
         "answer": "C"
     },
-#     {
-#         "question": "다음 중 화학적 변화의 예는 무엇입니까?",
-#         "options": {
-#             "A": "물이 끓는 것",
-#             "B": "소금이 물에 녹는 것",
-#             "C": "철이 녹스는 것",
-#             "D": "종이를 찢는 것"
-#         },
-#         "cot_content": """단계별로 생각해봅시다.
-# 1. 화학적 변화는 새로운 화학적 특성을 가진 새로운 물질을 생성합니다. 물리적 변화는 물질의 형태나 외관만을 바꿉니다.
-# 2. 선택지 A, 물이 끓는 것은 액체 상태의 물이 기체 상태의 물(수증기)로 변하는 것입니다. 여전히 H₂O입니다. 이것은 물리적 변화입니다.
-# 3. 선택지 B, 소금이 물에 녹는 것은 혼합물을 만듭니다. 소금과 물은 화학적으로 변하지 않았으며 증발을 통해 분리될 수 있습니다. 이것은 물리적 변화입니다.
-# 4. 선택지 D, 종이를 찢는 것은 종이의 크기와 모양을 바꾸지만, 여전히 종이로 만들어져 있습니다. 이것은 물리적 변화입니다.
-# 5. 선택지 C, 철이 녹스는 것은 철(Fe)이 산소(O₂)와 반응하여 새로운 물질인 산화철(Fe₂O₃), 즉 녹을 형성하는 과정입니다. 새로운 물질이 형성되었으므로 이것은 화학적 변화입니다.""",
-#         "answer": "C"
-#     },
-#     {
-#         "question": "지구의 층 중에서 주로 액체 상태의 철과 니켈로 구성된 곳은 어디입니까?",
-#         "options": {
-#             "A": "지각",
-#             "B": "맨틀",
-#             "C": "외핵",
-#             "D": "내핵"
-#         },
-#         "cot_content": """단계별로 생각해봅시다.
-# 1. 이 질문은 철과 니켈로 이루어진 액체 상태의 지구 핵 층을 식별하라고 요구합니다.
-# 2. 선택지 A, 지각은 가장 바깥쪽의 단단한 암석 층입니다. 틀렸습니다.
-# 3. 선택지 B, 맨틀은 지각 아래에 있는 뜨거운 반고체 상태의 암석 층입니다. 액체 금속 핵이 아닙니다. 틀렸습니다.
-# 4. 지구에는 두 개의 핵 층이 있습니다. 내핵은 매우 뜨거움에도 불구하고 엄청난 압력 때문에 고체 상태입니다. 따라서 선택지 D는 틀렸습니다.
-# 5. 외핵은 고체 상태의 내핵을 둘러싸고 있습니다. 내핵보다 압력이 낮아 철과 니켈이 액체 상태로 존재할 수 있습니다. 이 액체 층이 지구 자기장을 만드는 원인입니다. 이는 질문의 설명과 일치합니다.""",
-#         "answer": "C"
-#     }
 ]
 
-# --- Helper Functions for 5-shot ARC Evaluation ---
+# --- Helper Functions for 3-shot ARC Evaluation ---
 def create_3shot_prompt(item, examples, dataset_type="arc"):
     """
     (최종 개선 버전)
@@ -274,7 +217,7 @@ def create_3shot_prompt(item, examples, dataset_type="arc"):
         cot_trigger = "단계적으로 생각해봅시다."
         final_answer_prefix = "따라서 정답:"
 
-    # 1. 5개의 예제를 동적으로 생성합니다.
+    # 1. 3개의 예제를 동적으로 생성합니다.
     for example in examples:
         # 예제 딕셔너리에서 각 부분을 가져옵니다.
         question = example["question"]
@@ -457,14 +400,25 @@ def select_examples(data, test_item, num_examples=5):
     
     return examples
 
-# --- Single Model Evaluation Function with 5-shot Prompting ---
+def save_failure_cases(failure_cases, model_name, output_dir):
+    """
+    Save failure cases to a separate JSON file for analysis.
+    """
+    failure_filepath = os.path.join(output_dir, f"failure_cases_{model_name}_3shot.json")
+    
+    with open(failure_filepath, 'w', encoding='utf-8') as f:
+        json.dump(failure_cases, f, indent=2, ensure_ascii=False)
+    
+    logger.info(f"Saved {len(failure_cases)} failure cases to {failure_filepath}")
+
+# --- Single Model Evaluation Function with 3-shot Prompting ---
 def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list, model_specific_output_dir: str):
     """
-    Performs 5-shot ARC evaluation for a single model on both datasets.
+    Performs 3-shot ARC evaluation for a single model on both datasets.
     """
-    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot.json")
-    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_5shot.log")
-    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot.json")
+    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_3shot.json")
+    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_3shot.log")
+    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_3shot.json")
 
     # --- Setup Logging for this specific model ---
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -478,7 +432,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             root_logger.removeHandler(handler)
     root_logger.addHandler(file_handler)
 
-    logger.info(f"--- Starting 5-shot Evaluation for Model: {config.name} ({config.model_id}) ---")
+    logger.info(f"--- Starting 3-shot Evaluation for Model: {config.name} ({config.model_id}) ---")
     logger.info(f"Results will be saved to: {results_filepath}")
 
     model = None
@@ -531,6 +485,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             
         # --- Evaluate on both datasets ---
         all_results = {}
+        all_failure_cases = {}  # Store failure cases for both datasets
         
         datasets = [
             ("ARC", arc_data, "arc"),
@@ -549,10 +504,11 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             total_predictions = 0
             errors_or_skipped = 0
             results_details = []
+            failure_cases = []  # Store failure cases for this dataset
             
             # Batch processing loop
             num_batches = (len(dataset) + BATCH_SIZE - 1) // BATCH_SIZE
-            pbar = tqdm(range(num_batches), desc=f"Evaluating {config.name} on {dataset_name} (5-shot, errors: 0)")
+            pbar = tqdm(range(num_batches), desc=f"Evaluating {config.name} on {dataset_name} (3-shot, errors: 0)")
             for i in pbar:
                 batch_start = i * BATCH_SIZE
                 batch_end = batch_start + BATCH_SIZE
@@ -609,6 +565,19 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             if model_answer_log == ground_truth:
                                 correct_predictions += 1
                                 is_correct_log = True
+                            else:
+                                # This is a wrong answer - add to failure cases
+                                failure_cases.append({
+                                    "index": batch_start + j,
+                                    "id": item.get("id", ""),
+                                    "dataset": dataset_name,
+                                    "question": item.get("question", ""),
+                                    "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                    "ground_truth": ground_truth,
+                                    "predicted_answer": model_answer_log,
+                                    "raw_output": generated_text_log,
+                                    "failure_type": "incorrect_answer"
+                                })
                         else:
                             # Batch extraction failed, try individual retry for this item
                             logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
@@ -622,18 +591,53 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                 if model_answer_log == ground_truth:
                                     correct_predictions += 1
                                     is_correct_log = True
+                                else:
+                                    # This is a wrong answer after retry - add to failure cases
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": model_answer_log,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "incorrect_answer_after_retry"
+                                    })
                                 logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
                             else:
-                                # Even retry failed
+                                # Even retry failed - add to failure cases
                                 if not retry_text.startswith("ERROR"):
                                     logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
                                     errors_or_skipped += 1
                                     generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": None,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "extraction_failed"
+                                    })
                                 else:
                                     # This was a model error, not extraction failure  
                                     logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
                                     errors_or_skipped += 1
                                     generated_text_log = retry_text
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": None,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "model_error"
+                                    })
 
                         current_item_index = batch_start + j # or find a better way to get original index
                         results_details.append({
@@ -656,20 +660,34 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
 
                 except Exception as e:
                     logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
+                    # Add all items in this batch to failure cases
+                    for j, (item, ground_truth) in enumerate(zip(valid_items_in_batch, ground_truths)):
+                        failure_cases.append({
+                            "index": batch_start + j,
+                            "id": item.get("id", ""),
+                            "dataset": dataset_name,
+                            "question": item.get("question", ""),
+                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                            "ground_truth": ground_truth,
+                            "predicted_answer": None,
+                            "raw_output": f"BATCH_ERROR: {str(e)}",
+                            "failure_type": "batch_inference_error"
+                        })
                     errors_or_skipped += len(prompts)
                 
                 # Update progress bar with current error count
-                pbar.set_description(f"Evaluating {config.name} on {dataset_name} (5-shot, errors: {errors_or_skipped})")
+                pbar.set_description(f"Evaluating {config.name} on {dataset_name} (3-shot, errors: {errors_or_skipped})")
 
             
             # Calculate accuracy
             accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
             accuracy_strict = (correct_predictions / len(dataset) * 100) if len(dataset) > 0 else 0
 
-            logger.info(f"--- 5-shot {dataset_name} Results for {config.name} ---")
+            logger.info(f"--- 3-shot {dataset_name} Results for {config.name} ---")
             logger.info(f"Test Items: {len(dataset)}")
             logger.info(f"Valid Predictions: {total_predictions}")
             logger.info(f"Correct Predictions: {correct_predictions}")
+            logger.info(f"Failure Cases: {len(failure_cases)}")
             logger.info(f"Accuracy Standard: {accuracy_standard:.2f}%")
             logger.info(f"Accuracy Strict: {accuracy_strict:.2f}%")
             
@@ -677,15 +695,19 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                 "test_items": len(dataset),
                 "valid_predictions": total_predictions,
                 "correct_predictions": correct_predictions,
+                "failure_cases_count": len(failure_cases),
                 "accuracy_standard": accuracy_standard,
                 "accuracy_strict": accuracy_strict,
                 "details": results_details
             }
+            
+            # Store failure cases for this dataset
+            all_failure_cases[dataset_name] = failure_cases
 
         # --- Save Results ---
         final_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
-            "evaluation_type": "5-shot ARC Challenge",
+            "evaluation_type": "3-shot ARC Challenge",
             "datasets": all_results
         }
         
@@ -693,6 +715,13 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
             json.dump(raw_generations_list, f, indent=2, ensure_ascii=False)
+        
+        # Save failure cases for both datasets combined
+        all_failure_cases_combined = []
+        for dataset_name, cases in all_failure_cases.items():
+            all_failure_cases_combined.extend(cases)
+        
+        save_failure_cases(all_failure_cases_combined, config.name, model_specific_output_dir)
 
         return all_results
 
@@ -734,8 +763,10 @@ def main():
                 "adapter_path": config.adapter_path,
                 "ARC_accuracy_standard": results["ARC"]["accuracy_standard"],
                 "ARC_accuracy_strict": results["ARC"]["accuracy_strict"],
+                "ARC_failure_cases": results["ARC"]["failure_cases_count"],
                 "Ko-ARC_accuracy_standard": results["Ko-ARC"]["accuracy_standard"],
-                "Ko-ARC_accuracy_strict": results["Ko-ARC"]["accuracy_strict"]
+                "Ko-ARC_accuracy_strict": results["Ko-ARC"]["accuracy_strict"],
+                "Ko-ARC_failure_cases": results["Ko-ARC"]["failure_cases_count"]
             }
 
     # Save summary results
@@ -746,18 +777,20 @@ def main():
     logger.info(f"Summary results saved to: {summary_filepath}")
     
     # Print summary table
-    print("\n" + "="*80)
+    print("\n" + "="*100)
     print("EVALUATION SUMMARY")
-    print("="*80)
-    print(f"{'Model Name':<30} {'ARC Acc (%)':<15} {'Ko-ARC Acc (%)':<15}")
-    print("-"*80)
+    print("="*100)
+    print(f"{'Model Name':<30} {'ARC Acc (%)':<15} {'ARC Fails':<12} {'Ko-ARC Acc (%)':<17} {'Ko-ARC Fails':<15}")
+    print("-"*100)
     
     for model_name, results in summary_results.items():
         arc_acc = results["ARC_accuracy_standard"]
         ko_arc_acc = results["Ko-ARC_accuracy_standard"]
-        print(f"{model_name:<30} {arc_acc:<15.2f} {ko_arc_acc:<15.2f}")
+        arc_fails = results["ARC_failure_cases"]
+        ko_arc_fails = results["Ko-ARC_failure_cases"]
+        print(f"{model_name:<30} {arc_acc:<15.2f} {arc_fails:<12} {ko_arc_acc:<17.2f} {ko_arc_fails:<15}")
     
-    print("="*80)
+    print("="*100)
 
 if __name__ == "__main__":
     main()

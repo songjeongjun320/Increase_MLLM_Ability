@@ -136,12 +136,12 @@ def prepare_kmmlu_data_with_dev_split(data, dev_shots_per_subject=5):
 
 def create_5shot_korean_prompt(test_item, dev_examples):
     """
-    Create standard 5-shot Korean MMLU prompt using development examples.
-    Follows Korean format: "다음은 [과목]에 관한 객관식 문제입니다."
+    Create improved 5-shot Korean MMLU prompt with clear answer format instructions.
+    Based on patterns that work well for avoiding extraction issues.
     """
-    subject = test_item.get("Subject", "unknown")  # Korean MMLU uses 'Subject' field (uppercase)
+    subject = test_item.get("Subject", "unknown")
     
-    # Format subject name for Korean display (comprehensive mapping for all 57 subjects)
+    # Format subject name for Korean display
     subject_display_map = {
         "abstract_algebra": "추상대수학",
         "anatomy": "해부학",
@@ -201,83 +201,60 @@ def create_5shot_korean_prompt(test_item, dev_examples):
         "virology": "바이러스학",
         "world_religions": "세계 종교학"
     }
-    subject_display = subject_display_map.get(subject, subject.replace("_", " "))
     
-    prompt_parts = [f"다음은 {subject_display}에 관한 객관식 문제(정답 포함)입니다."]
+    prompt_parts = [f"다음은 {subject_display}에 관한 객관식 문제입니다."]
     prompt_parts.append("")  # Empty line
     
     # Add development examples (few-shot examples)
     for i, example in enumerate(dev_examples):
-        question = example.get("Question", "")  # Korean MMLU uses 'Question' field (uppercase)
+        question = example.get("Question", "")
+        answer_letter = example.get("Answer", "A")
         
-        # Extract answer letter directly from Korean MMLU format
-        answer_letter = example.get("Answer", "A")  # Already in letter format
-        
-        prompt_parts.append(question)
-        
-        # Get choices from Korean MMLU format (A, B, C, D fields)
+        # Get choices from Korean MMLU format
         choice_a = example.get("A", "선택지 A")
         choice_b = example.get("B", "선택지 B")
         choice_c = example.get("C", "선택지 C")
         choice_d = example.get("D", "선택지 D")
         
+        # Format with clear structure
+        prompt_parts.append(f"문제: {question}")
         prompt_parts.append(f"A. {choice_a}")
         prompt_parts.append(f"B. {choice_b}")
         prompt_parts.append(f"C. {choice_c}")
         prompt_parts.append(f"D. {choice_d}")
         
-        prompt_parts.append(f"정답: {answer_letter}")
+        # Use clear answer format that's easy to extract
+        prompt_parts.append(f"정답: 정답은 {answer_letter}입니다.")
         prompt_parts.append("")  # Empty line between examples
     
-    # Add test question
-    test_question = test_item.get("문제", "")  # Korean MMLU uses 'Question' field (uppercase)
-    prompt_parts.append(test_question)
+    # Add test question with clear instructions
+    test_question = test_item.get("Question", "")
     
-    # Get choices for test question from Korean MMLU format
+    # Get choices for test question
     test_choice_a = test_item.get("A", "선택지 A")
     test_choice_b = test_item.get("B", "선택지 B")
     test_choice_c = test_item.get("C", "선택지 C")
     test_choice_d = test_item.get("D", "선택지 D")
     
+    prompt_parts.append(f"문제: {test_question}")
     prompt_parts.append(f"A. {test_choice_a}")
     prompt_parts.append(f"B. {test_choice_b}")
     prompt_parts.append(f"C. {test_choice_c}")
     prompt_parts.append(f"D. {test_choice_d}")
     prompt_parts.append("")
     
-    prompt_parts.append("Answer:")
+    # Clear instructions for answer format
+    prompt_parts.append("")
+    prompt_parts.append("정답을 A, B, C, D 중 오직 하나의 문자로만 선택해주세요.")
+    prompt_parts.append("정답: 따라서 정답은")
     
     return "\n".join(prompt_parts)
-
-def parse_korean_choices_from_question(question):
-    """
-    Parse A, B, C, D choices from Korean MMLU question format.
-    Korean format embeds choices within the question text with numbers.
-    """
-    import re
-    
-    # Look for numbered choices in the question (1. 2. 3. 4.)
-    choice_pattern = r'(\d+)\.\s*([^\n\d]+?)(?=\n\d+\.|$)'
-    matches = re.findall(choice_pattern, question, re.MULTILINE | re.DOTALL)
-    
-    choices = []
-    for i, (num, text) in enumerate(matches):
-        if i < 4:  # Only take first 4 choices
-            letter = chr(ord('A') + i)
-            # Clean up the choice text
-            clean_text = text.strip().replace('\n', ' ').strip()
-            choices.append(f"{letter}. {clean_text}")
-    
-    # If we couldn't parse choices, return placeholder
-    if len(choices) < 4:
-        choices = ["A. 선택지 A", "B. 선택지 B", "C. 선택지 C", "D. 선택지 D"]
-    
-    return choices
 
 def extract_korean_answer_first_token(model_output, tokenizer):
     """
     Extract answer from Korean model output using first token approach.
     This follows the standard MMLU evaluation methodology adapted for Korean.
+    Fixed to avoid false positives from common words.
     """
     # Clean and normalize output
     cleaned_output = model_output.strip().upper()
@@ -286,30 +263,78 @@ def extract_korean_answer_first_token(model_output, tokenizer):
     if cleaned_output and cleaned_output[0] in ['A', 'B', 'C', 'D']:
         return cleaned_output[0]
     
-    # Look for patterns like "A.", "(A)", "A)", "답: A" etc.
+    # Look for patterns like "A.", "(A)", "A)", "답: A", "정답은 A" etc.
     import re
     patterns = [
-        r'^\s*([ABCD])[\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([ABCD])\)?\s*$',  # (A) or A with optional parentheses
-        r'답\s*:?\s*([ABCD])',      # 답: A or 답 A
-        r'정답\s*:?\s*([ABCD])',    # 정답: A or 정답 A
-        r'Answer\s*:?\s*([ABCD])',  # Answer: A
-        r'^([ABCD])'                # Just A, B, C, D at start
+        # Korean specific patterns (more comprehensive)
+        r'정답은\s*([ABCD])',               # 정답은 A
+        r'정답\s*:?\s*([ABCD])',           # 정답: A or 정답 A
+        r'답은\s*([ABCD])',                # 답은 A
+        r'답\s*:?\s*([ABCD])',             # 답: A or 답 A
+        r'정답은\s*([ABCD])번',            # 정답은 A번
+        r'정답은\s*([ABCD])\s*입니다',      # 정답은 A입니다
+        r'정답은\s*([ABCD])\s*이다',        # 정답은 A이다
+        r'답은\s*([ABCD])\s*입니다',        # 답은 A입니다
+        r'답은\s*([ABCD])\s*이다',          # 답은 A이다
+        r'([ABCD])가\s*정답',              # A가 정답
+        r'([ABCD])이\s*정답',              # A이 정답
+        r'([ABCD])번이\s*정답',            # A번이 정답
+        r'([ABCD])\s*입니다',              # A 입니다
+        
+        # English patterns
+        r'THE\s+CORRECT\s+ANSWER\s+IS\s+([ABCD])',  # The correct answer is A
+        r'CORRECT\s+ANSWER\s+IS\s+([ABCD])',        # correct answer is A
+        r'ANSWER\s+IS\s+([ABCD])',                  # answer is A
+        r'Answer\s*:?\s*([ABCD])',                  # Answer: A
+        
+        # Generic patterns
+        r'^\s*([ABCD])[\.\)\]\s]',         # A. or A) or A] at start
+        r'^\s*\(?([ABCD])\)?\s*$',         # (A) or A with parentheses (whole line)
+        r'^\s*([ABCD])\s*$'                # Just A, B, C, D (whole line)
     ]
     
     for pattern in patterns:
-        match = re.search(pattern, cleaned_output)
-        if match:
-            return match.group(1)
+        matches = re.findall(pattern, cleaned_output)
+        if matches:
+            return matches[-1]  # Return the last match (most likely the final answer)
     
-    # Look for first letter that is A, B, C, or D anywhere in the output
-    for char in cleaned_output:
-        if char in ['A', 'B', 'C', 'D']:
-            return char
+    # More strict approach: Only look for isolated letters at word boundaries
+    # and exclude common English/Korean contexts
+    word_boundary_matches = re.findall(r'\b([ABCD])\b', cleaned_output)
     
+    if word_boundary_matches:
+        for match in word_boundary_matches:
+            # Find all positions of this match
+            for m in re.finditer(r'\b' + match + r'\b', cleaned_output):
+                # Get context around the match
+                start_pos = max(0, m.start() - 20)
+                end_pos = min(len(cleaned_output), m.end() + 20)
+                context = cleaned_output[start_pos:end_pos]
+                
+                # Skip if it's clearly part of common words or phrases
+                skip_contexts = [
+                    # English words
+                    'BECAUSE', 'BECAU', 'LOGICAL', 'LOGIC', 'ABSTRACT', 'ABOUT',
+                    'ABOVE', 'ACCORDING', 'CONTEXT', 'CONTENT', 'CONSIDER', 
+                    'CORRECT', 'CONCEPT', 'CALCULATE', 'CHOICE', 'CHART',
+                    'BETWEEN', 'BEFORE', 'BASIC', 'BASED', 'DISCUSS', 
+                    'DESCRIBE', 'DIFFERENT', 'DETERMINE', 'DECIDE', 'DATA',
+                    'FOLLOWS', 'FOLLOW', 'LOGICALLY',
+                    # Korean contexts where A,B,C,D might appear as part of words
+                    '가나다라', '나다라마', '다라마바', '라마바사',
+                    # Common Korean phrases where letters might appear
+                    '과정에서', '근거로', '따라서', '그러나', '하지만'
+                ]
+                
+                is_part_of_word = any(skip_word in context for skip_word in skip_contexts)
+                
+                if not is_part_of_word:
+                    return match
+    
+    # If no valid answer pattern found, return None
     return None
 
-def load_mmlu_data(filepath):
+def load_kmmlu_data(filepath):
     """JSON 파일에서 KMMLU 데이터를 로드합니다."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -330,6 +355,12 @@ def load_mmlu_data(filepath):
         logger.error(f"데이터 로드 중 오류 발생: {e}")
         return None
 
+def get_ground_truth_origin(item):
+    """KMMLU 데이터에서 정답 문자를 반환합니다."""
+    answer = item.get("Answer", None)
+    if answer and answer.upper() in ["A", "B", "C", "D"]:
+        return answer.upper()
+    return None
 
 # --- Batch Processing Function ---
 def process_batch(model, tokenizer, batch_prompts, batch_indices):
@@ -346,7 +377,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=5,
+                max_new_tokens=20,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
@@ -433,6 +464,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
     # Split data into development (few-shot examples) and test sets
     dev_data, test_data = prepare_kmmlu_data_with_dev_split(mmlu_data, dev_shots_per_subject=5)
     
+    # Sampling
+    # test_data = test_data[:10]
+
     if not test_data:
         logger.error("No test data available after dev/test split. Check data size and dev_shots_per_subject setting.")
         return
@@ -588,7 +622,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             
             for j, item in enumerate(batch_data):
                 current_index = i + j
-                ground_truth = item.get("Answer", None)
+                item_index_for_log = item.get("index", current_index)
+                ground_truth = get_ground_truth_origin(item)
+                
                 if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
                     errors += 1
                     failure_reason = "SKIPPED - Invalid Ground Truth"
@@ -832,7 +868,7 @@ def main():
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
     logger.info(f"Base output directory: {BASE_OUTPUT_DIR}")
 
-    mmlu_data = load_mmlu_data(DATASET_PATH)
+    mmlu_data = load_kmmlu_data(DATASET_PATH)
     if mmlu_data is None:
         return
 

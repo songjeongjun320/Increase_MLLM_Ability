@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import torch
+import warnings 
+import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 # from datasets import load_dataset # 직접 사용하지 않으므로 주석 처리 가능
@@ -14,6 +16,10 @@ from datetime import datetime
 import time
 import random
 
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+transformers.logging.set_verbosity_error()
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -23,13 +29,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-# Global Configuration
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-CACHE_DIR = "../cache"  # Cache directory for models
-DATASET_PATH = "../../2_datasets/MMLU/data/"  # Path to MMLU dataset
-BASE_OUTPUT_DIR = "../4_evaluation_results/MMLU_5shot"  # Output directory
-BATCH_SIZE = 16
 
 # Import performance analyzer
 try:
@@ -52,26 +51,26 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    # ModelConfig(
-    #     name="Qwen2.5-3B-Instruct",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="google_gemma-3-4b-it",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="Llama-3.2-3B-Instruct",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="DeepSeek-R1-Distill-Qwen-1.5B",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-3B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="google_gemma-3-4b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="Llama-3.2-3B-Instruct",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-Distill-Qwen-1.5B",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
+        use_quantization=False
+    ),
 
     # ToW Trained Models
     ModelConfig(
@@ -149,15 +148,15 @@ def prepare_mmlu_data_with_dev_split(data, dev_shots_per_subject=5):
 
 def create_5shot_prompt(test_item, dev_examples):
     """
-    Create standard 5-shot MMLU prompt using development examples.
-    Follows the format: "The following are multiple choice questions (with answers) about [subject]."
+    Create improved 5-shot MMLU prompt with clear answer format instructions.
+    Based on the pattern that works well for avoiding extraction issues.
     """
     subject = test_item.get("Subject", "unknown")  # MMLU uses 'Subject' field (uppercase)
     
     # Format subject name for display (replace underscores with spaces, capitalize)
     subject_display = subject.replace("_", " ").title()
     
-    prompt_parts = [f"The following are multiple choice questions (with answers) about {subject_display}."]
+    prompt_parts = [f"The following are multiple choice questions about {subject_display}."]
     prompt_parts.append("")  # Empty line
     
     # Add development examples (few-shot examples)
@@ -169,27 +168,23 @@ def create_5shot_prompt(test_item, dev_examples):
         choice_b = example.get("B", "Option B")
         choice_c = example.get("C", "Option C")
         choice_d = example.get("D", "Option D")
-        choices = [choice_a, choice_b, choice_c, choice_d]
         
         # Answer is already in letter format (A, B, C, D)
         answer_letter = example.get("Answer", "A")
         
-        prompt_parts.append(question)
-        if len(choices) >= 4:
-            prompt_parts.append(f"A. {choices[0]}")
-            prompt_parts.append(f"B. {choices[1]}")
-            prompt_parts.append(f"C. {choices[2]}")
-            prompt_parts.append(f"D. {choices[3]}")
-        else:
-            logger.warning(f"Insufficient choices for example in subject {subject}")
-            prompt_parts.extend(["A. Option A", "B. Option B", "C. Option C", "D. Option D"])
+        # Format question and choices
+        prompt_parts.append(f"Question: {question}")
+        prompt_parts.append(f"A. {choice_a}")
+        prompt_parts.append(f"B. {choice_b}")
+        prompt_parts.append(f"C. {choice_c}")
+        prompt_parts.append(f"D. {choice_d}")
         
-        prompt_parts.append(f"Answer: {answer_letter}")
+        # Use clear answer format that's easy to extract
+        prompt_parts.append(f"Answer: The correct answer is {answer_letter}.")
         prompt_parts.append("")  # Empty line between examples
     
-    # Add test question
+    # Add test question with clear instructions
     test_question = test_item.get("Question", "")  # MMLU uses 'Question' field (uppercase)
-    prompt_parts.append(test_question)
     
     # Get choices for test question from MMLU format
     test_choice_a = test_item.get("A", "Option A")
@@ -197,106 +192,77 @@ def create_5shot_prompt(test_item, dev_examples):
     test_choice_c = test_item.get("C", "Option C")
     test_choice_d = test_item.get("D", "Option D")
     
+    prompt_parts.append(f"Question: {test_question}")
     prompt_parts.append(f"A. {test_choice_a}")
     prompt_parts.append(f"B. {test_choice_b}")
     prompt_parts.append(f"C. {test_choice_c}")
     prompt_parts.append(f"D. {test_choice_d}")
     
-    prompt_parts.append("Answer:")
+    # Clear instructions for answer format
+    prompt_parts.append("")
+    prompt_parts.append("You should ONLY choose one of the letters A, B, C, or D as your final answer.")
+    prompt_parts.append("Answer: The correct answer is")
     
     return "\n".join(prompt_parts)
 
-def parse_choices_from_question(question):
-    """
-    Parse A, B, C, D choices from Korean MMLU question format.
-    Korean format embeds choices within the question text with numbers.
-    """
-    import re
-    
-    # Look for numbered choices in the question
-    choice_pattern = r'(\d+)\.\s*([^\n]+?)(?=\n\d+\.|$)'
-    matches = re.findall(choice_pattern, question, re.MULTILINE)
-    
-    choices = []
-    for i, (num, text) in enumerate(matches):
-        if i < 4:  # Only take first 4 choices
-            letter = chr(ord('A') + i)
-            choices.append(f"{letter}. {text.strip()}")
-    
-    # If we couldn't parse choices, return placeholder
-    if len(choices) < 4:
-        choices = ["A. Option A", "B. Option B", "C. Option C", "D. Option D"]
-    
-    return choices
-
 def extract_answer_first_token(model_output, tokenizer):
     """
-    Extract answer from model output using first token approach.
-    This follows the standard MMLU evaluation methodology.
+    Extract answer from model output using patterns that match the improved prompt format.
     """
     # Clean and normalize output
     cleaned_output = model_output.strip().upper()
     
-    # Look for first letter that is A, B, C, or D
-    for char in cleaned_output:
-        if char in ['A', 'B', 'C', 'D']:
-            return char
+    # First, look for immediate A, B, C, or D at the start
+    if cleaned_output and cleaned_output[0] in ['A', 'B', 'C', 'D']:
+        return cleaned_output[0]
     
+    # Look for the specific patterns we expect from our improved prompt
+    import re
+    patterns = [
+        r'THE\s+CORRECT\s+ANSWER\s+IS\s+([ABCD])',          # "The correct answer is A"
+        r'CORRECT\s+ANSWER\s+IS\s+([ABCD])',                # "correct answer is A"
+        r'ANSWER\s+IS\s+([ABCD])',                          # "answer is A"
+        r'^\s*([ABCD])[\.\)\]\s]',                          # A. or A) or A] at start
+        r'^\s*\(?([ABCD])\)?\s*$',                          # (A) or A with parentheses (whole line)
+        r'ANSWER\s*:?\s*([ABCD])',                          # Answer: A
+        r'^\s*([ABCD])\s*$'                                 # Just A, B, C, D (whole line)
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, cleaned_output)
+        if matches:
+            return matches[-1]  # Return the last match (most likely the final answer)
+    
+    # Fallback: Look for isolated A, B, C, D at word boundaries
+    # but be more strict to avoid false positives
+    word_boundary_matches = re.findall(r'\b([ABCD])\b', cleaned_output)
+    
+    if word_boundary_matches:
+        # Only return if we find it in a reasonable context
+        for match in word_boundary_matches:
+            for m in re.finditer(r'\b' + match + r'\b', cleaned_output):
+                # Get context around the match
+                start_pos = max(0, m.start() - 20)
+                end_pos = min(len(cleaned_output), m.end() + 20)
+                context = cleaned_output[start_pos:end_pos]
+                
+                # Skip if it's clearly part of common words
+                skip_contexts = [
+                    'BECAUSE', 'BECAU', 'LOGICAL', 'LOGIC', 'ABSTRACT', 'ABOUT',
+                    'ABOVE', 'ACCORDING', 'CONTEXT', 'CONTENT', 'CONSIDER', 
+                    'CORRECT', 'CONCEPT', 'CALCULATE', 'CHOICE', 'CHART',
+                    'BETWEEN', 'BEFORE', 'BASIC', 'BASED', 'DISCUSS', 
+                    'DESCRIBE', 'DIFFERENT', 'DETERMINE', 'DECIDE', 'DATA',
+                    'FOLLOWS', 'FOLLOW', 'LOGICALLY'
+                ]
+                
+                is_part_of_word = any(skip_word in context for skip_word in skip_contexts)
+                
+                if not is_part_of_word:
+                    return match
+    
+    # If no valid answer pattern found, return None
     return None
-
-def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
-    """
-    Process a single prompt with retry logic for answer extraction failures
-    Only retries when answer extraction fails (not on genuine model errors)
-    """
-    for attempt in range(max_retries):
-        try:
-            inputs = tokenizer(
-                prompt,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=2048
-            ).to(DEVICE)
-
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=50,
-                    pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    do_sample=False,
-                )
-            
-            input_length = inputs['input_ids'].shape[1]
-            output_tokens = outputs[0][input_length:]
-            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
-            
-            # Try to extract answer
-            extracted_answer = extract_answer_first_token(generated_text, tokenizer)
-            if extracted_answer is not None:
-                return generated_text, extracted_answer
-            else:
-                # Answer extraction failed - try again if we have retries left
-                if attempt < max_retries - 1:
-                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
-                    # Small delay before retry
-                    time.sleep(0.1 + random.random() * 0.1)
-                    continue
-                else:
-                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
-                    return generated_text, None
-                    
-        except Exception as e:
-            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(0.2 + random.random() * 0.2)
-                continue
-            else:
-                # Return error info after all retries exhausted
-                return f"ERROR after {max_retries} attempts: {str(e)}", None
-    
-    return f"EXTRACTION_FAILED after {max_retries} attempts", None
 
 def load_mmlu_data(filepath):
     """JSON 파일에서 MMLU 데이터를 로드합니다."""
@@ -341,7 +307,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=5,
+                max_new_tokens=20,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
@@ -363,6 +329,60 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         logger.error(f"Batch processing error: {e}", exc_info=False)
         return [{'index': idx, 'raw_output': f"ERROR: {str(e)[:100]}", 'extracted_answer': None} for idx in batch_indices]
 
+def process_single_with_retry(model, tokenizer, prompt, index=None, max_retries=5):
+    """Process a single prompt with retry logic for answer extraction failures."""
+    for attempt in range(max_retries):
+        try:
+            inputs = tokenizer(
+                prompt,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=2048
+            ).to(DEVICE)
+
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=50,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                )
+            
+            input_length = inputs['input_ids'].shape[1]
+            output_tokens = outputs[0][input_length:]
+            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+            extracted_answer = extract_answer_first_token(generated_text, tokenizer)
+            
+            if extracted_answer is not None:
+                return {
+                    'index': index,
+                    'raw_output': generated_text,
+                    'extracted_answer': extracted_answer,
+                    'retry_count': attempt
+                }
+            else:
+                logger.debug(f"Retry {attempt + 1}/{max_retries} for index {index}: Failed to extract answer from '{generated_text}'")
+                
+        except Exception as e:
+            logger.error(f"Error on attempt {attempt + 1} for index {index}: {e}")
+            if attempt == max_retries - 1:
+                return {
+                    'index': index,
+                    'raw_output': f"ERROR after {max_retries} attempts: {str(e)[:100]}",
+                    'extracted_answer': None,
+                    'retry_count': attempt
+                }
+    
+    # If all retries failed to extract answer
+    return {
+        'index': index,
+        'raw_output': f"EXTRACTION_FAILED after {max_retries} attempts: {generated_text}",
+        'extracted_answer': None,
+        'retry_count': max_retries - 1
+    }
+
 # --- Single Model Evaluation Function with 5-shot Prompting ---
 def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_output_dir: str):
     """
@@ -375,6 +395,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
     if not test_data:
         logger.error("No test data available after dev/test split. Check data size and dev_shots_per_subject setting.")
         return
+
+    # Sampling
+    # test_data = test_data[:50]
+
     # 결과 및 로그 파일 경로 설정
     results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}.json")
     log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}.log")
@@ -571,28 +595,28 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     # Batch extraction failed, try individual retry for this item
                     if not result['raw_output'].startswith("ERROR"):
                         logger.warning(f"Batch extraction failed for item {result['index']}, attempting individual retry...")
-                        retry_text, retry_answer = process_single_with_retry(model, tokenizer, batch_prompt)
+                        retry_result = process_single_with_retry(model, tokenizer, batch_prompt, result['index'])  # 수정!
                         
-                        if retry_answer is not None:
-                            generated_text_log = retry_text
-                            model_answer_log = retry_answer
+                        if retry_result['extracted_answer'] is not None:  # 수정!
+                            generated_text_log = retry_result['raw_output']  # 수정!
+                            model_answer_log = retry_result['extracted_answer']  # 수정!
                             total_predictions += 1
                             if model_answer_log == ground_truth:
                                 correct_predictions += 1
                                 is_correct_log = True
-                            logger.info(f"Retry successful for item {result['index']}: extracted '{retry_answer}'")
+                            logger.info(f"Retry successful for item {result['index']}: extracted '{model_answer_log}'")
                         else:
                             # Even retry failed
                             errors_or_skipped += 1
-                            original_generated_text = retry_text if retry_text else generated_text_log
-                            if not retry_text.startswith("ERROR"):
+                            original_generated_text = retry_result['raw_output']  # 수정!
+                            if not retry_result['raw_output'].startswith("ERROR"):  # 수정!
                                 logger.warning(f"Item {result['index']}: Failed to extract answer after retries")
-                                generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
+                                generated_text_log = f"EXTRACTION_FAILED: {retry_result['raw_output']}"  # 수정!
                                 failure_type = "answer_extraction_failed"
                             else:
                                 # This was a model error, not extraction failure  
-                                logger.error(f"Item {result['index']}: Model error: {retry_text}")
-                                generated_text_log = retry_text
+                                logger.error(f"Item {result['index']}: Model error: {retry_result['raw_output']}")  # 수정!
+                                generated_text_log = retry_result['raw_output']  # 수정!
                                 failure_type = "model_error"
                     else:
                         # This was already a model error from batch processing

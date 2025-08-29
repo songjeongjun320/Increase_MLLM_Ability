@@ -130,14 +130,67 @@ def create_0shot_korean_prompt(item):
     
     return "\n".join(prompt_parts)
 
-def extract_korean_answer_first_token(model_output):
+def extract_korean_answer_first_token(model_output, tokenizer):
     """
-    Extracts answer from Korean model output using first token approach.
+    Extract answer from Korean model output using first token approach.
+    This follows the standard MMLU evaluation methodology adapted for Korean.
+    Fixed to avoid false positives from common words.
     """
+    # Clean and normalize output
     cleaned_output = model_output.strip().upper()
-    for char in cleaned_output:
-        if char in ['A', 'B', 'C', 'D']:
-            return char
+    
+    # First, look for immediate A, B, C, or D at the start
+    if cleaned_output and cleaned_output[0] in ['A', 'B', 'C', 'D']:
+        return cleaned_output[0]
+    
+    # Look for patterns like "A.", "(A)", "A)", "답: A" etc.
+    import re
+    patterns = [
+        r'^\s*([ABCD])[\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([ABCD])\)?\s*$',  # (A) or A with optional parentheses (whole line)
+        r'답\s*:?\s*([ABCD])',      # 답: A or 답 A
+        r'정답\s*:?\s*([ABCD])',    # 정답: A or 정답 A
+        r'Answer\s*:?\s*([ABCD])',  # Answer: A
+        r'^\s*([ABCD])\s*$'         # Just A, B, C, D (whole line)
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, cleaned_output)
+        if match:
+            return match.group(1)
+    
+    # More strict approach: Only look for isolated letters at word boundaries
+    # and exclude common English/Korean contexts
+    word_boundary_matches = re.findall(r'\b([ABCD])\b', cleaned_output)
+    
+    if word_boundary_matches:
+        for match in word_boundary_matches:
+            # Find all positions of this match
+            for m in re.finditer(r'\b' + match + r'\b', cleaned_output):
+                # Get context around the match
+                start_pos = max(0, m.start() - 20)
+                end_pos = min(len(cleaned_output), m.end() + 20)
+                context = cleaned_output[start_pos:end_pos]
+                
+                # Skip if it's clearly part of common words or phrases
+                skip_contexts = [
+                    # English words
+                    'BECAUSE', 'BECAU', 'LOGICAL', 'LOGIC', 'ABSTRACT', 'ABOUT',
+                    'ABOVE', 'ACCORDING', 'CONTEXT', 'CONTENT', 'CONSIDER', 
+                    'CORRECT', 'CONCEPT', 'CALCULATE', 'CHOICE', 'CHART',
+                    'BETWEEN', 'BEFORE', 'BASIC', 'BASED', 'DISCUSS', 
+                    'DESCRIBE', 'DIFFERENT', 'DETERMINE', 'DECIDE', 'DATA',
+                    'FOLLOWS', 'FOLLOW', 'LOGICALLY',
+                    # Korean words that might contain A,B,C,D in romanization
+                    '가나다라', '나다라마', '다라마바', '라마바사'
+                ]
+                
+                is_part_of_word = any(skip_word in context for skip_word in skip_contexts)
+                
+                if not is_part_of_word:
+                    return match
+    
+    # If no valid answer pattern found, return None instead of searching everywhere
     return None
 
 def load_kmmlu_data(filepath):
@@ -183,7 +236,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=5,
+                max_new_tokens=20,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
@@ -220,7 +273,7 @@ def process_single_with_retry(model, tokenizer, prompt, index, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=5,
+                    max_new_tokens=20,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,

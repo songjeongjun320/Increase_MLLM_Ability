@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import torch
+import warnings 
+import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from tqdm import tqdm
@@ -12,6 +14,11 @@ import sys
 from datetime import datetime
 import time
 import random
+
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+transformers.logging.set_verbosity_error()
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
+
 
 # Configure logging
 logging.basicConfig(
@@ -26,8 +33,6 @@ logger = logging.getLogger(__name__)
 # Global Configuration
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
-PIQA_DATASET_PATH = "../../2_datasets/PIQA/validation.json"  # Path to PIQA dataset
-KOPIQA_DATASET_PATH = "../../2_datasets/PIQA/Ko-PIQA_validation.json"  # Path to Ko-PIQA dataset
 BASE_OUTPUT_DIR = "../4_evaluation_results/PIQA_3shot"  # Output directory
 BATCH_SIZE = 16
 
@@ -93,11 +98,9 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 PIQA_DATASET_PATH = "../../2_datasets/PIQA/piqa.json"
 KO_PIQA_DATASET_PATH = "../../2_datasets/PIQA/ko-piqa.json"
-BASE_OUTPUT_DIR = "piqa_5shot"
+BASE_OUTPUT_DIR = "piqa_3shot"
 BATCH_SIZE = 16
-MAX_NEW_TOKENS = 256
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
+MAX_NEW_TOKENS = 512
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -155,10 +158,90 @@ KOREAN_FEW_SHOT_EXAMPLES = [
     }
 ]
 
-# --- Helper Functions ---
+def prepare_piqa_data_with_dev_split(piqa_data, ko_piqa_data, dev_shots_per_type=3):
+    """
+    Split PIQA data into development (few-shot examples) and test sets.
+    Uses first N examples as development set.
+    """
+    # English PIQA
+    if len(piqa_data) < dev_shots_per_type:
+        logger.warning(f"English PIQA has only {len(piqa_data)} items, less than required {dev_shots_per_type} dev examples")
+        piqa_dev_data = piqa_data
+        piqa_test_data = []
+    else:
+        piqa_dev_data = piqa_data[:dev_shots_per_type]
+        piqa_test_data = piqa_data[dev_shots_per_type:]
+    
+    # Korean PIQA
+    if len(ko_piqa_data) < dev_shots_per_type:
+        logger.warning(f"Korean PIQA has only {len(ko_piqa_data)} items, less than required {dev_shots_per_type} dev examples")
+        ko_piqa_dev_data = ko_piqa_data
+        ko_piqa_test_data = []
+    else:
+        ko_piqa_dev_data = ko_piqa_data[:dev_shots_per_type]
+        ko_piqa_test_data = ko_piqa_data[dev_shots_per_type:]
+    
+    logger.info(f"Split PIQA data: EN dev={len(piqa_dev_data)}, test={len(piqa_test_data)}")
+    logger.info(f"Split Ko-PIQA data: KO dev={len(ko_piqa_dev_data)}, test={len(ko_piqa_test_data)}")
+    
+    return piqa_dev_data, piqa_test_data, ko_piqa_dev_data, ko_piqa_test_data
+
+def create_3shot_prompt_from_dev(test_item, dev_examples, language="en"):
+    """
+    Creates a 3-shot PIQA prompt using actual development examples from the dataset.
+    """
+    if language == "ko":
+        prompt_parts = ["다음은 물리적 상식에 대한 다지선다형 질문입니다."]
+    else:
+        prompt_parts = ["The following are multiple choice questions about physical commonsense."]
+    
+    prompt_parts.append("")
+    
+    # Add few-shot examples from development set
+    for example in dev_examples:
+        goal = example["goal"]
+        sol1 = example["sol1"] 
+        sol2 = example["sol2"]
+        correct_answer = "A" if example["label"] == 0 else "B"
+        
+        prompt_parts.append(f"Goal: {goal}")
+        prompt_parts.append(f"A. {sol1}")
+        prompt_parts.append(f"B. {sol2}")
+        prompt_parts.append(f"Answer: {{{correct_answer}}}")
+        prompt_parts.append("")
+    
+    # Add the test question
+    goal = test_item.get("goal", "")
+    sol1 = test_item.get("sol1", "")
+    sol2 = test_item.get("sol2", "")
+    
+    prompt_parts.append(f"Goal: {goal}")
+    prompt_parts.append(f"A. {sol1}")
+    prompt_parts.append(f"B. {sol2}")
+    
+    if language == "ko":
+        prompt_parts.append("답을 {} 안에 써주세요. 답: {}")
+    else:
+        prompt_parts.append("Put your answer inside {}. Answer: {}")
+    
+    return "\n".join(prompt_parts)
+
+# 간단한 0-shot
+def create_simple_prompt(item, language="en"):
+    goal = item.get("goal", "")
+    sol1 = item.get("sol1", "")
+    sol2 = item.get("sol2", "")
+    
+    if language == "ko":
+        prompt = f"목표: {goal}\nA. {sol1}\nB. {sol2}\n\n 답: {{}}"
+    else:
+        prompt = f"Goal: {goal}\nA. {sol1}\nB. {sol2}\n\n Answer: {{}}"
+    
+    return prompt
+
 def create_3shot_prompt(item, few_shot_examples, language="en"):
     """
-    Creates a 5-shot PIQA prompt with actual reasoning examples.
+    Creates a 3-shot PIQA prompt with actual reasoning examples.
     """
     if language == "ko":
         prompt_parts = ["다음은 물리적 상식에 대한 다지선다형 질문입니다."]
@@ -168,7 +251,7 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     # Add few-shot examples with actual reasoning
-    for example in few_shot_examples[:5]:  # Only use first 5 examples
+    for example in few_shot_examples[:3]:  # 3개만 사용
         goal = example["goal"]
         sol1 = example["sol1"]
         sol2 = example["sol2"]
@@ -180,9 +263,9 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
         prompt_parts.append(f"B. {sol2}")
         
         if language == "ko":
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. {reasoning} #### 따라서 정답: {correct_answer}. #### {correct_answer}")
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. {reasoning} 따라서 정답은 {correct_answer}입니다. 답: {{{correct_answer}}}")
         else:
-            prompt_parts.append(f"Response: Let's think step by step. {reasoning} #### Therefore Answer: {correct_answer}. #### {correct_answer}")
+            prompt_parts.append(f"Response: Let's think step by step. {reasoning} Therefore the answer is {correct_answer}. Answer: {{{correct_answer}}}")
         prompt_parts.append("")
     
     # Add the test question
@@ -195,80 +278,50 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append(f"B. {sol2}")
     
     if language == "ko":
-        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
+        prompt_parts.append("답을 {} 안에 써주세요. 답: {}")
     else:
-        prompt_parts.append("Response: Let's think step by step.")
+        prompt_parts.append("Put your answer inside {}. Answer: {}")
     
     return "\n".join(prompt_parts)
 
 def extract_final_answer(model_output):
     """
-    Extract the final answer (A or B) from model output using structured patterns first.
-    Supports A-B for 2 options (PIQA format).
+    Extract answer from structured {} format first, then fallback to other methods.
     """
     if not model_output:
         return None
-        
-    cleaned_output = model_output.strip().upper()
-    valid_answers = ['A', 'B']
     
     import re
     
-    # Priority 1: Structured answer patterns (most reliable)
-    structured_patterns = [
-        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*([AB])',  # #### Answer: A or #### 정답: A
-        r'(?:정답|답|ANSWER)\s*:?\s*([AB])',        # Answer: A or 정답: A
-        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*([AB])',  # So the answer is A
+    # Priority 1: {} 안의 답변 추출
+    brace_patterns = [
+        r'\{([AB])\}',  # {A} or {B}
+        r'\{\s*([AB])\s*\}',  # { A } or { B }
     ]
     
-    for pattern in structured_patterns:
+    for pattern in brace_patterns:
+        matches = re.findall(pattern, model_output.upper())
+        if matches:
+            return matches[-1]  # 마지막 매치 반환
+    
+    # Priority 2: 기존 패턴들 (fallback)
+    cleaned_output = model_output.strip().upper()
+    
+    # Answer: 패턴
+    answer_patterns = [
+        r'(?:답|ANSWER)\s*:?\s*([AB])',
+        r'^\s*([AB])[\.\)\]\s]',  # 시작 부분의 A. 또는 B)
+    ]
+    
+    for pattern in answer_patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[-1]  # Return the last match (final answer)
+            return matches[-1]
     
-    # Priority 2: Start of text patterns
-    start_patterns = [
-        r'^\s*([AB])[\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([AB])\)?\s*[\.:;]',  # (A): or A. or A:
-        r'^\s*([AB])\s*$',          # Just A at start of line
-    ]
-    
-    for pattern in start_patterns:
-        match = re.search(pattern, cleaned_output, re.MULTILINE)
-        if match:
-            return match.group(1)
-    
-    # Priority 3: Last resort - find A-B near end of text (avoid random letters in middle)
-    # Only look in last 100 characters to avoid picking up random letters
-    last_part = cleaned_output[-100:] if len(cleaned_output) > 100 else cleaned_output
-    
-    # Look for isolated A-B characters near the end
-    end_patterns = [
-        r'([AB])(?:\s*[\.:;]?\s*$)',  # A at end with optional punctuation
-        r'(?:\s|^)([AB])(?:\s|$)',    # A surrounded by whitespace
-    ]
-    
-    for pattern in end_patterns:
-        matches = re.findall(pattern, last_part)
-        if matches:
-            return matches[-1]  # Return the last match
-    
-    # Priority 4: Absolute fallback - scan from end backwards
-    # This avoids picking random letters from the beginning/middle of text
-    for i in range(len(cleaned_output) - 1, -1, -1):
-        if cleaned_output[i] in valid_answers:
-            # Check if this letter appears to be part of an answer pattern
-            context_start = max(0, i - 20)
-            context_end = min(len(cleaned_output), i + 20)
-            context = cleaned_output[context_start:context_end]
-            
-            # Avoid letters that are clearly part of words
-            if i > 0 and cleaned_output[i-1].isalnum():
-                continue
-            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalnum():
-                continue
-                
-            return cleaned_output[i]
+    # Priority 3: 첫 번째 A 또는 B 찾기
+    for char in cleaned_output:
+        if char in ['A', 'B']:
+            return char
     
     return None
 
@@ -290,7 +343,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=1,  # PIQA typically only needs 1 token (A or B)
+                    max_new_tokens=MAX_NEW_TOKENS,  # PIQA typically only needs 1 token (A or B)
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -332,6 +385,9 @@ def load_dataset(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
+            
+            # sample
+            data = data[:10]
         logger.info(f"Loaded {len(data)} items from {filepath}")
         return data
     except Exception as e:
@@ -433,13 +489,14 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         return individual_results
 
 # --- Evaluation Function ---
-def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_piqa_data: list, model_specific_output_dir: str):
+def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list, ko_piqa_test_data: list, piqa_dev_data: list, ko_piqa_dev_data: list, model_specific_output_dir: str):    
     """
     Performs 5-shot PIQA and Ko-PIQA evaluation for a single model.
     """
-    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot.json")
-    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_5shot.log")
-    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot.json")
+    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_3shot.json")
+    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_3shot.log")
+    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_3shot.json")
+    failure_cases_filepath = os.path.join(model_specific_output_dir, f"raw_failure_{config.name}_3shot.json") 
 
     # Setup Logging
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -451,7 +508,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
             root_logger.removeHandler(handler)
     root_logger.addHandler(file_handler)
 
-    logger.info(f"--- Starting 5-shot PIQA/Ko-PIQA Evaluation for Model: {config.name} ---")
+    logger.info(f"--- Starting 3-shot PIQA/Ko-PIQA Evaluation for Model: {config.name} ---")
     logger.info(f"Results will be saved to: {results_filepath}")
 
     model = None
@@ -503,15 +560,15 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
             
         # Prepare results storage
         all_results = {
-            "piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": []},
-            "ko_piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": []}
+            "piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []},  # failures 추가
+            "ko_piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []}  # failures 추가
         }
 
         # Evaluate PIQA (English)
         logger.info("Starting PIQA (English) evaluation...")
-        pbar_piqa = tqdm(range(0, len(piqa_data), BATCH_SIZE), desc="Evaluating PIQA (English, errors: 0)")
+        pbar_piqa = tqdm(range(0, len(piqa_test_data), BATCH_SIZE), desc="Evaluating PIQA (English, errors: 0)")
         for i in pbar_piqa:
-            batch_data = piqa_data[i:i+BATCH_SIZE]
+            batch_data = piqa_test_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
             batch_ground_truths = []
@@ -521,7 +578,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 if ground_truth is None:
                     continue
                     
-                prompt = create_3shot_prompt(item, ENGLISH_FEW_SHOT_EXAMPLES, "en")
+                prompt = create_3shot_prompt_from_dev(item, piqa_dev_data, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -559,7 +616,35 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                     all_results["piqa"]["total"] += 1
                     if is_correct:
                         all_results["piqa"]["correct"] += 1
-                
+                    else:
+                        # 틀린 답변도 실패 케이스에 추가
+                        all_results["piqa"]["failures"].append({
+                            "index": result['index'],
+                            "ground_truth": ground_truth,
+                            "predicted_answer": extracted_answer,
+                            "failure_type": "incorrect_answer",
+                            "raw_output": raw_output,
+                            "goal": piqa_test_data[result['index']].get("goal", ""),
+                            "sol1": piqa_test_data[result['index']].get("sol1", ""),
+                            "sol2": piqa_test_data[result['index']].get("sol2", "")
+                        })
+                else:
+                    # 답변 추출 실패한 케이스
+                    failure_type = "extraction_failed"
+                    if raw_output.startswith("ERROR"):
+                        failure_type = "model_error"
+                    
+                    all_results["piqa"]["failures"].append({
+                        "index": result['index'],
+                        "ground_truth": ground_truth,
+                        "predicted_answer": None,
+                        "failure_type": failure_type,
+                        "raw_output": raw_output,
+                        "goal": piqa_test_data[result['index']].get("goal", ""),
+                        "sol1": piqa_test_data[result['index']].get("sol1", ""),
+                        "sol2": piqa_test_data[result['index']].get("sol2", "")
+                    })
+
                 all_results["piqa"]["details"].append({
                     "index": result['index'],
                     "ground_truth": ground_truth,
@@ -577,16 +662,16 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 })
             
             # Update progress bar with current error count
-            current_piqa_errors = len(piqa_data[:i+BATCH_SIZE]) - all_results["piqa"]["total"]
+            current_piqa_errors = len(piqa_test_data[:i+BATCH_SIZE]) - all_results["piqa"]["total"]
             pbar_piqa.set_description(f"Evaluating PIQA (English, errors: {current_piqa_errors})")
 
         logger.info(f"PIQA evaluation completed: {all_results['piqa']['correct']}/{all_results['piqa']['total']}")
 
         # Evaluate Ko-PIQA (Korean)
         logger.info("Starting Ko-PIQA (Korean) evaluation...")
-        pbar_ko_piqa = tqdm(range(0, len(ko_piqa_data), BATCH_SIZE), desc="Evaluating Ko-PIQA (Korean, errors: 0)")
+        pbar_ko_piqa = tqdm(range(0, len(ko_piqa_test_data), BATCH_SIZE), desc="Evaluating Ko-PIQA (Korean, errors: 0)")
         for i in pbar_ko_piqa:
-            batch_data = ko_piqa_data[i:i+BATCH_SIZE]
+            batch_data = ko_piqa_test_data[i:i+BATCH_SIZE]
             batch_prompts = []
             batch_indices = []
             batch_ground_truths = []
@@ -596,7 +681,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 if ground_truth is None:
                     continue
                     
-                prompt = create_3shot_prompt(item, KOREAN_FEW_SHOT_EXAMPLES, "ko")
+                prompt = create_3shot_prompt_from_dev(item, ko_piqa_dev_data, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -634,6 +719,34 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                     all_results["ko_piqa"]["total"] += 1
                     if is_correct:
                         all_results["ko_piqa"]["correct"] += 1
+                    else:
+                        # 틀린 답변도 실패 케이스에 추가
+                        all_results["ko_piqa"]["failures"].append({
+                            "index": result['index'],
+                            "ground_truth": ground_truth,
+                            "predicted_answer": extracted_answer,
+                            "failure_type": "incorrect_answer",
+                            "raw_output": raw_output,
+                            "goal": ko_piqa_test_data[result['index']].get("goal", ""),
+                            "sol1": ko_piqa_test_data[result['index']].get("sol1", ""),
+                            "sol2": ko_piqa_test_data[result['index']].get("sol2", "")
+                        })
+                else:
+                    # 답변 추출 실패한 케이스
+                    failure_type = "extraction_failed"
+                    if raw_output.startswith("ERROR"):
+                        failure_type = "model_error"
+                    
+                    all_results["ko_piqa"]["failures"].append({
+                        "index": result['index'],
+                        "ground_truth": ground_truth,
+                        "predicted_answer": None,
+                        "failure_type": failure_type,
+                        "raw_output": raw_output,
+                        "goal": ko_piqa_test_data[result['index']].get("goal", ""),
+                        "sol1": ko_piqa_test_data[result['index']].get("sol1", ""),
+                        "sol2": ko_piqa_test_data[result['index']].get("sol2", "")
+                    })
                 
                 all_results["ko_piqa"]["details"].append({
                     "index": result['index'],
@@ -652,7 +765,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 })
             
             # Update progress bar with current error count
-            current_ko_piqa_errors = len(ko_piqa_data[:i+BATCH_SIZE]) - all_results["ko_piqa"]["total"]
+            current_ko_piqa_errors = len(ko_piqa_test_data[:i+BATCH_SIZE]) - all_results["ko_piqa"]["total"]
             pbar_ko_piqa.set_description(f"Evaluating Ko-PIQA (Korean, errors: {current_ko_piqa_errors})")
 
         logger.info(f"Ko-PIQA evaluation completed: {all_results['ko_piqa']['correct']}/{all_results['ko_piqa']['total']}")
@@ -663,30 +776,29 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
         ko_piqa_accuracy_standard = (all_results["ko_piqa"]["correct"] / all_results["ko_piqa"]["total"] * 100) if all_results["ko_piqa"]["total"] > 0 else 0
         
         # Strict accuracy: based on total dataset including errors/skips
-        piqa_accuracy_strict = (all_results["piqa"]["correct"] / len(piqa_data) * 100) if len(piqa_data) > 0 else 0
-        ko_piqa_accuracy_strict = (all_results["ko_piqa"]["correct"] / len(ko_piqa_data) * 100) if len(ko_piqa_data) > 0 else 0
+        piqa_accuracy_strict = (all_results["piqa"]["correct"] / len(piqa_test_data) * 100)
+        ko_piqa_accuracy_strict = (all_results["ko_piqa"]["correct"] / len(ko_piqa_test_data) * 100)
         
         # Calculate error/skip counts
-        piqa_errors_skipped = len(piqa_data) - all_results["piqa"]["total"]
-        ko_piqa_errors_skipped = len(ko_piqa_data) - all_results["ko_piqa"]["total"]
-
+        piqa_errors_skipped = len(piqa_test_data) - all_results["piqa"]["total"]
+        ko_piqa_errors_skipped = len(ko_piqa_test_data) - all_results["ko_piqa"]["total"]
         logger.info(f"--- Final Results for {config.name} ---")
         logger.info(f"PIQA Standard Accuracy: {piqa_accuracy_standard:.2f}% ({all_results['piqa']['correct']}/{all_results['piqa']['total']})")
-        logger.info(f"PIQA Strict Accuracy: {piqa_accuracy_strict:.2f}% ({all_results['piqa']['correct']}/{len(piqa_data)}) [Errors/Skipped: {piqa_errors_skipped}]")
+        logger.info(f"PIQA Strict Accuracy: {piqa_accuracy_strict:.2f}% ({all_results['piqa']['correct']}/{len(piqa_test_data)}) [Errors/Skipped: {piqa_errors_skipped}]")
         logger.info(f"Ko-PIQA Standard Accuracy: {ko_piqa_accuracy_standard:.2f}% ({all_results['ko_piqa']['correct']}/{all_results['ko_piqa']['total']})")
-        logger.info(f"Ko-PIQA Strict Accuracy: {ko_piqa_accuracy_strict:.2f}% ({all_results['ko_piqa']['correct']}/{len(ko_piqa_data)}) [Errors/Skipped: {ko_piqa_errors_skipped}]")
+        logger.info(f"Ko-PIQA Strict Accuracy: {ko_piqa_accuracy_strict:.2f}% ({all_results['ko_piqa']['correct']}/{len(ko_piqa_test_data)}) [Errors/Skipped: {ko_piqa_errors_skipped}]")
 
         # Save Results
         final_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
-            "evaluation_type": "5-shot PIQA/Ko-PIQA",
+            "evaluation_type": "0-shot PIQA/Ko-PIQA",
             "evaluation_date": datetime.now().isoformat(),
             "piqa_results": {
                 "accuracy_standard": piqa_accuracy_standard,
                 "accuracy_strict": piqa_accuracy_strict,
                 "correct_predictions": all_results["piqa"]["correct"],
                 "total_predictions": all_results["piqa"]["total"],
-                "total_items": len(piqa_data),
+                "total_items": len(piqa_test_data),
                 "errors_or_skipped": piqa_errors_skipped,
                 "details": all_results["piqa"]["details"]
             },
@@ -695,7 +807,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
                 "accuracy_strict": ko_piqa_accuracy_strict,
                 "correct_predictions": all_results["ko_piqa"]["correct"],
                 "total_predictions": all_results["ko_piqa"]["total"],
-                "total_items": len(ko_piqa_data),
+                "total_items": len(ko_piqa_test_data),
                 "errors_or_skipped": ko_piqa_errors_skipped,
                 "details": all_results["ko_piqa"]["details"]
             }
@@ -712,6 +824,33 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
         with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
             json.dump(raw_generations_summary, f, indent=2, ensure_ascii=False)
 
+        # Save failure cases
+        if all_results["piqa"]["failures"] or all_results["ko_piqa"]["failures"]:
+            failure_summary = {
+                "total_piqa_failures": len(all_results["piqa"]["failures"]),
+                "total_ko_piqa_failures": len(all_results["ko_piqa"]["failures"]),
+                "piqa_failure_types": {},
+                "ko_piqa_failure_types": {},
+                "piqa_failures": all_results["piqa"]["failures"],
+                "ko_piqa_failures": all_results["ko_piqa"]["failures"]
+            }
+            
+            # Count failure types for PIQA
+            for case in all_results["piqa"]["failures"]:
+                failure_type = case.get("failure_type", "unknown")
+                failure_summary["piqa_failure_types"][failure_type] = failure_summary["piqa_failure_types"].get(failure_type, 0) + 1
+            
+            # Count failure types for Ko-PIQA  
+            for case in all_results["ko_piqa"]["failures"]:
+                failure_type = case.get("failure_type", "unknown")
+                failure_summary["ko_piqa_failure_types"][failure_type] = failure_summary["ko_piqa_failure_types"].get(failure_type, 0) + 1
+            
+            with open(failure_cases_filepath, 'w', encoding='utf-8') as f:
+                json.dump(failure_summary, f, indent=2, ensure_ascii=False)
+            logger.info(f"Failure cases saved to: {failure_cases_filepath}")
+        else:
+            logger.info("No failure cases to save.")
+
         return {
             "model_name": config.name,
             "piqa_accuracy_standard": piqa_accuracy_standard,
@@ -720,11 +859,11 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
             "ko_piqa_accuracy_strict": ko_piqa_accuracy_strict,
             "piqa_correct": all_results["piqa"]["correct"],
             "piqa_total": all_results["piqa"]["total"],
-            "piqa_total_items": len(piqa_data),
+            "piqa_total_items": len(piqa_test_data),
             "piqa_errors_skipped": piqa_errors_skipped,
             "ko_piqa_correct": all_results["ko_piqa"]["correct"],
             "ko_piqa_total": all_results["ko_piqa"]["total"],
-            "ko_piqa_total_items": len(ko_piqa_data),
+            "ko_piqa_total_items": len(ko_piqa_test_data),
             "ko_piqa_errors_skipped": ko_piqa_errors_skipped
         }
 
@@ -738,12 +877,12 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_data: list, ko_p
             "ko_piqa_accuracy_strict": 0.0,
             "piqa_correct": 0,
             "piqa_total": 0,
-            "piqa_total_items": len(piqa_data) if 'piqa_data' in locals() else 0,
-            "piqa_errors_skipped": len(piqa_data) if 'piqa_data' in locals() else 0,
+            "piqa_total_items": len(piqa_test_data) if 'piqa_data' in locals() else 0,
+            "piqa_errors_skipped": len(piqa_errors_skipped) if 'piqa_data' in locals() else 0,
             "ko_piqa_correct": 0,
             "ko_piqa_total": 0,
-            "ko_piqa_total_items": len(ko_piqa_data) if 'ko_piqa_data' in locals() else 0,
-            "ko_piqa_errors_skipped": len(ko_piqa_data) if 'ko_piqa_data' in locals() else 0,
+            "ko_piqa_total_items": len(ko_piqa_test_data) if 'ko_piqa_data' in locals() else 0,
+            "ko_piqa_errors_skipped": len(ko_piqa_errors_skipped) if 'ko_piqa_data' in locals() else 0,
             "error": str(e)
         }
     finally:
@@ -764,6 +903,11 @@ def main():
         logger.error("Failed to load datasets.")
         return
 
+    # Split data into dev and test sets
+    piqa_dev_data, piqa_test_data, ko_piqa_dev_data, ko_piqa_test_data = prepare_piqa_data_with_dev_split(
+        piqa_data, ko_piqa_data, dev_shots_per_type=3
+    )
+
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
     
     # Store all model results for summary
@@ -774,7 +918,13 @@ def main():
         model_specific_output_dir = os.path.join(BASE_OUTPUT_DIR, config.name)
         os.makedirs(model_specific_output_dir, exist_ok=True)
         
-        model_result = evaluate_single_model_on_datasets(config, piqa_data, ko_piqa_data, model_specific_output_dir)
+        # Pass dev and test data separately
+        model_result = evaluate_single_model_on_datasets(
+            config, 
+            piqa_test_data, ko_piqa_test_data,  # test data
+            piqa_dev_data, ko_piqa_dev_data,    # dev data for few-shot
+            model_specific_output_dir
+        )
         all_model_results.append(model_result)
 
     # Generate summary
@@ -784,8 +934,8 @@ def main():
             "evaluation_date": datetime.now().isoformat(),
             "batch_size": BATCH_SIZE,
             "max_new_tokens": MAX_NEW_TOKENS,
-            "total_piqa_items": len(piqa_data),
-            "total_ko_piqa_items": len(ko_piqa_data)
+            "total_piqa_items": len(piqa_test_data),
+            "total_ko_piqa_items": len(ko_piqa_test_data)
         },
         "model_results": all_model_results,
         "summary_statistics": {

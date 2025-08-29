@@ -11,6 +11,8 @@ import json
 import logging
 import torch
 import re
+import warnings 
+import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from tqdm import tqdm
@@ -18,6 +20,11 @@ from dataclasses import dataclass, field
 import gc
 import sys
 from pathlib import Path
+
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+transformers.logging.set_verbosity_error()
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
+
 
 # --- Model Configuration ---
 @dataclass
@@ -52,28 +59,28 @@ MODEL_CONFIGS = [
     ),
 
     # ToW Trained Models
-    # ModelConfig(
-    #     name="Qwen2.5-3B-Instruct-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Qwen2.5-3B-Instruct-ToW",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="google_gemma-3-4b-it-ToW",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/google_gemma-3-4b-it-ToW",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-3B-Instruct-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Qwen2.5-3B-Instruct-ToW",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="google_gemma-3-4b-it-ToW",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/google_gemma-3-4b-it-ToW",
+        use_quantization=False
+    ),
     ModelConfig(
         name="Llama-3.2-3B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Llama-3.2-3B-Instruct-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.2-3B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/DeepSeek-R1-Distill-Qwen-1.5B-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-Distill-Qwen-1.5B-ToW",
         use_quantization=False
     ),
 ]
@@ -83,7 +90,7 @@ DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
 BASE_OUTPUT_DIR = "gsm8k_hrm8k_zeroshot_results"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -121,14 +128,14 @@ def create_gsm8k_0shot_prompt(text, is_korean=False):
     if is_korean:
         instruction = "다음 수학 문제를 단계적으로 생각하여 풀이 과정을 설명하고, 최종 숫자 답변을 '#### [숫자]' 형식으로 제시해주세요."
         question_header = "문제:"
-        cot_trigger = "응답답: 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
+        cot_trigger = "응답답: 답은 #### 뒤에 적어주세요. 이제 단계별로 생각해보겠습니다." # <--- 여기서 프롬프트가 끝나야 합니다.
         
         prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
         
     else: # English version
         instruction = "Solve the following math problem by thinking step-by-step and providing the final numerical answer in the format '#### [number]'."
         question_header = "Question:"
-        cot_trigger = "Response: Let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
+        cot_trigger = "Response: Put your answer behind ####. Now let's think step by step." # <--- 여기서 프롬프트가 끝나야 합니다.
         
         prompt = f"{instruction}\n\n{question_header} {text}\n{cot_trigger}"
     

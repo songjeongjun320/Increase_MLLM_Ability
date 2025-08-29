@@ -120,14 +120,14 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/single_tow_dataset.jsonl"
+        "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
     ])
     output_base_dir: str = "ToW_Models_3"
     
     # Training hyperparameters
     learning_rate: float = 1e-5  # This will be a fallback
     max_grad_norm = 1.0
-    num_train_epochs: int = 3
+    num_train_epochs: int = 10
     per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
     per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
     gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
@@ -152,7 +152,7 @@ class ToWTrainingConfig:
     logging_steps: int = 250
     early_stopping_patience: int = 3
     early_stopping_threshold: float = 0.0
-    dataloader_num_workers: int = 2
+    dataloader_num_workers: int = 1
     remove_unused_columns: bool = True
     fp16: bool = False
     bf16: bool = True
@@ -254,8 +254,8 @@ class ToWTrainer:
         # Always apply LoRA for fine-tuning in this script
         logger.info("Setting up LoRA configuration...")
         lora_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
+            r=64,
+            lora_alpha=16,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
             lora_dropout=0.1,
             bias="none",
@@ -339,7 +339,7 @@ class ToWTrainer:
         )
         
         training_args = self.create_training_arguments()
-        
+
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
         if last_checkpoint:
             logger.info(f"Resuming from checkpoint: {last_checkpoint}")

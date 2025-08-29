@@ -51,26 +51,26 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    ModelConfig(
-        name="Qwen2.5-3B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="google_gemma-3-4b-it",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.2-3B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-Distill-Qwen-1.5B",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-3B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="google_gemma-3-4b-it",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-Distill-Qwen-1.5B",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
+    #     use_quantization=False
+    # ),
 
     # ToW Trained Models
     ModelConfig(
@@ -344,7 +344,7 @@ def process_single_with_retry(model, tokenizer, prompt, index=None, max_retries=
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=50,
+                    max_new_tokens=20,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -591,33 +591,33 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     if model_answer_log == ground_truth:
                         correct_predictions += 1
                         is_correct_log = True
-                else:
-                    # Batch extraction failed, try individual retry for this item
-                    if not result['raw_output'].startswith("ERROR"):
-                        logger.warning(f"Batch extraction failed for item {result['index']}, attempting individual retry...")
-                        retry_result = process_single_with_retry(model, tokenizer, batch_prompt, result['index'])  # 수정!
+                # else:
+                #     # Batch extraction failed, try individual retry for this item
+                #     if not result['raw_output'].startswith("ERROR"):
+                #         logger.warning(f"Batch extraction failed for item {result['index']}, attempting individual retry...")
+                #         retry_result = process_single_with_retry(model, tokenizer, batch_prompt, result['index'])  # 수정!
                         
-                        if retry_result['extracted_answer'] is not None:  # 수정!
-                            generated_text_log = retry_result['raw_output']  # 수정!
-                            model_answer_log = retry_result['extracted_answer']  # 수정!
-                            total_predictions += 1
-                            if model_answer_log == ground_truth:
-                                correct_predictions += 1
-                                is_correct_log = True
-                            logger.info(f"Retry successful for item {result['index']}: extracted '{model_answer_log}'")
-                        else:
-                            # Even retry failed
-                            errors_or_skipped += 1
-                            original_generated_text = retry_result['raw_output']  # 수정!
-                            if not retry_result['raw_output'].startswith("ERROR"):  # 수정!
-                                logger.warning(f"Item {result['index']}: Failed to extract answer after retries")
-                                generated_text_log = f"EXTRACTION_FAILED: {retry_result['raw_output']}"  # 수정!
-                                failure_type = "answer_extraction_failed"
-                            else:
-                                # This was a model error, not extraction failure  
-                                logger.error(f"Item {result['index']}: Model error: {retry_result['raw_output']}")  # 수정!
-                                generated_text_log = retry_result['raw_output']  # 수정!
-                                failure_type = "model_error"
+                #         if retry_result['extracted_answer'] is not None:  # 수정!
+                #             generated_text_log = retry_result['raw_output']  # 수정!
+                #             model_answer_log = retry_result['extracted_answer']  # 수정!
+                #             total_predictions += 1
+                #             if model_answer_log == ground_truth:
+                #                 correct_predictions += 1
+                #                 is_correct_log = True
+                #             logger.info(f"Retry successful for item {result['index']}: extracted '{model_answer_log}'")
+                #         else:
+                #             # Even retry failed
+                #             errors_or_skipped += 1
+                #             original_generated_text = retry_result['raw_output']  # 수정!
+                #             if not retry_result['raw_output'].startswith("ERROR"):  # 수정!
+                #                 logger.warning(f"Item {result['index']}: Failed to extract answer after retries")
+                #                 generated_text_log = f"EXTRACTION_FAILED: {retry_result['raw_output']}"  # 수정!
+                #                 failure_type = "answer_extraction_failed"
+                #             else:
+                #                 # This was a model error, not extraction failure  
+                #                 logger.error(f"Item {result['index']}: Model error: {retry_result['raw_output']}")  # 수정!
+                #                 generated_text_log = retry_result['raw_output']  # 수정!
+                #                 failure_type = "model_error"
                     else:
                         # This was already a model error from batch processing
                         errors_or_skipped += 1

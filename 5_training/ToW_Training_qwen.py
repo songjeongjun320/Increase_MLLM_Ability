@@ -120,7 +120,7 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/single_tow_dataset.jsonl"
+        "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
     ])
     output_base_dir: str = "ToW_Models_2"
     
@@ -253,8 +253,8 @@ class ToWTrainer:
         # Always apply LoRA for fine-tuning in this script
         logger.info("Setting up LoRA configuration...")
         lora_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
+            r=64,
+            lora_alpha=16,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
             lora_dropout=0.1,
             bias="none",
@@ -338,7 +338,7 @@ class ToWTrainer:
         )
         
         training_args = self.create_training_arguments()
-        
+
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
         if last_checkpoint:
             logger.info(f"Resuming from checkpoint: {last_checkpoint}")

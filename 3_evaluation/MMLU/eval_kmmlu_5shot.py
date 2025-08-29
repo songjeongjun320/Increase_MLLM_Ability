@@ -138,71 +138,8 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     """
     Create improved 5-shot Korean MMLU prompt with clear answer format instructions.
     Based on patterns that work well for avoiding extraction issues.
-    """
-    subject = test_item.get("Subject", "unknown")
-    
-    # Format subject name for Korean display
-    subject_display_map = {
-        "abstract_algebra": "추상대수학",
-        "anatomy": "해부학",
-        "astronomy": "천문학",
-        "business_ethics": "경영 윤리",
-        "clinical_knowledge": "임상 지식",
-        "college_biology": "대학 생물학",
-        "college_chemistry": "대학 화학",
-        "college_computer_science": "대학 컴퓨터 과학",
-        "college_mathematics": "대학 수학",
-        "college_medicine": "대학 의학",
-        "college_physics": "대학 물리학",
-        "computer_security": "컴퓨터 보안",
-        "conceptual_physics": "개념 물리학",
-        "econometrics": "계량경제학",
-        "electrical_engineering": "전기공학",
-        "elementary_mathematics": "초등 수학",
-        "formal_logic": "형식 논리학",
-        "global_facts": "세계 사실",
-        "high_school_biology": "고등학교 생물학",
-        "high_school_chemistry": "고등학교 화학",
-        "high_school_computer_science": "고등학교 컴퓨터 과학",
-        "high_school_european_history": "고등학교 유럽사",
-        "high_school_geography": "고등학교 지리학",
-        "high_school_government_and_politics": "고등학교 정치학",
-        "high_school_macroeconomics": "고등학교 거시경제학",
-        "high_school_mathematics": "고등학교 수학",
-        "high_school_microeconomics": "고등학교 미시경제학",
-        "high_school_physics": "고등학교 물리학",
-        "high_school_psychology": "고등학교 심리학",
-        "high_school_statistics": "고등학교 통계학",
-        "high_school_us_history": "고등학교 미국사",
-        "high_school_world_history": "고등학교 세계사",
-        "human_aging": "인간 노화",
-        "human_sexuality": "인간 성학",
-        "international_law": "국제법",
-        "jurisprudence": "법학",
-        "logical_fallacies": "논리적 오류",
-        "machine_learning": "기계학습",
-        "management": "경영학",
-        "marketing": "마케팅",
-        "medical_genetics": "의학 유전학",
-        "miscellaneous": "기타",
-        "moral_disputes": "도덕적 논쟁",
-        "moral_scenarios": "도덕적 시나리오",
-        "nutrition": "영양학",
-        "philosophy": "철학",
-        "prehistory": "선사학",
-        "professional_accounting": "전문 회계학",
-        "professional_law": "전문 법학",
-        "professional_medicine": "전문 의학",
-        "professional_psychology": "전문 심리학",
-        "public_relations": "홍보학",
-        "security_studies": "보안학",
-        "sociology": "사회학",
-        "us_foreign_policy": "미국 외교정책",
-        "virology": "바이러스학",
-        "world_religions": "세계 종교학"
-    }
-    
-    prompt_parts = [f"다음은 {subject_display}에 관한 객관식 문제입니다."]
+    """  
+    prompt_parts = [f"다음은 객관식 문제입니다."]
     prompt_parts.append("")  # Empty line
     
     # Add development examples (few-shot examples)
@@ -414,7 +351,7 @@ def process_single_with_retry(model, tokenizer, prompt, index, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=50,
+                    max_new_tokens=20,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -679,30 +616,30 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
             
-            # Retry logic for failed answer extractions
-            retry_indices = []
-            retry_prompts = []
-            retry_ground_truths = []
-            retry_original_items = []
+            # # Retry logic for failed answer extractions
+            # retry_indices = []
+            # retry_prompts = []
+            # retry_ground_truths = []
+            # retry_original_items = []
             
-            for i, result in enumerate(batch_results):
-                if result['extracted_answer'] is None and not result['raw_output'].startswith("ERROR"):
-                    # Need to retry this one
-                    retry_indices.append(i)
-                    retry_prompts.append(batch_prompts[i])
-                    retry_ground_truths.append(batch_ground_truths[i])
-                    retry_original_items.append(batch_original_items[i])
+            # for i, result in enumerate(batch_results):
+            #     if result['extracted_answer'] is None and not result['raw_output'].startswith("ERROR"):
+            #         # Need to retry this one
+            #         retry_indices.append(i)
+            #         retry_prompts.append(batch_prompts[i])
+            #         retry_ground_truths.append(batch_ground_truths[i])
+            #         retry_original_items.append(batch_original_items[i])
             
-            # Process retries individually
-            if retry_indices:
-                logger.info(f"Retrying {len(retry_indices)} failed extractions with individual processing...")
-                for j, retry_idx in enumerate(retry_indices):
-                    retry_result = process_single_with_retry(
-                        model, tokenizer, retry_prompts[j], 
-                        batch_results[retry_idx]['index']
-                    )
-                    # Update the original result
-                    batch_results[retry_idx] = retry_result
+            # # Process retries individually
+            # if retry_indices:
+            #     logger.info(f"Retrying {len(retry_indices)} failed extractions with individual processing...")
+            #     for j, retry_idx in enumerate(retry_indices):
+            #         retry_result = process_single_with_retry(
+            #             model, tokenizer, retry_prompts[j], 
+            #             batch_results[retry_idx]['index']
+            #         )
+            #         # Update the original result
+            #         batch_results[retry_idx] = retry_result
 
             for result, ground_truth, original_item in zip(batch_results, batch_ground_truths, batch_original_items):
                 model_answer = result['extracted_answer']

@@ -120,7 +120,7 @@ class ModelConfig:
 class ToWTrainingConfig:
     """ToW training config with smart text handling"""
     tow_data_paths: List[str] = field(default_factory=lambda: [
-        "../4_tow_generation/tow_data/single_tow_dataset.jsonl"
+        "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
     ])
     output_base_dir: str = "ToW_Models_3"
     
@@ -130,7 +130,7 @@ class ToWTrainingConfig:
     num_train_epochs: int = 10
     per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
     per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
-    gradient_accumulation_steps: int = 16  # Increased to maintain effective batch size
+    gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
     
     # Smart text handling
@@ -154,8 +154,8 @@ class ToWTrainingConfig:
     early_stopping_threshold: float = 0.0
     dataloader_num_workers: int = 2
     remove_unused_columns: bool = True
-    fp16: bool = True
-    bf16: bool = False
+    fp16: bool = False
+    bf16: bool = True
     gradient_checkpointing: bool = False
 
 
@@ -253,10 +253,10 @@ class ToWTrainer:
         # Always apply LoRA for fine-tuning in this script
         logger.info("Setting up LoRA configuration...")
         lora_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
+            r=64,
+            lora_alpha=16,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.2,
+            lora_dropout=0.1,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens

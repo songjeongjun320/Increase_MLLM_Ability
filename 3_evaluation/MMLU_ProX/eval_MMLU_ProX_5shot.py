@@ -68,25 +68,25 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="Qwen2.5-3B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Qwen2.5-3B-Instruct-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Qwen2.5-3B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="google_gemma-3-4b-it-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/google_gemma-3-4b-it-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/google_gemma-3-4b-it-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="Llama-3.2-3B-Instruct-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/Llama-3.2-3B-Instruct-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.2-3B-Instruct-ToW",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B-ToW",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models2/DeepSeek-R1-Distill-Qwen-1.5B-ToW",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-Distill-Qwen-1.5B-ToW",
         use_quantization=False
     ),
 ]
@@ -95,7 +95,7 @@ MODEL_CONFIGS = [
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.json"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.json"
 BASE_OUTPUT_DIR = "mmlu_prox_5shot"
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -326,9 +326,6 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
             options.append(f"{key}. {value}")
         prompt_parts.extend(options)
         
-        # 3. [생각] 플레이스홀더 대신 실제 CoT 추론 내용(cot_reasoning)을 추가합니다.
-        prompt_parts.append(cot_reasoning)
-        
         if language == "ko":
             prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
             prompt_parts.append(f"#### 정답: {correct_answer}")
@@ -337,6 +334,17 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
             prompt_parts.append(f"#### Answer: {correct_answer}.")
         prompt_parts.append("")
     
+        # 3. [생각] 플레이스홀더 대신 실제 CoT 추론 내용(cot_reasoning)을 추가합니다.
+        prompt_parts.append(cot_reasoning)
+
+        if language == "ko":
+            prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
+            prompt_parts.append(f"#### 정답: {correct_answer}")
+        else:
+            prompt_parts.append(f"#### So the answer is {correct_answer}.")
+            prompt_parts.append(f"#### Answer: {correct_answer}.")
+        prompt_parts.append("")
+
     # Add the test question
     question = item.get("question", "")
     options = []
@@ -351,9 +359,9 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("단계별로 생각해봅시다. ")
+        prompt_parts.append("단계별로 생각해봅시다. #### 따라서 답은 ")
     else:
-        prompt_parts.append("Let's think step by step. ")
+        prompt_parts.append("Let's think step by step. #### So the answer is  ")
     
     return "\n".join(prompt_parts)
 

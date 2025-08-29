@@ -26,6 +26,13 @@ from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 import numpy as np
 from datetime import datetime
+import time
+import psutil
+try:
+    import GPUtil
+except ImportError:
+    GPUtil = None
+import torch.nn.functional as F
 
 import transformers
 from transformers import (
@@ -45,8 +52,8 @@ logger = logging.getLogger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-class JsonLoggingCallback(TrainerCallback):
-    """Callback to log metrics to a JSON file."""
+class EnhancedJsonLoggingCallback(TrainerCallback):
+    """Enhanced callback to log comprehensive metrics to a JSON file."""
 
     def __init__(self, log_file):
         self.log_file = log_file
@@ -54,20 +61,215 @@ class JsonLoggingCallback(TrainerCallback):
         with open(self.log_file, 'w') as f:
             f.write("[\n")
         self.first_log = True
+        self.start_time = time.time()
 
-    def on_log(self, args, state, control, logs=None, **kwargs):
+    def on_log(self, args, state, control, logs=None, model=None, **kwargs):
         if logs is not None:
+            enhanced_logs = logs.copy()
+            
+            # Add timestamp
+            enhanced_logs['timestamp'] = datetime.now().isoformat()
+            enhanced_logs['training_time_elapsed'] = time.time() - self.start_time
+            
+            # Add perplexity if we have loss
+            if 'train_loss' in enhanced_logs:
+                enhanced_logs['train_perplexity'] = float(np.exp(enhanced_logs['train_loss']))
+            if 'eval_loss' in enhanced_logs:
+                enhanced_logs['eval_perplexity'] = float(np.exp(enhanced_logs['eval_loss']))
+            
+            # Add GPU memory information
+            if torch.cuda.is_available():
+                enhanced_logs['gpu_memory'] = {
+                    'allocated_gb': torch.cuda.memory_allocated() / 1e9,
+                    'reserved_gb': torch.cuda.memory_reserved() / 1e9,
+                    'max_allocated_gb': torch.cuda.max_memory_allocated() / 1e9
+                }
+                
+                # Add GPU utilization if GPUtil is available
+                if GPUtil:
+                    try:
+                        gpus = GPUtil.getGPUs()
+                        if gpus:
+                            enhanced_logs['gpu_utilization'] = {
+                                'gpu_percent': gpus[0].load * 100,
+                                'memory_percent': gpus[0].memoryUtil * 100,
+                                'temperature': gpus[0].temperature
+                            }
+                    except Exception:
+                        pass
+            
+            # Add system memory
+            try:
+                memory = psutil.virtual_memory()
+                enhanced_logs['system_memory'] = {
+                    'used_gb': memory.used / 1e9,
+                    'available_gb': memory.available / 1e9,
+                    'percent': memory.percent
+                }
+            except Exception:
+                pass
+            
+            # Add detailed learning rate information
+            if hasattr(state, 'log_history') and state.log_history:
+                last_lr = None
+                for log_entry in reversed(state.log_history):
+                    if 'learning_rate' in log_entry:
+                        last_lr = log_entry['learning_rate']
+                        break
+                if last_lr is not None:
+                    enhanced_logs['current_learning_rate'] = last_lr
+            
             # Append logs to the JSON file
             with open(self.log_file, 'a') as f:
                 if not self.first_log:
                     f.write(",\n")
-                json.dump(logs, f, indent=2)
+                json.dump(enhanced_logs, f, indent=2, default=str)
                 self.first_log = False
     
     def on_train_end(self, args, state, control, **kwargs):
         # Close the JSON array
         with open(self.log_file, 'a') as f:
             f.write("\n]\n")
+
+
+class ToWMetricsCallback(TrainerCallback):
+    """Callback to track ToW-specific metrics during training."""
+    
+    def __init__(self, tokenizer, log_file_prefix="tow_metrics"):
+        self.tokenizer = tokenizer
+        self.tow_start_id = tokenizer.convert_tokens_to_ids("<ToW>")
+        self.tow_end_id = tokenizer.convert_tokens_to_ids("</ToW>")
+        self.log_file_prefix = log_file_prefix
+        
+    def on_evaluate(self, args, state, control, logs=None, model=None, eval_dataloader=None, **kwargs):
+        """Calculate ToW-specific metrics during evaluation."""
+        if model is None or eval_dataloader is None:
+            return
+            
+        model.eval()
+        total_tow_tokens = 0
+        correct_tow_predictions = 0
+        total_tow_sequences = 0
+        tow_losses = []
+        
+        with torch.no_grad():
+            # Limit evaluation to first 50 batches to avoid excessive evaluation time
+            for i, batch in enumerate(eval_dataloader):
+                if i >= 50:  # Limit to 50 batches
+                    break
+                    
+                input_ids = batch['input_ids']
+                labels = batch['labels']
+                
+                # Get model predictions
+                outputs = model(input_ids=input_ids, labels=labels)
+                logits = outputs.logits
+                
+                # Calculate predictions
+                predicted_ids = torch.argmax(logits, dim=-1)
+                
+                # Find ToW tokens in this batch
+                for seq_idx in range(input_ids.size(0)):
+                    sequence_labels = labels[seq_idx]
+                    sequence_predictions = predicted_ids[seq_idx]
+                    
+                    # Find ToW regions
+                    tow_start_positions = (sequence_labels == self.tow_start_id).nonzero(as_tuple=True)[0]
+                    tow_end_positions = (sequence_labels == self.tow_end_id).nonzero(as_tuple=True)[0]
+                    
+                    if len(tow_start_positions) > 0 and len(tow_end_positions) > 0:
+                        total_tow_sequences += 1
+                        
+                        # For each ToW region, calculate accuracy
+                        for start_pos in tow_start_positions:
+                            # Find corresponding end position
+                            end_positions = tow_end_positions[tow_end_positions > start_pos]
+                            if len(end_positions) > 0:
+                                end_pos = end_positions[0]
+                                
+                                # Count tokens in ToW region
+                                tow_region_length = end_pos - start_pos + 1
+                                total_tow_tokens += tow_region_length
+                                
+                                # Count correct predictions in ToW region
+                                tow_labels = sequence_labels[start_pos:end_pos+1]
+                                tow_preds = sequence_predictions[start_pos:end_pos+1]
+                                correct_tow_predictions += (tow_labels == tow_preds).sum().item()
+                                
+                                # Calculate ToW-specific loss
+                                tow_logits = logits[seq_idx, start_pos:end_pos+1]
+                                tow_loss = F.cross_entropy(tow_logits, tow_labels, reduction='mean')
+                                tow_losses.append(tow_loss.item())
+        
+        # Calculate ToW metrics
+        tow_metrics = {}
+        
+        if total_tow_tokens > 0:
+            tow_accuracy = correct_tow_predictions / total_tow_tokens
+            tow_metrics['tow_token_accuracy'] = tow_accuracy
+            tow_metrics['total_tow_tokens_evaluated'] = total_tow_tokens
+            tow_metrics['correct_tow_predictions'] = correct_tow_predictions
+            
+        if tow_losses:
+            avg_tow_loss = np.mean(tow_losses)
+            tow_metrics['tow_loss'] = avg_tow_loss
+            tow_metrics['tow_perplexity'] = np.exp(avg_tow_loss)
+            
+        tow_metrics['total_tow_sequences'] = total_tow_sequences
+        
+        # Add individual token tracking
+        tow_start_correct = 0
+        tow_end_correct = 0
+        tow_start_total = 0
+        tow_end_total = 0
+        
+        # Count individual <ToW> and </ToW> token accuracy
+        with torch.no_grad():
+            for i, batch in enumerate(eval_dataloader):
+                if i >= 50:  # Same limit as above
+                    break
+                    
+                input_ids = batch['input_ids']
+                labels = batch['labels']
+                outputs = model(input_ids=input_ids, labels=labels)
+                predicted_ids = torch.argmax(outputs.logits, dim=-1)
+                
+                # Count <ToW> tokens
+                tow_start_mask = (labels == self.tow_start_id)
+                tow_start_total += tow_start_mask.sum().item()
+                tow_start_correct += ((predicted_ids == labels) & tow_start_mask).sum().item()
+                
+                # Count </ToW> tokens
+                tow_end_mask = (labels == self.tow_end_id)
+                tow_end_total += tow_end_mask.sum().item()
+                tow_end_correct += ((predicted_ids == labels) & tow_end_mask).sum().item()
+        
+        if tow_start_total > 0:
+            tow_metrics['tow_start_accuracy'] = tow_start_correct / tow_start_total
+            tow_metrics['tow_start_total'] = tow_start_total
+            tow_metrics['tow_start_correct'] = tow_start_correct
+            
+        if tow_end_total > 0:
+            tow_metrics['tow_end_accuracy'] = tow_end_correct / tow_end_total
+            tow_metrics['tow_end_total'] = tow_end_total
+            tow_metrics['tow_end_correct'] = tow_end_correct
+        
+        # Add timestamp
+        tow_metrics['timestamp'] = datetime.now().isoformat()
+        
+        # Update logs with ToW metrics
+        if logs is not None:
+            logs.update(tow_metrics)
+            
+        # Save ToW metrics to separate file
+        tow_log_file = Path(args.output_dir) / f"{self.log_file_prefix}_{state.epoch or 'final'}.json"
+        with open(tow_log_file, 'w') as f:
+            json.dump(tow_metrics, f, indent=2, default=str)
+            
+        logger.info(f"ToW Metrics: {tow_metrics}")
+        
+        model.train()
+        return tow_metrics
 
 
 class CustomDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
@@ -85,9 +287,14 @@ class CustomDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
         return batch
 
 
-class ToWTrainerWithPinMemory(Trainer):
+class EnhancedToWTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.tokenizer = kwargs.get('tokenizer')
+        
+        # Add token-level accuracy tracking
+        self.token_correct = 0
+        self.token_total = 0
 
     def get_train_dataloader(self) -> DataLoader:
         """Override to set pin_memory=True for the train dataloader"""
@@ -106,6 +313,63 @@ class ToWTrainerWithPinMemory(Trainer):
             eval_dataloader.pin_memory = True
             
         return eval_dataloader
+        
+    def compute_loss(self, model, inputs, return_outputs=False):
+        """Override compute_loss to add detailed loss tracking."""
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        
+        if labels is not None:
+            # Calculate token-level accuracy
+            logits = outputs.get('logits')
+            if logits is not None:
+                predictions = torch.argmax(logits, dim=-1)
+                
+                # Mask out padding tokens for accuracy calculation
+                mask = (labels != -100)
+                correct_tokens = ((predictions == labels) & mask).sum().item()
+                total_tokens = mask.sum().item()
+                
+                self.token_correct += correct_tokens
+                self.token_total += total_tokens
+        
+        loss = outputs.get('loss')
+        
+        # Add gradient norm to the loss tracking
+        if hasattr(model, 'parameters'):
+            total_norm = 0
+            for p in model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** (1. / 2)
+            
+            # Store gradient norm for logging
+            if not hasattr(self, '_gradient_norms'):
+                self._gradient_norms = []
+            self._gradient_norms.append(total_norm)
+        
+        return (loss, outputs) if return_outputs else loss
+        
+    def log(self, logs):
+        """Override log to add token-level accuracy."""
+        # Add token-level accuracy if we have tracked tokens
+        if self.token_total > 0:
+            logs['token_accuracy'] = self.token_correct / self.token_total
+            logs['tokens_correct'] = self.token_correct
+            logs['tokens_total'] = self.token_total
+            
+            # Reset counters for next logging period
+            self.token_correct = 0
+            self.token_total = 0
+        
+        # Add gradient norm if available
+        if hasattr(self, '_gradient_norms') and self._gradient_norms:
+            logs['gradient_norm'] = np.mean(self._gradient_norms)
+            logs['gradient_norm_std'] = np.std(self._gradient_norms)
+            self._gradient_norms = []  # Reset for next period
+        
+        super().log(logs)
 
 
 @dataclass
@@ -346,12 +610,19 @@ class ToWTrainer:
         else:
             logger.info("No checkpoint found. Starting a new training.")
 
-        # Setup custom JSON logging callback
-        json_log_path = self.output_dir / "training_metrics.json"
-        json_logging_callback = JsonLoggingCallback(log_file=json_log_path)
-        logger.info(f"Metrics will be logged to {json_log_path}")
+        # Setup enhanced logging callbacks
+        json_log_path = self.output_dir / "enhanced_training_metrics.json"
+        json_logging_callback = EnhancedJsonLoggingCallback(log_file=json_log_path)
+        logger.info(f"Enhanced metrics will be logged to {json_log_path}")
+        
+        # Setup ToW-specific metrics callback
+        tow_metrics_callback = ToWMetricsCallback(
+            tokenizer=tokenizer, 
+            log_file_prefix="tow_detailed_metrics"
+        )
+        logger.info("ToW-specific metrics callback initialized")
 
-        trainer = ToWTrainerWithPinMemory(
+        trainer = EnhancedToWTrainer(
             model=model,
             args=training_args,
             data_collator=data_collator,
@@ -363,7 +634,8 @@ class ToWTrainer:
                     early_stopping_patience=self.training_config.early_stopping_patience,
                     early_stopping_threshold=self.training_config.early_stopping_threshold
                 ),
-                json_logging_callback  # Add our custom callback here
+                json_logging_callback,  # Enhanced JSON logging
+                tow_metrics_callback    # ToW-specific metrics
             ]
         )
         
@@ -395,10 +667,169 @@ class ToWTrainer:
         with open(self.output_dir / "training_results.json", 'w') as f:
             json.dump(train_result.metrics, f, indent=2)
         
+        # Generate comprehensive training report
+        logger.info("Generating comprehensive training report...")
+        try:
+            comprehensive_report = generate_comprehensive_training_report(
+                self.output_dir, train_result, self.model_config, self.training_config
+            )
+            report_path = self.output_dir / "comprehensive_training_report.json"
+            with open(report_path, 'w') as f:
+                json.dump(comprehensive_report, f, indent=2, default=str)
+            logger.info(f"Comprehensive training report saved to: {report_path}")
+        except Exception as e:
+            logger.error(f"Failed to generate comprehensive report: {e}")
+        
         logger.info(f"Training completed for {self.model_config.name}")
         logger.info(f"Model saved to: {self.output_dir}")
         
         return train_result
+
+
+def generate_comprehensive_training_report(output_dir, train_result, model_config, training_config):
+    """Generate a comprehensive training report with all metrics and analysis."""
+    report = {
+        "report_metadata": {
+            "generated_at": datetime.now().isoformat(),
+            "model_name": model_config.name,
+            "model_id": model_config.model_id,
+            "report_version": "1.0"
+        },
+        "training_summary": {
+            "model_config": {
+                "name": model_config.name,
+                "model_id": model_config.model_id,
+                "use_quantization": model_config.use_quantization,
+                "torch_dtype": str(model_config.torch_dtype)
+            },
+            "training_config": training_config.__dict__,
+            "training_results": train_result.metrics if hasattr(train_result, 'metrics') else {}
+        }
+    }
+    
+    # Load and analyze enhanced metrics
+    enhanced_metrics_path = Path(output_dir) / "enhanced_training_metrics.json"
+    if enhanced_metrics_path.exists():
+        try:
+            with open(enhanced_metrics_path, 'r') as f:
+                enhanced_metrics = json.load(f)
+            
+            report["training_analysis"] = {
+                "total_log_entries": len(enhanced_metrics),
+                "training_progression": {
+                    "initial_loss": None,
+                    "final_loss": None,
+                    "best_eval_loss": None,
+                    "loss_reduction": None,
+                    "perplexity_improvement": None
+                },
+                "learning_dynamics": {
+                    "learning_rate_schedule": [],
+                    "gradient_norms": [],
+                    "token_accuracy_progression": []
+                },
+                "computational_efficiency": {
+                    "average_gpu_utilization": None,
+                    "peak_gpu_memory_gb": None,
+                    "average_gpu_memory_gb": None,
+                    "training_time_hours": None
+                }
+            }
+            
+            # Analyze training progression
+            train_losses = [entry.get('train_loss') for entry in enhanced_metrics if entry.get('train_loss')]
+            eval_losses = [entry.get('eval_loss') for entry in enhanced_metrics if entry.get('eval_loss')]
+            
+            if train_losses:
+                report["training_analysis"]["training_progression"]["initial_loss"] = train_losses[0]
+                report["training_analysis"]["training_progression"]["final_loss"] = train_losses[-1]
+                report["training_analysis"]["training_progression"]["loss_reduction"] = train_losses[0] - train_losses[-1]
+            
+            if eval_losses:
+                report["training_analysis"]["training_progression"]["best_eval_loss"] = min(eval_losses)
+                
+                # Calculate perplexity improvement
+                initial_perplexity = np.exp(eval_losses[0]) if eval_losses else None
+                final_perplexity = np.exp(min(eval_losses)) if eval_losses else None
+                if initial_perplexity and final_perplexity:
+                    report["training_analysis"]["training_progression"]["perplexity_improvement"] = initial_perplexity - final_perplexity
+            
+            # Analyze computational efficiency
+            gpu_utils = [entry.get('gpu_utilization', {}).get('gpu_percent') for entry in enhanced_metrics if entry.get('gpu_utilization')]
+            gpu_memories = [entry.get('gpu_memory', {}).get('allocated_gb') for entry in enhanced_metrics if entry.get('gpu_memory')]
+            training_times = [entry.get('training_time_elapsed') for entry in enhanced_metrics if entry.get('training_time_elapsed')]
+            
+            if gpu_utils:
+                report["training_analysis"]["computational_efficiency"]["average_gpu_utilization"] = np.mean(gpu_utils)
+            if gpu_memories:
+                report["training_analysis"]["computational_efficiency"]["peak_gpu_memory_gb"] = max(gpu_memories)
+                report["training_analysis"]["computational_efficiency"]["average_gpu_memory_gb"] = np.mean(gpu_memories)
+            if training_times:
+                report["training_analysis"]["computational_efficiency"]["training_time_hours"] = max(training_times) / 3600
+            
+            # Extract learning dynamics
+            learning_rates = [entry.get('current_learning_rate') for entry in enhanced_metrics if entry.get('current_learning_rate')]
+            gradient_norms = [entry.get('gradient_norm') for entry in enhanced_metrics if entry.get('gradient_norm')]
+            token_accuracies = [entry.get('token_accuracy') for entry in enhanced_metrics if entry.get('token_accuracy')]
+            
+            report["training_analysis"]["learning_dynamics"]["learning_rate_schedule"] = learning_rates
+            report["training_analysis"]["learning_dynamics"]["gradient_norms"] = gradient_norms
+            report["training_analysis"]["learning_dynamics"]["token_accuracy_progression"] = token_accuracies
+            
+        except Exception as e:
+            report["training_analysis"] = {"error": f"Failed to analyze enhanced metrics: {str(e)}"}
+    
+    # Analyze ToW-specific performance
+    tow_metrics_files = list(Path(output_dir).glob("tow_detailed_metrics_*.json"))
+    if tow_metrics_files:
+        report["tow_performance_analysis"] = {
+            "metrics_files_found": len(tow_metrics_files),
+            "performance_progression": [],
+            "final_performance": {}
+        }
+        
+        try:
+            all_tow_metrics = []
+            for tow_file in sorted(tow_metrics_files):
+                with open(tow_file, 'r') as f:
+                    tow_data = json.load(f)
+                    all_tow_metrics.append(tow_data)
+            
+            report["tow_performance_analysis"]["performance_progression"] = all_tow_metrics
+            
+            if all_tow_metrics:
+                final_metrics = all_tow_metrics[-1]
+                report["tow_performance_analysis"]["final_performance"] = {
+                    "tow_token_accuracy": final_metrics.get('tow_token_accuracy'),
+                    "tow_start_accuracy": final_metrics.get('tow_start_accuracy'),
+                    "tow_end_accuracy": final_metrics.get('tow_end_accuracy'),
+                    "tow_perplexity": final_metrics.get('tow_perplexity'),
+                    "total_tow_sequences": final_metrics.get('total_tow_sequences')
+                }
+                
+        except Exception as e:
+            report["tow_performance_analysis"]["error"] = f"Failed to analyze ToW metrics: {str(e)}"
+    
+    # Resource usage analysis
+    try:
+        memory_info = psutil.virtual_memory()
+        report["resource_usage_analysis"] = {
+            "system_memory_gb": memory_info.total / 1e9,
+            "available_memory_gb": memory_info.available / 1e9,
+            "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0
+        }
+        
+        if torch.cuda.is_available():
+            report["resource_usage_analysis"]["gpu_info"] = {
+                "gpu_memory_total_gb": torch.cuda.get_device_properties(0).total_memory / 1e9,
+                "current_gpu_memory_allocated_gb": torch.cuda.memory_allocated() / 1e9,
+                "max_gpu_memory_allocated_gb": torch.cuda.max_memory_allocated() / 1e9
+            }
+            
+    except Exception as e:
+        report["resource_usage_analysis"] = {"error": f"Failed to collect resource info: {str(e)}"}
+    
+    return report
 
 
 def main():

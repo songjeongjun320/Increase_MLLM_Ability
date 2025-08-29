@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import torch
+import warnings 
+import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from tqdm import tqdm
@@ -12,6 +14,10 @@ import sys
 from datetime import datetime
 import time
 import random
+
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+transformers.logging.set_verbosity_error()
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 
 # Configure logging
 logging.basicConfig(
@@ -43,21 +49,21 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    ModelConfig(
-        name="Qwen2.5-3B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="google_gemma-3-4b-it",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="Llama-3.2-3B-Instruct",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Qwen2.5-3B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="google_gemma-3-4b-it",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B-Instruct",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
@@ -359,9 +365,9 @@ def create_5shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("단계별로 생각해봅시다. #### 따라서 답은 ")
+        prompt_parts.append("응답: 단계별로 생각해봅시다. #### 따라서 답은 ")
     else:
-        prompt_parts.append("Let's think step by step. #### So the answer is  ")
+        prompt_parts.append("Response: Let's think step by step. #### So the answer is  ")
     
     return "\n".join(prompt_parts)
 
@@ -614,6 +620,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
     results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot.json")
     log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_5shot.log")
     raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot.json")
+    failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot.json")
 
     # Setup Logging
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -680,10 +687,9 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
             torch._dynamo.config.disable = True
             logger.info("Disabled torch compilation for Gemma model")
             
-        # Prepare results storage
         all_results = {
-            "mmlu_prox_en": {"correct": 0, "total": 0, "details": [], "raw_generations": []},
-            "mmlu_prox_ko": {"correct": 0, "total": 0, "details": [], "raw_generations": []}
+            "mmlu_prox_en": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []},  # failures 추가
+            "mmlu_prox_ko": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []}   # failures 추가
         }
 
         # Evaluate MMLU-ProX English
@@ -694,6 +700,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
             batch_prompts = []
             batch_indices = []
             batch_ground_truths = []
+            batch_items = []  # 추가: 원본 아이템 저장
             
             for j, item in enumerate(batch_data):
                 ground_truth = get_ground_truth(item)
@@ -704,13 +711,14 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
+                batch_items.append(item)  # 추가: 원본 아이템 저장
             
             if not batch_prompts:
                 continue
                 
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
             
-            for result, ground_truth, batch_prompt in zip(batch_results, batch_ground_truths, batch_prompts):
+            for result, ground_truth, batch_prompt, item in zip(batch_results, batch_ground_truths, batch_prompts, batch_items):
                 extracted_answer = result['extracted_answer']
                 raw_output = result['raw_output']
                 
@@ -724,7 +732,6 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                         raw_output = retry_text
                         logger.info(f"English retry successful for item {result['index']}: extracted '{retry_answer}'")
                     else:
-                        # Even retry failed
                         if not retry_text.startswith("ERROR"):
                             logger.warning(f"English item {result['index']}: Failed to extract answer after retries")
                             raw_output = f"EXTRACTION_FAILED: {retry_text}"
@@ -739,6 +746,32 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                     all_results["mmlu_prox_en"]["total"] += 1
                     if is_correct:
                         all_results["mmlu_prox_en"]["correct"] += 1
+                    else:
+                        # 추가: 틀린 케이스를 failures에 저장
+                        failure_case = {
+                            "index": result['index'],
+                            "question": item.get("question", ""),
+                            "subject": item.get("subject", ""),
+                            "options": {f"option_{i}": item.get(f"option_{i}", "") for i in range(10) if f"option_{i}" in item and item[f"option_{i}"] and str(item[f"option_{i}"]).strip() != "N/A"},
+                            "ground_truth": ground_truth,
+                            "predicted_answer": extracted_answer,
+                            "raw_output": raw_output,
+                            "error_type": "incorrect_answer"
+                        }
+                        all_results["mmlu_prox_en"]["failures"].append(failure_case)
+                else:
+                    # 추가: 추출 실패 케이스도 failures에 저장
+                    failure_case = {
+                        "index": result['index'],
+                        "question": item.get("question", ""),
+                        "subject": item.get("subject", ""),
+                        "options": {f"option_{i}": item.get(f"option_{i}", "") for i in range(10) if f"option_{i}" in item and item[f"option_{i}"] and str(item[f"option_{i}"]).strip() != "N/A"},
+                        "ground_truth": ground_truth,
+                        "predicted_answer": None,
+                        "raw_output": raw_output,
+                        "error_type": "extraction_failed"
+                    }
+                    all_results["mmlu_prox_en"]["failures"].append(failure_case)
                 
                 all_results["mmlu_prox_en"]["details"].append({
                     "index": result['index'],
@@ -756,13 +789,12 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                     "extracted_answer": extracted_answer
                 })
             
-            # Update progress bar with current error count
             current_en_errors = len(mmlu_prox_en_data[:i+BATCH_SIZE]) - all_results["mmlu_prox_en"]["total"]
             pbar_en.set_description(f"Evaluating MMLU-ProX English (errors: {current_en_errors})")
 
         logger.info(f"MMLU-ProX English evaluation completed: {all_results['mmlu_prox_en']['correct']}/{all_results['mmlu_prox_en']['total']}")
 
-        # Evaluate MMLU-ProX Korean
+        # Evaluate MMLU-ProX Korean (동일한 패턴으로 수정)
         logger.info("Starting MMLU-ProX Korean evaluation...")
         pbar_ko = tqdm(range(0, len(mmlu_prox_ko_data), BATCH_SIZE), desc="Evaluating MMLU-ProX Korean (errors: 0)")
         for i in pbar_ko:
@@ -770,6 +802,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
             batch_prompts = []
             batch_indices = []
             batch_ground_truths = []
+            batch_items = []  # 추가: 원본 아이템 저장
             
             for j, item in enumerate(batch_data):
                 ground_truth = get_ground_truth(item)
@@ -780,13 +813,14 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
+                batch_items.append(item)  # 추가: 원본 아이템 저장
             
             if not batch_prompts:
                 continue
                 
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
             
-            for result, ground_truth, batch_prompt in zip(batch_results, batch_ground_truths, batch_prompts):
+            for result, ground_truth, batch_prompt, item in zip(batch_results, batch_ground_truths, batch_prompts, batch_items):
                 extracted_answer = result['extracted_answer']
                 raw_output = result['raw_output']
                 
@@ -800,7 +834,6 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                         raw_output = retry_text
                         logger.info(f"Korean retry successful for item {result['index']}: extracted '{retry_answer}'")
                     else:
-                        # Even retry failed
                         if not retry_text.startswith("ERROR"):
                             logger.warning(f"Korean item {result['index']}: Failed to extract answer after retries")
                             raw_output = f"EXTRACTION_FAILED: {retry_text}"
@@ -815,6 +848,32 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                     all_results["mmlu_prox_ko"]["total"] += 1
                     if is_correct:
                         all_results["mmlu_prox_ko"]["correct"] += 1
+                    else:
+                        # 추가: 틀린 케이스를 failures에 저장
+                        failure_case = {
+                            "index": result['index'],
+                            "question": item.get("question", ""),
+                            "subject": item.get("subject", ""),
+                            "options": {f"option_{i}": item.get(f"option_{i}", "") for i in range(10) if f"option_{i}" in item and item[f"option_{i}"] and str(item[f"option_{i}"]).strip() != "N/A"},
+                            "ground_truth": ground_truth,
+                            "predicted_answer": extracted_answer,
+                            "raw_output": raw_output,
+                            "error_type": "incorrect_answer"
+                        }
+                        all_results["mmlu_prox_ko"]["failures"].append(failure_case)
+                else:
+                    # 추가: 추출 실패 케이스도 failures에 저장
+                    failure_case = {
+                        "index": result['index'],
+                        "question": item.get("question", ""),
+                        "subject": item.get("subject", ""),
+                        "options": {f"option_{i}": item.get(f"option_{i}", "") for i in range(10) if f"option_{i}" in item and item[f"option_{i}"] and str(item[f"option_{i}"]).strip() != "N/A"},
+                        "ground_truth": ground_truth,
+                        "predicted_answer": None,
+                        "raw_output": raw_output,
+                        "error_type": "extraction_failed"
+                    }
+                    all_results["mmlu_prox_ko"]["failures"].append(failure_case)
                 
                 all_results["mmlu_prox_ko"]["details"].append({
                     "index": result['index'],
@@ -832,7 +891,6 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                     "extracted_answer": extracted_answer
                 })
             
-            # Update progress bar with current error count
             current_ko_errors = len(mmlu_prox_ko_data[:i+BATCH_SIZE]) - all_results["mmlu_prox_ko"]["total"]
             pbar_ko.set_description(f"Evaluating MMLU-ProX Korean (errors: {current_ko_errors})")
 
@@ -849,6 +907,31 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         logger.info(f"--- Final Results for {config.name} ---")
         logger.info(f"MMLU-ProX English Strict Accuracy: {en_strict_accuracy:.2f}% ({all_results['mmlu_prox_en']['correct']}/{len(mmlu_prox_en_data)}) [Errors/Skipped: {en_errors_skipped}]")
         logger.info(f"MMLU-ProX Korean Strict Accuracy: {ko_strict_accuracy:.2f}% ({all_results['mmlu_prox_ko']['correct']}/{len(mmlu_prox_ko_data)}) [Errors/Skipped: {ko_errors_skipped}]")
+
+        # 추가: 실패 케이스만 별도 JSON 파일로 저장
+        failures_summary = {
+            "model_name": config.name,
+            "evaluation_date": datetime.now().isoformat(),
+            "mmlu_prox_en": {
+                "total_failures": len(all_results["mmlu_prox_en"]["failures"]),
+                "incorrect_answers": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "incorrect_answer"]),
+                "extraction_failures": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "extraction_failed"]),
+                "failure_cases": all_results["mmlu_prox_en"]["failures"]
+            },
+            "mmlu_prox_ko": {
+                "total_failures": len(all_results["mmlu_prox_ko"]["failures"]),
+                "incorrect_answers": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "incorrect_answer"]),
+                "extraction_failures": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "extraction_failed"]),
+                "failure_cases": all_results["mmlu_prox_ko"]["failures"]
+            }
+        }
+        
+        with open(failures_filepath, 'w', encoding='utf-8') as f:
+            json.dump(failures_summary, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Failure cases saved to: {failures_filepath}")
+        logger.info(f"Total EN failures: {failures_summary['mmlu_prox_en']['total_failures']} (Incorrect: {failures_summary['mmlu_prox_en']['incorrect_answers']}, Extraction failed: {failures_summary['mmlu_prox_en']['extraction_failures']})")
+        logger.info(f"Total KO failures: {failures_summary['mmlu_prox_ko']['total_failures']} (Incorrect: {failures_summary['mmlu_prox_ko']['incorrect_answers']}, Extraction failed: {failures_summary['mmlu_prox_ko']['extraction_failures']})")
 
         # Save Results
         final_summary = {

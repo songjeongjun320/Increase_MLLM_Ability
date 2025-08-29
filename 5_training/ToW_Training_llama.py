@@ -372,6 +372,46 @@ class EnhancedToWTrainer(Trainer):
         super().log(logs)
 
 
+    def training_step(self, model, inputs):
+        """
+        Enhanced training step with detailed loss breakdown.
+        """
+        model.train()
+        inputs = self._prepare_inputs(inputs)
+
+        with self.compute_loss_context_manager():
+            loss = self.compute_loss(model, inputs)
+
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
+            loss = loss / self.args.gradient_accumulation_steps
+
+        if self.deepspeed:
+            loss = self.deepspeed.backward(loss)
+        elif self.use_apex:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            self.accelerator.backward(loss)
+
+        # Log detailed loss info periodically
+        if hasattr(self.state, 'global_step') and self.state.global_step % 250 == 0:
+            logger.info(f"Step {self.state.global_step} - Detailed Loss: {loss.item():.6f}")
+            
+            # Log gradient norms
+            if hasattr(model, 'parameters'):
+                total_norm = 0
+                for p in model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** (1. / 2)
+                logger.info(f"Step {self.state.global_step} - Gradient Norm: {total_norm:.6f}")
+
+        return loss.detach()
+
 @dataclass
 class ModelConfig:
     name: str
@@ -467,20 +507,16 @@ class ToWTrainer:
         tokenizer = AutoTokenizer.from_pretrained(
             self.model_config.model_id,
             trust_remote_code=True,
-            padding_side='right',
-            local_files_only=True  # 로컬 파일만 사용
+            padding_side='right'
         )
 
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
-        # Add special tokens
-        special_tokens = ["<ToW>", "</ToW>"]
-        new_tokens = [token for token in special_tokens if token not in tokenizer.get_vocab()]
-        if new_tokens:
-            tokenizer.add_tokens(new_tokens)
-            logger.info(f"Added {len(new_tokens)} new ToW tokens to tokenizer")
+        # Add special tokens - 수정된 부분
+        tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
+        logger.info(f"Added ToW tokens. New vocab size: {len(tokenizer)}")
 
         quantization_config = None
         if self.model_config.use_quantization:
@@ -503,13 +539,47 @@ class ToWTrainer:
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
-            device_map=device_map, # 수정된 device_map 적용
+            device_map=device_map,
             quantization_config=quantization_config,
         )
 
-        # Resize model embeddings
-        model.resize_token_embeddings(len(tokenizer))
+        # Resize model embeddings with padding for tensor cores - 수정된 부분
+        if len(tokenizer) > model.get_input_embeddings().weight.shape[0]:
+            model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+            logger.info(f"Resized embeddings to: {model.get_input_embeddings().weight.shape[0]}")
         
+        # Initialize new token embeddings - 새로 추가된 부분
+        try:
+            embeddings = model.get_input_embeddings()
+            with torch.no_grad():
+                # Try to initialize with a meaningful token (like '---' or 'thinking')
+                base_token_candidates = ['---', 'think', 'reasoning', '.', ',']
+                base_token_id = None
+                
+                for candidate in base_token_candidates:
+                    candidate_ids = tokenizer.encode(candidate, add_special_tokens=False)
+                    if candidate_ids and candidate_ids[0] != tokenizer.unk_token_id:
+                        base_token_id = candidate_ids[0]
+                        logger.info(f"Using '{candidate}' token for ToW initialization")
+                        break
+                
+                if base_token_id is not None:
+                    tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
+                    tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
+                    
+                    if tow_start_id != tokenizer.unk_token_id and tow_end_id != tokenizer.unk_token_id:
+                        embeddings.weight.data[tow_start_id] = embeddings.weight.data[base_token_id].clone()
+                        embeddings.weight.data[tow_end_id] = embeddings.weight.data[base_token_id].clone()
+                        logger.info("Successfully initialized ToW token embeddings")
+                    else:
+                        logger.warning("ToW tokens not found in vocabulary after addition")
+                else:
+                    logger.warning("Could not find suitable base token for initialization")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to initialize ToW embeddings: {e}")
+            logger.info("ToW tokens will use random initialization")
+            
         # Prepare for quantization if enabled
         if self.model_config.use_quantization:
             logger.info("Preparing quantized model for k-bit training with LoRA.")
@@ -521,7 +591,7 @@ class ToWTrainer:
             r=64,
             lora_alpha=16,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.1,
+            lora_dropout=0.2,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens

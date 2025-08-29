@@ -169,7 +169,7 @@ class ToWMetricsCallback(TrainerCallback):
         
         with torch.no_grad():
             for batch in eval_dataloader:
-                if num_batches >= 50:  # Limit to avoid too long evaluation
+                if num_batches >= 10:  # 빠른 평가를 위해 줄임
                     break
                     
                 input_ids = batch['input_ids'].to(model.device)
@@ -178,44 +178,56 @@ class ToWMetricsCallback(TrainerCallback):
                 outputs = model(input_ids=input_ids, labels=labels)
                 logits = outputs.logits
                 
-                # Find ToW token positions
+                # Shift for causal LM
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                
+                # 전체 토큰 예측 정확도
+                predictions = torch.argmax(shift_logits, dim=-1)
+                valid_positions = (shift_labels != -100)
+                
+                # ToW 토큰별 정확도 계산
                 if self.tow_start_id is not None:
-                    start_positions = (labels == self.tow_start_id)
+                    start_positions = (shift_labels == self.tow_start_id) & valid_positions
                     tow_total_start += start_positions.sum().item()
-                    
                     if start_positions.any():
-                        start_predictions = torch.argmax(logits[start_positions], dim=-1)
-                        tow_correct_start += (start_predictions == self.tow_start_id).sum().item()
+                        correct_predictions = (predictions[start_positions] == self.tow_start_id).sum().item()
+                        tow_correct_start += correct_predictions
                 
                 if self.tow_end_id is not None:
-                    end_positions = (labels == self.tow_end_id)
+                    end_positions = (shift_labels == self.tow_end_id) & valid_positions
                     tow_total_end += end_positions.sum().item()
-                    
                     if end_positions.any():
-                        end_predictions = torch.argmax(logits[end_positions], dim=-1)
-                        tow_correct_end += (end_predictions == self.tow_end_id).sum().item()
+                        correct_predictions = (predictions[end_positions] == self.tow_end_id).sum().item()
+                        tow_correct_end += correct_predictions
                 
-                # Calculate ToW-specific loss
-                tow_positions = torch.zeros_like(labels, dtype=torch.bool)
+                # ToW-specific loss 계산 (추가된 부분)
+                tow_positions = torch.zeros_like(shift_labels, dtype=torch.bool)
                 if self.tow_start_id is not None:
-                    tow_positions |= (labels == self.tow_start_id)
+                    tow_positions |= (shift_labels == self.tow_start_id)
                 if self.tow_end_id is not None:
-                    tow_positions |= (labels == self.tow_end_id)
+                    tow_positions |= (shift_labels == self.tow_end_id)
                 
                 if tow_positions.any():
-                    tow_logits = logits[tow_positions]
-                    tow_labels = labels[tow_positions]
+                    tow_logits = shift_logits[tow_positions]
+                    tow_labels = shift_labels[tow_positions]
                     tow_loss = F.cross_entropy(tow_logits, tow_labels)
                     tow_sequence_loss += tow_loss.item()
                     total_tow_tokens += tow_positions.sum().item()
                 
                 num_batches += 1
         
-        # Calculate metrics
+        # 정확도 계산
         tow_start_accuracy = (tow_correct_start / max(tow_total_start, 1)) * 100
         tow_end_accuracy = (tow_correct_end / max(tow_total_end, 1)) * 100
+        
+        # ToW loss와 perplexity 계산 (추가된 부분)
         tow_avg_loss = tow_sequence_loss / max(num_batches, 1)
         tow_perplexity = np.exp(tow_avg_loss) if tow_avg_loss > 0 else float('inf')
+        
+        # 로깅
+        logger.info(f"ToW Token Counts - Start: {tow_total_start}, End: {tow_total_end}")
+        logger.info(f"ToW Correct Predictions - Start: {tow_correct_start}, End: {tow_correct_end}")
         
         # Log ToW metrics
         tow_metrics = {
@@ -335,7 +347,8 @@ class EnhancedToWTrainer(Trainer):
 
         return (loss, outputs) if return_outputs else loss
 
-    def training_step(self, model, inputs):
+    def training_step(self, model, inputs, num_items_in_batch=None):
+
         """
         Enhanced training step with detailed loss breakdown.
         """
@@ -390,15 +403,15 @@ class ToWTrainingConfig:
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
     ])
-    output_base_dir: str = "ToW_Models_2"
+    output_base_dir: str = "ToW_Models_3"
     
     # Training hyperparameters
-    learning_rate: float = 2e-5  # This will be a fallback
+    learning_rate: float = 1e-4  # This will be a fallback
     max_grad_norm = 1.0
     num_train_epochs: int = 10
-    per_device_train_batch_size: int = 16  # Reduced for memory efficiency with DeepSpeed
-    per_device_eval_batch_size: int = 16  # Reduced for memory efficiency
-    gradient_accumulation_steps: int = 16  # Increased to maintain effective batch size
+    per_device_train_batch_size: int = 8  # Reduced for memory efficiency with DeepSpeed
+    per_device_eval_batch_size: int = 8  # Reduced for memory efficiency
+    gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
     lr_scheduler_type: str = "cosine" 
     
     # Smart text handling
@@ -686,12 +699,9 @@ class ToWTrainer:
             tokenizer.pad_token = tokenizer.eos_token
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
-        # Add special tokens
-        special_tokens = ["<ToW>", "</ToW>"]
-        new_tokens = [token for token in special_tokens if token not in tokenizer.get_vocab()]
-        if new_tokens:
-            tokenizer.add_tokens(new_tokens)
-            logger.info(f"Added {len(new_tokens)} new ToW tokens to tokenizer")
+        # Add special tokens - 수정된 부분
+        tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
+        logger.info(f"Added ToW tokens. New vocab size: {len(tokenizer)}")
 
         quantization_config = None
         if self.model_config.use_quantization:
@@ -714,13 +724,47 @@ class ToWTrainer:
             self.model_config.model_id,
             trust_remote_code=True,
             torch_dtype=self.model_config.torch_dtype,
-            device_map=device_map, # 수정된 device_map 적용
+            device_map=device_map,
             quantization_config=quantization_config,
         )
 
-        # Resize model embeddings
-        model.resize_token_embeddings(len(tokenizer))
+        # Resize model embeddings with padding for tensor cores - 수정된 부분
+        if len(tokenizer) > model.get_input_embeddings().weight.shape[0]:
+            model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+            logger.info(f"Resized embeddings to: {model.get_input_embeddings().weight.shape[0]}")
         
+        # Initialize new token embeddings - 새로 추가된 부분
+        try:
+            embeddings = model.get_input_embeddings()
+            with torch.no_grad():
+                # Try to initialize with a meaningful token (like '---' or 'thinking')
+                base_token_candidates = ['---', 'think', 'reasoning', '.', ',']
+                base_token_id = None
+                
+                for candidate in base_token_candidates:
+                    candidate_ids = tokenizer.encode(candidate, add_special_tokens=False)
+                    if candidate_ids and candidate_ids[0] != tokenizer.unk_token_id:
+                        base_token_id = candidate_ids[0]
+                        logger.info(f"Using '{candidate}' token for ToW initialization")
+                        break
+                
+                if base_token_id is not None:
+                    tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
+                    tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
+                    
+                    if tow_start_id != tokenizer.unk_token_id and tow_end_id != tokenizer.unk_token_id:
+                        embeddings.weight.data[tow_start_id] = embeddings.weight.data[base_token_id].clone()
+                        embeddings.weight.data[tow_end_id] = embeddings.weight.data[base_token_id].clone()
+                        logger.info("Successfully initialized ToW token embeddings")
+                    else:
+                        logger.warning("ToW tokens not found in vocabulary after addition")
+                else:
+                    logger.warning("Could not find suitable base token for initialization")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to initialize ToW embeddings: {e}")
+            logger.info("ToW tokens will use random initialization")
+            
         # Prepare for quantization if enabled
         if self.model_config.use_quantization:
             logger.info("Preparing quantized model for k-bit training with LoRA.")
@@ -732,7 +776,7 @@ class ToWTrainer:
             r=64,
             lora_alpha=16,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.1,
+            lora_dropout=0.2,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens", "lm_head"], # Important for new tokens
@@ -747,7 +791,7 @@ class ToWTrainer:
         assert len(tokenizer) == model.get_input_embeddings().weight.shape[0]
 
         return model, tokenizer
-    
+
     def create_training_arguments(self) -> TrainingArguments:
         """Create training arguments"""
         return TrainingArguments(

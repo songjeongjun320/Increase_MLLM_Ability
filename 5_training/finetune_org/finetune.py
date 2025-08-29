@@ -655,7 +655,7 @@ def main(args: FlatArguments):
             num_added_tokens = tokenizer.add_special_tokens({"pad_token": "<pad>"})
             assert num_added_tokens == 1, "We detected no padding token but add_special_tokens did not add one."
 
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<hCoT>', '</hCoT>']})
+    tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
 
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
@@ -671,11 +671,11 @@ def main(args: FlatArguments):
 
 
     with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
-        hcot_init_embeddings = embeddings.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :]
-        embeddings.weight.data[len(tokenizer)-1, :] = hcot_init_embeddings
-        embeddings.weight.data[len(tokenizer)-2, :] = hcot_init_embeddings
-    # hcot_init_embeddings = torch.unsqueeze(model.model.embed_tokens.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :], dim=0)
-    # model.model.embed_tokens.weight.data[-2:, :] = torch.concat([hcot_init_embeddings, hcot_init_embeddings], dim=0)
+        tow_init_embeddings = embeddings.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :]
+        embeddings.weight.data[len(tokenizer)-1, :] = tow_init_embeddings
+        embeddings.weight.data[len(tokenizer)-2, :] = tow_init_embeddings
+    # tow_init_embeddings = torch.unsqueeze(model.model.embed_tokens.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :], dim=0)
+    # model.model.embed_tokens.weight.data[-2:, :] = torch.concat([tow_init_embeddings, tow_init_embeddings], dim=0)
 
 
     # update embedding size after resizing for sum loss

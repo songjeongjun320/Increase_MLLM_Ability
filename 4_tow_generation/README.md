@@ -1,3 +1,35 @@
+--- Token Count Statistics ---
+
+--- Qwen ---
+Average: 713.66 tokens
+Median: 679.00 tokens
+95th Percentile: 1144.00 tokens
+99th Percentile: 1567.78 tokens
+Max: 7266 tokens
+
+--- Llama ---
+Average: 692.21 tokens
+Median: 660.00 tokens
+95th Percentile: 1106.00 tokens
+99th Percentile: 1516.89 tokens
+Max: 6815 tokens
+
+--- Gemma ---
+Average: 681.86 tokens
+Median: 650.00 tokens
+95th Percentile: 1092.00 tokens
+99th Percentile: 1500.00 tokens
+Max: 6627 tokens
+
+--- Deepseek ---
+Average: 713.66 tokens
+Median: 679.00 tokens
+95th Percentile: 1144.00 tokens
+99th Percentile: 1567.78 tokens
+Max: 7266 tokens
+
+------------------------------
+
 Make the model choose which word is the most difficult to create like bottle neck when create next word. And it is gold_word.
 
 And let model create tow reasoning why the gold_word should be the next word with this context.
@@ -65,3 +97,13 @@ Your output MUST be in a JSON format with a single key "key_word".
 - If you select one word, the value should be a string.
 - If you select multiple words, the value should be an array of strings.
 
+# Multiple ToW
+한문장에서 여러개의 GOLD LABEO을 고르게
+
+그리고 GOLD LABEL의 개수만큰 그 위치 에서 CONTEXT + TOW(이전의) + 현재 CONTEXT 를 통해서 왜 그 다음 단어가 GOLD_WORD 인지 이런식으로 순차적으로 전체 다 생성하게 함.
+
+만약에 처음 GOLD_WORD가 너무 짧은경우에 1~4단어 일경우에 CONTEXT가 충분하지 않음으로 그 데이터는 제거.
+
+그리고 너무 많은 가끔 100~150 단어 뒤에 나오는 TOW 가 있어서 이런경우도 제거.
+
+현재 총 50000개의 TOW데이터로 튜닝.

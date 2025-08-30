@@ -426,7 +426,7 @@ class ToWTrainingConfig:
     tow_data_paths: List[str] = field(default_factory=lambda: [
         "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
     ])
-    output_base_dir: str = "ToW_Models_3"
+    output_base_dir: str = "ToW_Models_4"
     
     # Training hyperparameters
     learning_rate: float = 1e-5  # This will be a fallback
@@ -444,7 +444,7 @@ class ToWTrainingConfig:
     min_chunk_overlap: int = 50
     
     # Default settings
-    max_sequence_length: int = 256
+    max_sequence_length: int = 2048
     warmup_ratio: float = 0.1
     weight_decay: float = 0.01
     

@@ -408,7 +408,7 @@ class ToWTrainingConfig:
     min_chunk_overlap: int = 50
     
     # Default settings
-    max_sequence_length: int = 256
+    max_sequence_length: int = 2048
     warmup_ratio: float = 0.1
     weight_decay: float = 0.01
     

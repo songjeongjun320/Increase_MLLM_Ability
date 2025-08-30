@@ -2,10 +2,11 @@ import json
 from transformers import AutoTokenizer
 from tqdm import tqdm
 import os
+import numpy as np
 
 def analyze_token_counts(file_path, model_names):
     """
-    Analyzes the average token count for a given JSONL file across different models.
+    Analyzes token count statistics for a given JSONL file across different models.
 
     Args:
         file_path (str): The path to the JSONL file.
@@ -15,13 +16,13 @@ def analyze_token_counts(file_path, model_names):
     for alias, model_name in model_names.items():
         print(f"Loading tokenizer for {alias} ({model_name})...")
         try:
-            # trust_remote_code=True is needed for some models like Qwen and Gemma
             tokenizers[alias] = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         except Exception as e:
             print(f"Failed to load tokenizer for {model_name}: {e}")
             return
 
-    total_tokens = {alias: 0 for alias in model_names}
+    # Store token counts for each line to calculate percentiles
+    token_counts_per_model = {alias: [] for alias in model_names}
     line_count = 0
 
     print(f"\nProcessing file: {file_path}")
@@ -30,7 +31,6 @@ def analyze_token_counts(file_path, model_names):
         print(f"Error: File not found at '{file_path}'. Please check the path.")
         return
 
-    # First, count the total lines for tqdm
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             total_lines = sum(1 for line in f)
@@ -50,11 +50,10 @@ def analyze_token_counts(file_path, model_names):
 
                     for alias, tokenizer in tokenizers.items():
                         tokens = tokenizer.encode(text, add_special_tokens=False)
-                        total_tokens[alias] += len(tokens)
+                        token_counts_per_model[alias].append(len(tokens))
                     
                     line_count += 1
                 except json.JSONDecodeError:
-                    # Silently skip lines that are not valid JSON (e.g., empty lines)
                     pass
                 except Exception as e:
                     print(f"An error occurred on line {line_count + 1}: {e}")
@@ -62,27 +61,38 @@ def analyze_token_counts(file_path, model_names):
         print(f"Error processing file: {e}")
         return
 
-
     if line_count > 0:
-        print("\n--- Average Token Counts ---")
-        for alias, total in total_tokens.items():
-            average = total / line_count
-            print(f"{alias.capitalize()}: {average:.2f} tokens")
-        print("--------------------------")
+        print("\n--- Token Count Statistics ---")
+        for alias, counts in token_counts_per_model.items():
+            if not counts:
+                print(f"\n--- {alias.capitalize()} ---")
+                print("No token data to analyze.")
+                continue
+
+            counts_np = np.array(counts)
+            
+            print(f"\n--- {alias.capitalize()} ---")
+            print(f"Average: {np.mean(counts_np):.2f} tokens")
+            print(f"Median: {np.median(counts_np):.2f} tokens")
+            print(f"95th Percentile: {np.percentile(counts_np, 95):.2f} tokens")
+            print(f"99th Percentile: {np.percentile(counts_np, 99):.2f} tokens")
+            print(f"Max: {np.max(counts_np)} tokens")
+        print("\n------------------------------")
     else:
         print("No valid lines were processed from the file.")
+
 
 if __name__ == "__main__":
     # Define the models and their Hugging Face identifiers
     # Using smaller, but representative models for faster tokenizer downloads.
     models = {
-        'qwen': 'Qwen/Qwen2-1.5B-Instruct',
-        'llama': 'meta-llama/Meta-Llama-3-8B-Instruct',
-        'gemma': 'google/gemma-2b',
-        'deepseek': 'deepseek-ai/deepseek-coder-1.3b-instruct'
+        'qwen': '/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct',
+        'llama': '/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct',
+        'gemma': '/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it',
+        'deepseek': '/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B'
     }
 
     # Path to the dataset file, relative to the project root.
-    file_to_analyze = os.path.join('4_tow_generation', 'multiple_tow_data', 'final_multiple_tow.jsonl')
+    file_to_analyze = os.path.join('final_multiple_tow.jsonl')
 
     analyze_token_counts(file_to_analyze, models)

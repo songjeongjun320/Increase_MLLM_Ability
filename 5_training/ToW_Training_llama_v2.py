@@ -69,7 +69,7 @@ NUM_TRAIN_EPOCHS = 3
 PER_DEVICE_TRAIN_BATCH_SIZE = 4
 PER_DEVICE_EVAL_BATCH_SIZE = 4
 GRADIENT_ACCUMULATION_STEPS = 8
-MAX_SEQ_LENGTH = 512
+MAX_SEQ_LENGTH = 2048
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -133,10 +133,10 @@ DEEPSPEED_CONFIG = {
     "optimizer": {
         "type": "AdamW",
         "params": {
-            "lr": "auto",
-            "betas": "auto",
-            "eps": "auto",
-            "weight_decay": "auto"
+            "lr": LEARNING_RATE,
+            "betas": [ADAM_BETA1, ADAM_BETA2], # "auto" 대신 실제 값 사용
+            "eps": ADAM_EPSILON,               # "auto" 대신 실제 값 사용
+            "weight_decay": WEIGHT_DECAY       # "auto" 대신 실제 값 사용
         }
     },
     "scheduler": {
@@ -339,48 +339,35 @@ def setup_model_and_tokenizer():
 def train():
     """Main training function"""
     
-    # Set seed for reproducibility
-    set_seed(SEED)
+    # =========================================================================
+    # 1단계: Accelerator를 먼저 초기화하여 분산 환경을 설정합니다.
+    # =========================================================================
     
-    # Initialize accelerator with DeepSpeed
+    set_seed(SEED)
     kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))
     
-    if USE_DEEPSPEED:
-        # Save DeepSpeed config
-        ds_config_path = "ds_config.json"
-        with open(ds_config_path, 'w') as f:
-            json.dump(DEEPSPEED_CONFIG, f, indent=2)
-
-        deepspeed_plugin = DeepSpeedPlugin(hf_ds_config=ds_config_path)
-        accelerator = Accelerator(
-            gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
-            mixed_precision="bf16" if DEEPSPEED_CONFIG["bf16"]["enabled"] else "fp16",
-            log_with="tensorboard",
-            project_dir=OUTPUT_DIR,
-            kwargs_handlers=[kwargs],
-            deepspeed_plugin=deepspeed_plugin
-        )
-    else:
-        accelerator = Accelerator(
-            gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
-            mixed_precision="bf16",
-            log_with="tensorboard",
-            project_dir=OUTPUT_DIR,
-            kwargs_handlers=[kwargs]
-        )
+    # 아직 DeepSpeed 설정이 없으므로, 기본 Accelerator 객체만 먼저 생성합니다.
+    accelerator = Accelerator(
+        gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
+        log_with="tensorboard",
+        project_dir=OUTPUT_DIR,
+        kwargs_handlers=[kwargs]
+    )
     
-    # accelerator가 초기화된 후 logger 설정
+    # Accelerator가 제공하는 로거를 사용합니다.
     logger = get_logger(__name__)
-    
-    # Setup logging
-    logger.info(accelerator.state)
     logger.setLevel(logging.INFO if accelerator.is_local_main_process else logging.ERROR)
-    
-    # Load model and tokenizer
-    with accelerator.main_process_first():
-        model, tokenizer = setup_model_and_tokenizer()
-    
-    # Prepare datasets
+
+    # =========================================================================
+    # 2단계: 토크나이저와 데이터셋을 준비합니다.
+    # main_process_first를 사용해 다운로드/캐싱이 한 번만 일어나도록 합니다.
+    # =========================================================================
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME_OR_PATH, cache_dir=CACHE_DIR, trust_remote_code=True)
+    num_added_tokens = tokenizer.add_special_tokens(SPECIAL_TOKENS)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        
     with accelerator.main_process_first():
         train_dataset, val_dataset = prepare_datasets(
             tokenizer, 
@@ -389,73 +376,80 @@ def train():
             MAX_SEQ_LENGTH
         )
     
-    # Create data loaders
-    data_collator = DataCollatorForSeq2Seq(
-        tokenizer=tokenizer,
-        model=model,
-        padding=True,
-        pad_to_multiple_of=8,
-        return_tensors="pt",
-    )
+    # 데이터 로더는 모든 프로세스에서 각자 생성합니다.
+    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True, pad_to_multiple_of=8)
+    train_dataloader = DataLoader(train_dataset, batch_size=PER_DEVICE_TRAIN_BATCH_SIZE, shuffle=True, collate_fn=data_collator, num_workers=PREPROCESSING_NUM_WORKERS)
+    val_dataloader = DataLoader(val_dataset, batch_size=PER_DEVICE_EVAL_BATCH_SIZE, shuffle=False, collate_fn=data_collator, num_workers=PREPROCESSING_NUM_WORKERS)
+
+    # =========================================================================
+    # 3단계: 이제 모델을 안전하게 로드합니다.
+    # main_process_first 안에서 로드하여 메모리 문제를 방지합니다.
+    # =========================================================================
+
+    with accelerator.main_process_first():
+        logger.info(f"Loading model from {MODEL_NAME_OR_PATH}")
+        model_kwargs = {"cache_dir": CACHE_DIR, "trust_remote_code": True}
+        if USE_QUANTIZATION:
+            # Quantization 설정 (이전과 동일)
+            bnb_config = BitsAndBytesConfig(**QUANTIZATION_CONFIG)
+            model_kwargs["quantization_config"] = bnb_config
+            model_kwargs["device_map"] = "auto"
+        else:
+            model_kwargs["torch_dtype"] = torch.bfloat16
+        
+        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME_OR_PATH, **model_kwargs)
+        model.resize_token_embeddings(len(tokenizer))
+        if hasattr(model, "gradient_checkpointing_enable"):
+            model.gradient_checkpointing_enable()
+            logger.info("Enabled gradient checkpointing")
+
+    # =========================================================================
+    # 4단계: 스텝 수를 계산하고 DeepSpeed 설정을 완성합니다.
+    # =========================================================================
     
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=PER_DEVICE_TRAIN_BATCH_SIZE,
-        shuffle=True,
-        collate_fn=data_collator,
-        num_workers=PREPROCESSING_NUM_WORKERS,
-        pin_memory=True
-    )
-    
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=PER_DEVICE_EVAL_BATCH_SIZE,
-        shuffle=False,
-        collate_fn=data_collator,
-        num_workers=PREPROCESSING_NUM_WORKERS,
-        pin_memory=True
-    )
-    
-    # Setup optimizer
-    # Calculate training steps
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / GRADIENT_ACCUMULATION_STEPS)
     max_train_steps = NUM_TRAIN_EPOCHS * num_update_steps_per_epoch
-    # num_warmup_steps = int(WARMUP_RATIO * max_train_steps) # 이 계산은 DeepSpeed가 알아서 합니다.
-    # Prepare everything with accelerator
-    # 옵티마이저와 스케줄러 자리에 None을 전달하면, DeepSpeed가 config를 보고 자동으로 생성합니다.
-    # 하지만 이 코드에서는 이미 optimizer 객체를 사용하고 있으므로, Dummy 객체를 사용하는 것이 더 안전합니다.
-    # accelerate.prepare는 DeepSpeed가 optimizer를 생성한 후, 생성된 optimizer를 다시 반환해줍니다.
+    num_warmup_steps = int(WARMUP_RATIO * max_train_steps)
+
+    if USE_DEEPSPEED:
+        # 모든 "auto" 값을 실제 계산된 값으로 채웁니다.
+        DEEPSPEED_CONFIG["optimizer"]["params"]["lr"] = LEARNING_RATE
+        DEEPSPEED_CONFIG["optimizer"]["params"]["betas"] = [ADAM_BETA1, ADAM_BETA2]
+        DEEPSPEED_CONFIG["optimizer"]["params"]["eps"] = ADAM_EPSILON
+        DEEPSPEED_CONFIG["optimizer"]["params"]["weight_decay"] = WEIGHT_DECAY
+        
+        DEEPSPEED_CONFIG["scheduler"]["params"]["total_num_steps"] = max_train_steps
+        DEEPSPEED_CONFIG["scheduler"]["params"]["warmup_num_steps"] = num_warmup_steps
+        DEEPSPEED_CONFIG["scheduler"]["params"]["warmup_max_lr"] = LEARNING_RATE
+        DEEPSPEED_CONFIG["scheduler"]["params"]["warmup_min_lr"] = 0.0
+
+        ds_config_path = "ds_config.json"
+        with open(ds_config_path, 'w') as f:
+            json.dump(DEEPSPEED_CONFIG, f, indent=2)
+        
+        # 완성된 설정을 플러그인으로 만들어 Accelerator에 주입합니다.
+        deepspeed_plugin = DeepSpeedPlugin(hf_ds_config=ds_config_path)
+        accelerator.state.deepspeed_plugin = deepspeed_plugin
+
+    # =========================================================================
+    # 5단계: 나머지 훈련 준비 및 루프를 실행합니다.
+    # =========================================================================
     
-    # 먼저 weight_decay를 적용할 파라미터 그룹을 만듭니다.
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": WEIGHT_DECAY,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
+        {"params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], "weight_decay": WEIGHT_DECAY},
+        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
     ]
 
-    # Dummy Optimizer와 Scheduler를 사용합니다.
-    # 이 방식은 accelerate에게 "옵티마이저와 스케줄러는 DeepSpeed 설정에 따라 만들어줘" 라고 알려주는 신호입니다.
     from accelerate.utils import DummyOptim, DummyScheduler
-    
-    optimizer = DummyOptim(
-            optimizer_grouped_parameters, 
-            lr=LEARNING_RATE,
-            betas=(ADAM_BETA1, ADAM_BETA2), # betas 값을 튜플 형태로 전달
-            eps=ADAM_EPSILON               # eps 값도 전달
-        )
-    lr_scheduler = DummyScheduler(optimizer, num_warmup_steps=int(WARMUP_RATIO * max_train_steps), num_training_steps=max_train_steps)
+    optimizer = DummyOptim(optimizer_grouped_parameters, lr=LEARNING_RATE, betas=(ADAM_BETA1, ADAM_BETA2), eps=ADAM_EPSILON)
+    lr_scheduler = DummyScheduler(optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=max_train_steps)
 
+    # 이제 accelerator.prepare를 호출하면 DeepSpeed가 모든 것을 설정합니다.
     model, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, val_dataloader, lr_scheduler
     )
     
-    # Training info
     total_batch_size = PER_DEVICE_TRAIN_BATCH_SIZE * accelerator.num_processes * GRADIENT_ACCUMULATION_STEPS
     
     logger.info("***** Running training *****")
@@ -467,6 +461,7 @@ def train():
     logger.info(f"  Total optimization steps = {max_train_steps}")
     logger.info(f"  Warmup steps = {num_warmup_steps}")
     
+    # ... (이하 훈련 루프 및 저장/평가 함수는 기존 코드와 동일하므로 생략) ...
     # Initialize tracking variables
     global_step = 0
     best_eval_loss = float('inf')

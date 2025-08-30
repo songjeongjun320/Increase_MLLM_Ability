@@ -14,6 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""module avail cuda
+module load cuda-12.6.1-gcc-12.1.0
+echo $CUDA_HOME
+deepspeed --num_gpus=2 ToW_Training_gemma.py
+torchrun --nproc_per_node=4 ToW_Training_gemma.py
+"""
 import re
 import logging
 import math

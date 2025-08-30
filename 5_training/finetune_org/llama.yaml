@@ -1,0 +1,38 @@
+# 실험 설정
+exp_name: "llama3_2_3b_tow_training"
+model_name_or_path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
+output_dir: "./output/llama3_2_3b_tow"
+
+# 데이터 설정
+train_file: "/scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/final_multiple_tow.jsonl"
+max_seq_length: 2048
+
+# 훈련 하이퍼파라미터
+per_device_train_batch_size: 8  # GPU 메모리에 따라 조정
+gradient_accumulation_steps: 8
+learning_rate: 2e-5
+num_train_epochs: 10
+lr_scheduler_type: "cosine"
+warmup_ratio: 0.03
+weight_decay: 0.01
+
+# LoRA 설정 (메모리 절약을 위해)
+use_lora: true
+lora_rank: 64
+lora_alpha: 16
+lora_dropout: 0.1
+
+# 성능 최적화
+use_flash_attn: true
+gradient_checkpointing: true
+fused_optimizer: true
+
+# 로깅
+logging_steps: 10
+checkpointing_steps: 500
+keep_last_n_checkpoints: 2
+
+# 기타
+seed: 42
+trust_remote_code: false
+overwrite_output_dir: false

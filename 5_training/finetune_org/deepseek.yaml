@@ -1,26 +1,26 @@
 # 기본 설정
-exp_name: "llama3.2_3b_it_tow_finetune"
-model_name_or_path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-output_dir: "./trained_models/llama3.2_3b_it_tow"
+exp_name: "DeepSeek-R1-Distill-Qwen-1.5B_it_tow_finetune"
+model_name_or_path: "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+output_dir: "./trained_models/DeepSeek-R1-Distill-Qwen-1.5B_it_tow"
 
 # 데이터셋
 dataset_name: "/scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/final_multiple_tow.jsonl"
 max_seq_length: 2048
 
 # 훈련 설정
-per_device_train_batch_size: 4
+per_device_train_batch_size: 8
 gradient_accumulation_steps: 8
-learning_rate: 2e-5
-num_train_epochs: 3
+learning_rate: 1e-5
+num_train_epochs: 10
 lr_scheduler_type: "cosine"
-warmup_ratio: 0.03
+warmup_ratio: 0.1
 weight_decay: 0.01
 
 # LoRA 설정
 use_lora: true
 lora_rank: 64
 lora_alpha: 16
-lora_dropout: 0.1
+lora_dropout: 0.2
 
 # 성능 최적화
 use_flash_attn: true
@@ -29,8 +29,8 @@ fused_optimizer: true
 
 # 로깅 및 체크포인트
 logging_steps: 10
-checkpointing_steps: 500
-keep_last_n_checkpoints: 2
+checkpointing_steps: 250
+keep_last_n_checkpoints: 5
 
 # 실험 추적
 with_tracking: true

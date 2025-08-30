@@ -618,130 +618,182 @@ def train():
     else:
         logger.info("No checkpoint found, starting fresh training")
     
-for epoch in range(starting_epoch, NUM_TRAIN_EPOCHS):
-        model.train()
-        total_loss = 0
-        
-        # Calculate how many steps to skip if resuming mid-epoch
-        steps_to_skip = 0
-        if epoch == starting_epoch and last_checkpoint:
-            steps_completed_in_epoch = global_step % num_update_steps_per_epoch
-            steps_to_skip = steps_completed_in_epoch
-        
-        # MODIFIED: Add global step info to epoch progress bar description
-        progress_bar = tqdm(
-            total=num_update_steps_per_epoch - steps_to_skip,
-            disable=not accelerator.is_local_main_process,
-            desc=f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
-        )
-        
-        # Skip batches if resuming from checkpoint
-        dataloader_to_use = train_dataloader
-        if steps_to_skip > 0:
-            logger.info(f"Skipping {steps_to_skip * GRADIENT_ACCUMULATION_STEPS} batches to resume from checkpoint")
-            # Calculate number of batches to skip
-            batches_to_skip = steps_to_skip * GRADIENT_ACCUMULATION_STEPS
-            dataloader_to_use = accelerator.skip_first_batches(train_dataloader, batches_to_skip)
-        
-        for step, batch in enumerate(dataloader_to_use):
-            with accelerator.accumulate(model):
-                outputs = model(**batch)
-                loss = outputs.loss
-                total_loss += loss.detach().float()
-                accelerator.backward(loss)
-                
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
-                
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
+    # Log training info
+    total_batch_size = PER_DEVICE_TRAIN_BATCH_SIZE * accelerator.num_processes * GRADIENT_ACCUMULATION_STEPS
+    
+    logger.info("***** Running training *****")
+    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num Epochs = {NUM_TRAIN_EPOCHS}")
+    logger.info(f"  Instantaneous batch size per device = {PER_DEVICE_TRAIN_BATCH_SIZE}")
+    logger.info(f"  Total train batch size = {total_batch_size}")
+    logger.info(f"  Gradient Accumulation steps = {GRADIENT_ACCUMULATION_STEPS}")
+    logger.info(f"  Total optimization steps = {max_train_steps}")
+    logger.info(f"  Steps per epoch = {num_update_steps_per_epoch}")
+    logger.info(f"  Warmup steps = {num_warmup_steps}")
+    
+    # Create single progress bar for entire training
+    progress_bar = tqdm(
+        total=max_train_steps,
+        initial=global_step,
+        disable=not accelerator.is_local_main_process,
+        desc="Training Progress",
+        ncols=120  # Make progress bar wider to show more info
+    )
+    
+    # Training loop - single loop over all steps
+    current_dataloader_iter = None
+    current_epoch = starting_epoch
+    steps_in_current_epoch = 0
+    
+    # Calculate how many steps to skip in current epoch if resuming
+    if resumed_from_checkpoint:
+        steps_completed_in_current_epoch = global_step % num_update_steps_per_epoch
+        if steps_completed_in_current_epoch > 0:
+            logger.info(f"Will skip {steps_completed_in_current_epoch * GRADIENT_ACCUMULATION_STEPS} batches in current epoch")
+    
+    while global_step < max_train_steps:
+        # Start new epoch if needed
+        if current_dataloader_iter is None:
+            model.train()
+            current_dataloader_iter = iter(train_dataloader)
+            steps_in_current_epoch = 0
             
-            # Periodically clear cache to prevent memory buildup
-            if step % 50 == 0 and torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # Skip batches if resuming from checkpoint in middle of epoch
+            if resumed_from_checkpoint and current_epoch == starting_epoch:
+                steps_completed_in_current_epoch = global_step % num_update_steps_per_epoch
+                batches_to_skip = steps_completed_in_current_epoch * GRADIENT_ACCUMULATION_STEPS
+                
+                if batches_to_skip > 0:
+                    logger.info(f"Skipping {batches_to_skip} batches in epoch {current_epoch}")
+                    for _ in range(batches_to_skip):
+                        try:
+                            next(current_dataloader_iter)
+                        except StopIteration:
+                            break
+                    steps_in_current_epoch = steps_completed_in_current_epoch
+                
+                resumed_from_checkpoint = False  # Only skip once
+        
+        # Get next batch
+        try:
+            batch = next(current_dataloader_iter)
+        except StopIteration:
+            # End of epoch reached
+            current_dataloader_iter = None
+            current_epoch += 1
+            
+            # Perform end-of-epoch evaluation
+            if EVAL_ON_EPOCH_END and current_epoch <= NUM_TRAIN_EPOCHS:  # Don't evaluate after last epoch
+                eval_loss = evaluate(model, val_dataloader, accelerator)
+                
+                # Calculate progress info
+                epoch_progress = f"Epoch {current_epoch}/{NUM_TRAIN_EPOCHS} completed"
+                step_progress = f"Step {global_step}/{max_train_steps}"
+                
+                logger.info(f"{epoch_progress} | {step_progress} | eval_loss={eval_loss:.4f}")
+                
+                if accelerator.is_main_process:
+                    accelerator.log({
+                        "epoch": current_epoch,
+                        "epoch_eval_loss": eval_loss,
+                    }, step=global_step)
+                
+                # Update progress bar description
+                progress_bar.set_description(f"Training | {epoch_progress} | eval_loss={eval_loss:.4f}")
+                
+                # Save best model
+                if eval_loss < best_eval_loss:
+                    best_eval_loss = eval_loss
+                    save_best_model(accelerator, model, tokenizer, best_eval_loss, OUTPUT_DIR)
+            
+            continue
+        
+        # Forward pass
+        with accelerator.accumulate(model):
+            outputs = model(**batch)
+            loss = outputs.loss
+            total_loss += loss.detach().float()
+            accelerator.backward(loss)
             
             if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
+                accelerator.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
+            
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
+        
+        # Clear cache periodically
+        if global_step % 50 == 0 and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        if accelerator.sync_gradients:
+            global_step += 1
+            steps_in_current_epoch += 1
+            
+            # Update progress bar
+            current_epoch_display = current_epoch + (steps_in_current_epoch / num_update_steps_per_epoch)
+            progress_bar.update(1)
+            progress_bar.set_postfix({
+                'epoch': f'{current_epoch_display:.2f}',
+                'loss': f'{loss.item():.4f}',
+                'lr': f'{lr_scheduler.get_last_lr()[0]:.2e}'
+            })
+            
+            # Logging
+            if global_step % LOGGING_STEPS == 0:
+                avg_loss = total_loss / LOGGING_STEPS
+                current_lr = lr_scheduler.get_last_lr()[0]
                 
-                # MODIFIED: Update progress bar description with current global step
-                progress_bar.set_description(
-                    f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
+                logger.info(f"Step {global_step}/{max_train_steps} | Epoch {current_epoch_display:.2f} | loss={avg_loss:.4f} | lr={current_lr:.2e}")
+                
+                if accelerator.is_main_process:
+                    accelerator.log(
+                        {
+                            "train_loss": avg_loss,
+                            "learning_rate": current_lr,
+                            "epoch": current_epoch_display,
+                        },
+                        step=global_step,
+                    )
+                total_loss = 0
+            
+            # Evaluation
+            if global_step % EVAL_STEPS == 0:
+                eval_loss = evaluate(model, val_dataloader, accelerator)
+                logger.info(f"Step {global_step}/{max_train_steps} | eval_loss={eval_loss:.4f}")
+                
+                if accelerator.is_main_process:
+                    accelerator.log({"eval_loss": eval_loss}, step=global_step)
+                
+                # Update progress bar description
+                progress_bar.set_description(f"Training | Step {global_step}/{max_train_steps} | eval_loss={eval_loss:.4f}")
+                
+                # Save best model
+                if eval_loss < best_eval_loss:
+                    best_eval_loss = eval_loss
+                    save_best_model(accelerator, model, tokenizer, best_eval_loss, OUTPUT_DIR)
+            
+            # Save checkpoint
+            if global_step % SAVE_STEPS == 0 and global_step > 0:
+                checkpoint_dir = os.path.join(OUTPUT_DIR, f"checkpoint-{global_step}")
+                logger.info(f"Saving checkpoint at step {global_step}")
+                
+                save_training_state(
+                    accelerator, model, tokenizer, optimizer, lr_scheduler,
+                    current_epoch, global_step, best_eval_loss, checkpoint_dir
                 )
                 
-                if global_step % LOGGING_STEPS == 0:
-                    avg_loss = total_loss / LOGGING_STEPS
-                    current_lr = lr_scheduler.get_last_lr()[0] if hasattr(lr_scheduler, 'get_last_lr') else LEARNING_RATE
-                    
-                    # Log memory usage with global step info
-                    if torch.cuda.is_available() and accelerator.is_local_main_process:
-                        memory_used = torch.cuda.max_memory_allocated() / 1024**3
-                        logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}, GPU mem={memory_used:.2f}GB")
-                    else:
-                        logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}")
-                    
-                    if accelerator.is_main_process:
-                        accelerator.log(
-                            {
-                                "train_loss": avg_loss,
-                                "learning_rate": current_lr,
-                                "epoch": epoch,
-                            },
-                            step=global_step,
-                        )
-                    total_loss = 0
+                # Cleanup old checkpoints
+                if accelerator.is_main_process:
+                    cleanup_old_checkpoints(OUTPUT_DIR, keep_last=SAVE_TOTAL_LIMIT)
                 
-                if global_step % EVAL_STEPS == 0:
-                    eval_loss = evaluate(model, val_dataloader, accelerator)
-                    logger.info(f"Global Step {global_step}/{max_train_steps}: eval_loss={eval_loss:.4f}")
-                    
-                    if accelerator.is_main_process:
-                        accelerator.log({"eval_loss": eval_loss}, step=global_step)
-                        
-                        if eval_loss < best_eval_loss:
-                            best_eval_loss = eval_loss
-                            save_checkpoint(
-                                model, tokenizer, accelerator, 
-                                os.path.join(OUTPUT_DIR, "best_model")
-                            )
-                            logger.info(f"Saved best model with eval_loss={eval_loss:.4f}")
-                
-                if global_step % SAVE_STEPS == 0:
-                    checkpoint_dir = os.path.join(OUTPUT_DIR, f"checkpoint-{global_step}")
-                    logger.info(f"Saving checkpoint at Global Step {global_step}/{max_train_steps}")
-                    
-                    try:
-                        # Add timeout to prevent hanging
-                        accelerator.save_state(checkpoint_dir)
-                        logger.info(f"Checkpoint saved to {checkpoint_dir}")
-                        
-                        # Only cleanup on main process and add error handling
-                        if accelerator.is_main_process:
-                            try:
-                                cleanup_old_checkpoints(OUTPUT_DIR, keep_last=3)
-                            except Exception as e:
-                                logger.warning(f"Checkpoint cleanup failed: {e}")
-                        
-                        # Force synchronization
-                        accelerator.wait_for_everyone()
-                        
-                    except Exception as e:
-                        logger.error(f"Checkpoint saving failed: {e}")
-                        # Continue training even if checkpoint fails
-                        pass
+                accelerator.wait_for_everyone()
         
-        progress_bar.close()
-        
-        eval_loss = evaluate(model, val_dataloader, accelerator)
-        logger.info(f"Epoch {epoch + 1} finished (Global Step {global_step}/{max_train_steps}): eval_loss={eval_loss:.4f}")
-        
-        if accelerator.is_main_process:
-            accelerator.log({"epoch_eval_loss": eval_loss}, step=global_step)
+        # Break if we've reached max steps
+        if global_step >= max_train_steps:
+            break
     
-    # Close progress bar after all epochs are done
-    if 'progress_bar' in locals():
-        progress_bar.close()
+    progress_bar.close()
     
     # Save final model
     final_checkpoint_dir = os.path.join(OUTPUT_DIR, "final_model")

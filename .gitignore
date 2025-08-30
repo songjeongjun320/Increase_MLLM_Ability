@@ -15,6 +15,7 @@ kosentences
 kobest
 
 # Model
+tow_trained_models/
 Base_Models/
 base_models/
 ToW_Models/

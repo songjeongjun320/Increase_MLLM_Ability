@@ -60,7 +60,7 @@ NUM_TRAIN_EPOCHS = 10
 PER_DEVICE_TRAIN_BATCH_SIZE = 2  # Reduced from 4
 PER_DEVICE_EVAL_BATCH_SIZE = 2   # Reduced from 4
 GRADIENT_ACCUMULATION_STEPS = 16  # Increased from 8 to maintain effective batch size
-MAX_SEQ_LENGTH = 1024  # Reduced from 2048
+MAX_SEQ_LENGTH = 2048  # Reduced from 2048
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -72,10 +72,11 @@ ADAM_BETA2 = 0.999
 ADAM_EPSILON = 1e-8
 
 # Saving and Logging
-SAVE_STEPS = 500  # Increased to reduce I/O
-EVAL_STEPS = 500  # Increased to reduce evaluation overhead
-LOGGING_STEPS = 100
-SAVE_TOTAL_LIMIT = 3  # Reduced from 5
+SAVE_STEPS = 250  # Increased to reduce I/O
+EVAL_STEPS = 250  # Increased to reduce evaluation overhead
+EVAL_ON_EPOCH_END = False
+LOGGING_STEPS = 50
+SAVE_TOTAL_LIMIT = 5
 LOAD_BEST_MODEL_AT_END = True
 METRIC_FOR_BEST_MODEL = "eval_loss"
 
@@ -89,7 +90,7 @@ QUANTIZATION_CONFIG = {
 }
 
 # DeepSpeed Configuration - HEAVILY OPTIMIZED FOR MEMORY
-USE_DEEPSPEED = False  # Temporarily disable DeepSpeed to test
+USE_DEEPSPEED = True
 DEEPSPEED_CONFIG = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -192,7 +193,7 @@ SPECIAL_TOKENS = {
 # ================================================================================
 
 class ToWDataset(Dataset):
-    """Custom dataset for ToW training using HCoT-style approach"""
+    """Custom dataset for ToW training"""
     
     def __init__(self, data, tokenizer, max_seq_length):
         self.data = data
@@ -210,7 +211,6 @@ class ToWDataset(Dataset):
         prompt = item.get("prompt", "")
         completion = item.get("completion", "")
         
-        # completion에 이미 ToW 토큰이 포함되어 있으므로 그대로 사용
         full_text = f"{prompt} {completion}"
         full_text = full_text + self.tokenizer.eos_token
         
@@ -225,10 +225,7 @@ class ToWDataset(Dataset):
         input_ids = encoded["input_ids"].squeeze()
         attention_mask = encoded["attention_mask"].squeeze()
         
-        # HCoT-style: predict all tokens (no masking of prompt)
         labels = input_ids.clone()
-        
-        # Only mask padding tokens
         labels[labels == self.tokenizer.pad_token_id] = -100
         
         return {
@@ -237,40 +234,101 @@ class ToWDataset(Dataset):
             "labels": labels
         }
 
+
+# ================================================================================
+# IMPROVED CHECKPOINT UTILITIES
+# ================================================================================
+
+def save_training_state(accelerator, model, tokenizer, optimizer, lr_scheduler, 
+                        epoch, global_step, best_eval_loss, checkpoint_dir):
+    """Save complete training state including all necessary files"""
+    
+    accelerator.wait_for_everyone()
+    
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    
+    # Save accelerator state (includes model, optimizer, scheduler, RNG states)
+    accelerator.save_state(checkpoint_dir)
+    
+    # Additionally save tokenizer and configs on main process
+    if accelerator.is_main_process:
+        # Save tokenizer
+        tokenizer.save_pretrained(checkpoint_dir)
+        
+        # Save model config
+        unwrapped_model = accelerator.unwrap_model(model)
+        unwrapped_model.config.save_pretrained(checkpoint_dir)
+        
+        # Save training state info
+        training_state = {
+            "epoch": epoch,
+            "global_step": global_step,
+            "best_eval_loss": best_eval_loss,
+            "model_name_or_path": MODEL_NAME_OR_PATH,
+            "learning_rate": LEARNING_RATE,
+            "num_train_epochs": NUM_TRAIN_EPOCHS,
+            "per_device_train_batch_size": PER_DEVICE_TRAIN_BATCH_SIZE,
+            "gradient_accumulation_steps": GRADIENT_ACCUMULATION_STEPS,
+            "max_seq_length": MAX_SEQ_LENGTH,
+            "warmup_ratio": WARMUP_RATIO,
+            "weight_decay": WEIGHT_DECAY,
+            "tow_tokens": SPECIAL_TOKENS,
+        }
+        
+        with open(os.path.join(checkpoint_dir, "training_state.json"), 'w') as f:
+            json.dump(training_state, f, indent=2)
+        
+        # Create a marker file to indicate checkpoint is complete
+        with open(os.path.join(checkpoint_dir, "checkpoint_complete.marker"), 'w') as f:
+            f.write(f"Checkpoint saved at step {global_step}")
+        
+        initial_logger.info(f"Complete checkpoint saved to {checkpoint_dir}")
+    
+    accelerator.wait_for_everyone()
+
+
+def load_training_state(checkpoint_dir):
+    """Load training state from checkpoint"""
+    
+    state_file = os.path.join(checkpoint_dir, "training_state.json")
+    if not os.path.exists(state_file):
+        return None
+    
+    with open(state_file, 'r') as f:
+        return json.load(f)
+
+
 # ================================================================================
 # CHECKPOINT UTILITIES
 # ================================================================================
 
 def get_last_checkpoint(output_dir):
-    """Find the most recent checkpoint in the output directory"""
+    """Find the most recent COMPLETE checkpoint"""
+    
     if not os.path.exists(output_dir):
         return None
     
     checkpoints = []
     for item in os.listdir(output_dir):
         if item.startswith('checkpoint-'):
-            try:
-                step_num = int(item.split('-')[1])
-                checkpoint_path = os.path.join(output_dir, item)
-                # Check if checkpoint is complete
-                if os.path.exists(os.path.join(checkpoint_path, "pytorch_model.bin")) or \
-                   os.path.exists(os.path.join(checkpoint_path, "model.safetensors")) or \
-                   os.path.exists(os.path.join(checkpoint_path, "zero_pp_rank_0_mp_rank_00_optim_states.pt")):
+            checkpoint_path = os.path.join(output_dir, item)
+            # Check if checkpoint is complete by looking for marker file
+            marker_file = os.path.join(checkpoint_path, "checkpoint_complete.marker")
+            if os.path.exists(marker_file):
+                try:
+                    step_num = int(item.split('-')[1])
                     checkpoints.append((step_num, checkpoint_path))
-            except (ValueError, IndexError):
-                continue
+                except (ValueError, IndexError):
+                    continue
     
     if checkpoints:
         # Return path of the checkpoint with highest step number
         return max(checkpoints, key=lambda x: x[0])[1]
     return None
 
-def extract_step_from_checkpoint(checkpoint_path):
-    """Extract step number from checkpoint path"""
-    try:
-        return int(os.path.basename(checkpoint_path).split('-')[1])
-    except (ValueError, IndexError):
-        return 0
+# ================================================================================
+# DATA LOADING UTILITIES
+# ================================================================================
 
 def load_jsonl_data(file_path):
     """Load data from JSONL file"""
@@ -308,54 +366,98 @@ def prepare_datasets(tokenizer, data_path, validation_split=0.1, max_seq_length=
 
 def cleanup_old_checkpoints(output_dir, keep_last=3):
     """Clean up old checkpoints, keeping only the most recent ones"""
-    try:
-        if not os.path.exists(output_dir):
-            return
-        
-        checkpoints = []
-        for item in os.listdir(output_dir):
-            if item.startswith('checkpoint-'):
+    
+    if not os.path.exists(output_dir):
+        return
+    
+    checkpoints = []
+    for item in os.listdir(output_dir):
+        if item.startswith('checkpoint-'):
+            checkpoint_path = os.path.join(output_dir, item)
+            # Only consider complete checkpoints
+            marker_file = os.path.join(checkpoint_path, "checkpoint_complete.marker")
+            if os.path.exists(marker_file):
                 try:
                     step_num = int(item.split('-')[1])
-                    checkpoint_path = os.path.join(output_dir, item)
                     checkpoints.append((step_num, checkpoint_path))
                 except (ValueError, IndexError):
                     continue
+    
+    if len(checkpoints) > keep_last:
+        checkpoints.sort(key=lambda x: x[0])
+        checkpoints_to_remove = checkpoints[:-keep_last]
         
-        if len(checkpoints) > keep_last:
-            # Sort by step number and keep only the most recent
-            checkpoints.sort(key=lambda x: x[0])
-            checkpoints_to_remove = checkpoints[:-keep_last]
-            
-            for _, checkpoint_path in checkpoints_to_remove:
-                try:
-                    if os.path.exists(checkpoint_path):
-                        import shutil
-                        shutil.rmtree(checkpoint_path)
-                        logger = get_logger(__name__)
-                        logger.info(f"Removed old checkpoint: {checkpoint_path}")
-                except Exception as e:
-                    logger = get_logger(__name__)
-                    logger.warning(f"Failed to remove checkpoint {checkpoint_path}: {e}")
-                    
-    except Exception as e:
-        logger = get_logger(__name__)
-        logger.warning(f"Checkpoint cleanup failed: {e}")
-        # Don't let cleanup failure stop training
-        pass
+        for _, checkpoint_path in checkpoints_to_remove:
+            try:
+                import shutil
+                shutil.rmtree(checkpoint_path)
+                initial_logger.info(f"Removed old checkpoint: {checkpoint_path}")
+            except Exception as e:
+                initial_logger.warning(f"Failed to remove checkpoint {checkpoint_path}: {e}")
+
+
+def save_best_model(accelerator, model, tokenizer, best_eval_loss, output_dir):
+    """Save the best model separately"""
+    
+    best_model_dir = os.path.join(output_dir, "best_model")
+    
+    accelerator.wait_for_everyone()
+    
+    if accelerator.is_main_process:
+        os.makedirs(best_model_dir, exist_ok=True)
+        
+        unwrapped_model = accelerator.unwrap_model(model)
+        unwrapped_model.save_pretrained(
+            best_model_dir,
+            save_function=accelerator.save,
+            safe_serialization=True
+        )
+        
+        tokenizer.save_pretrained(best_model_dir)
+        
+        # Save best model info
+        with open(os.path.join(best_model_dir, "best_model_info.json"), 'w') as f:
+            json.dump({"best_eval_loss": best_eval_loss}, f, indent=2)
+        
+        initial_logger.info(f"Best model saved with eval_loss={best_eval_loss:.4f}")
+
 
 # ================================================================================
-# TRAINING FUNCTION - WITH MEMORY OPTIMIZATIONS
+# EVALUATION FUNCTION
+# ================================================================================
+
+def evaluate(model, dataloader, accelerator):
+    """Evaluate the model on validation set"""
+    model.eval()
+    losses = []
+    
+    for batch in tqdm(dataloader, desc="Evaluating", disable=not accelerator.is_local_main_process):
+        with torch.no_grad():
+            outputs = model(**batch)
+            loss = outputs.loss
+            losses.append(accelerator.gather_for_metrics(loss.repeat(PER_DEVICE_EVAL_BATCH_SIZE)))
+    
+    losses = torch.cat(losses)
+    eval_loss = torch.mean(losses)
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    model.train()
+    return eval_loss.item()
+
+
+# ================================================================================
+# MAIN TRAINING FUNCTION
 # ================================================================================
 
 def train():
-    """Main training function with memory optimizations"""
+    """Main training function with single global progress bar"""
     
-    # Set environment variables for memory optimization
+    # Set environment variables
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     
-    # Clear cache before starting
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
@@ -363,12 +465,25 @@ def train():
     set_seed(SEED)
     kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))
     
-    # Load tokenizer and prepare datasets
+    # Initialize Accelerator
+    accelerator = Accelerator(
+        gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
+        log_with="tensorboard",
+        project_dir=OUTPUT_DIR,
+        kwargs_handlers=[kwargs],
+        mixed_precision="bf16"
+    )
+    
+    logger = get_logger(__name__)
+    logger.setLevel(logging.INFO if accelerator.is_local_main_process else logging.ERROR)
+    
+    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME_OR_PATH, cache_dir=CACHE_DIR, trust_remote_code=True)
     num_added_tokens = tokenizer.add_special_tokens(SPECIAL_TOKENS)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-        
+    
+    # Prepare datasets
     train_dataset, val_dataset = prepare_datasets(
         tokenizer, 
         DATASET_PATH, 
@@ -388,7 +503,7 @@ def train():
         shuffle=True, 
         collate_fn=data_collator, 
         num_workers=PREPROCESSING_NUM_WORKERS,
-        pin_memory=False  # Disable pin_memory to save memory
+        pin_memory=False
     )
     
     val_dataloader = DataLoader(
@@ -399,89 +514,45 @@ def train():
         num_workers=PREPROCESSING_NUM_WORKERS,
         pin_memory=False
     )
-
+    
     # Calculate training steps
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / GRADIENT_ACCUMULATION_STEPS)
     max_train_steps = NUM_TRAIN_EPOCHS * num_update_steps_per_epoch
     num_warmup_steps = int(WARMUP_RATIO * max_train_steps)
-
-    # Setup DeepSpeed
-    deepspeed_plugin = None
-    if USE_DEEPSPEED:
-        final_deepspeed_config = DEEPSPEED_CONFIG.copy()
-        final_deepspeed_config["scheduler"]["params"]["total_num_steps"] = max_train_steps
-        final_deepspeed_config["scheduler"]["params"]["warmup_num_steps"] = num_warmup_steps
-        final_deepspeed_config["scheduler"]["params"]["warmup_max_lr"] = LEARNING_RATE
-        final_deepspeed_config["scheduler"]["params"]["warmup_min_lr"] = 0.0
-        
-        ds_config_path = "ds_config.json"
-        with open(ds_config_path, 'w') as f:
-            json.dump(final_deepspeed_config, f, indent=2)
-        
-        deepspeed_plugin = DeepSpeedPlugin(
-            hf_ds_config=ds_config_path,
-            gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
-            gradient_clipping=MAX_GRAD_NORM,
-            zero_stage=2,  # Match the config change
-            offload_optimizer_device="cpu",
-            offload_param_device="none"  # Disable param offloading initially
-        )
     
-    # Initialize Accelerator - FIXED: Initialize before using
-    accelerator = Accelerator(
-        gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
-        log_with="tensorboard",  # FIXED: Removed conditional that caused the error
-        project_dir=OUTPUT_DIR,
-        deepspeed_plugin=deepspeed_plugin,
-        kwargs_handlers=[kwargs],
-        mixed_precision="bf16"  # Explicitly set mixed precision
-    )
-    
-    logger = get_logger(__name__)
-    logger.setLevel(logging.INFO if accelerator.is_local_main_process else logging.ERROR)
-
-    # Load model with memory optimization
+    # Load model
     with accelerator.main_process_first():
         logger.info(f"Loading model from {MODEL_NAME_OR_PATH}")
         
-        # Use device_map for better memory management
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_NAME_OR_PATH,
             cache_dir=CACHE_DIR,
             trust_remote_code=True,
             torch_dtype=torch.bfloat16,
-            low_cpu_mem_usage=True,  # Important for memory optimization
-            device_map=None  # Let DeepSpeed handle device placement
+            low_cpu_mem_usage=True
         )
         
         model.resize_token_embeddings(len(tokenizer))
         
-        # ToW-style embedding initialization (using HCoT approach)
-        # Initialize new token embeddings with existing token embeddings (like '---')
+        # Initialize ToW token embeddings
         logger.info("Initializing ToW token embeddings...")
         embeddings = model.get_input_embeddings()
         
-        # Use '---' token embedding as initialization for new tokens
         dash_token_ids = tokenizer.encode('---', add_special_tokens=False)
         if len(dash_token_ids) > 0:
             dash_embedding = embeddings.weight.data[dash_token_ids[0], :].clone()
-            # Initialize both ToW tokens with the same embedding
-            embeddings.weight.data[len(tokenizer)-2, :] = dash_embedding  # </ToW>
-            embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding  # <ToW>
+            embeddings.weight.data[len(tokenizer)-2, :] = dash_embedding
+            embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding
             logger.info("Initialized ToW tokens with '---' token embedding")
-        else:
-            logger.warning("Could not find '---' token for embedding initialization")
         
-        # Enable gradient checkpointing for memory savings
         if hasattr(model, "gradient_checkpointing_enable"):
             model.gradient_checkpointing_enable()
             logger.info("Enabled gradient checkpointing")
         
-        # Enable memory efficient attention if available
         if hasattr(model.config, "use_cache"):
-            model.config.use_cache = False  # Disable KV cache during training
-
-    # Setup optimizer and scheduler
+            model.config.use_cache = False
+    
+    # Setup optimizer
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
         {
@@ -493,294 +564,197 @@ def train():
             "weight_decay": 0.0
         },
     ]
-
-    if USE_DEEPSPEED:
-        from accelerate.utils import DummyOptim, DummyScheduler
-        optimizer = DummyOptim(
-            optimizer_grouped_parameters, 
-            lr=LEARNING_RATE, 
-            betas=(ADAM_BETA1, ADAM_BETA2), 
-            eps=ADAM_EPSILON
-        )
-        lr_scheduler = DummyScheduler(
-            optimizer, 
-            num_warmup_steps=num_warmup_steps, 
-            num_training_steps=max_train_steps
-        )
-    else:
-        from torch.optim import AdamW
-        optimizer = AdamW(
-            optimizer_grouped_parameters, 
-            lr=LEARNING_RATE, 
-            betas=(ADAM_BETA1, ADAM_BETA2), 
-            eps=ADAM_EPSILON
-        )
-        lr_scheduler = get_scheduler(
-            name=LR_SCHEDULER_TYPE,
-            optimizer=optimizer,
-            num_warmup_steps=num_warmup_steps,
-            num_training_steps=max_train_steps
-        )
-
-    # Prepare everything with accelerator
+    
+    from torch.optim import AdamW
+    optimizer = AdamW(
+        optimizer_grouped_parameters, 
+        lr=LEARNING_RATE, 
+        betas=(ADAM_BETA1, ADAM_BETA2), 
+        eps=ADAM_EPSILON
+    )
+    
+    lr_scheduler = get_scheduler(
+        name=LR_SCHEDULER_TYPE,
+        optimizer=optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=max_train_steps
+    )
+    
+    # Prepare with accelerator
     model, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, val_dataloader, lr_scheduler
     )
     
-    # Log training info
-    total_batch_size = PER_DEVICE_TRAIN_BATCH_SIZE * accelerator.num_processes * GRADIENT_ACCUMULATION_STEPS
-    
-    logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {NUM_TRAIN_EPOCHS}")
-    logger.info(f"  Instantaneous batch size per device = {PER_DEVICE_TRAIN_BATCH_SIZE}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {GRADIENT_ACCUMULATION_STEPS}")
-    logger.info(f"  Total optimization steps = {max_train_steps}")
-    logger.info(f"  Warmup steps = {num_warmup_steps}")
-    
-    # Training loop with checkpoint resumption
+    # Initialize training state
     global_step = 0
     starting_epoch = 0
     best_eval_loss = float('inf')
+    resumed_from_checkpoint = False
+    total_loss = 0
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    # Check for existing checkpoints and resume if found
+    # Check for existing checkpoints
     last_checkpoint = get_last_checkpoint(OUTPUT_DIR)
     if last_checkpoint:
         logger.info(f"Found checkpoint: {last_checkpoint}")
         logger.info("Resuming training from checkpoint...")
         
-        # Load the checkpoint state
+        # Load accelerator state
         accelerator.load_state(last_checkpoint)
         
-        # Extract step information
-        resumed_step = extract_step_from_checkpoint(last_checkpoint)
-        global_step = resumed_step
-        
-        # Calculate which epoch we're in
-        steps_per_epoch = num_update_steps_per_epoch
-        starting_epoch = resumed_step // steps_per_epoch
-        steps_completed_in_epoch = resumed_step % steps_per_epoch
-        
-        logger.info(f"Resumed from step {resumed_step}, epoch {starting_epoch}")
-        logger.info(f"Completed {steps_completed_in_epoch}/{steps_per_epoch} steps in current epoch")
+        # Load training state
+        training_state = load_training_state(last_checkpoint)
+        if training_state:
+            global_step = training_state["global_step"]
+            starting_epoch = training_state["epoch"]
+            best_eval_loss = training_state.get("best_eval_loss", float('inf'))
+            resumed_from_checkpoint = True
+            
+            logger.info(f"Resumed from step {global_step}, epoch {starting_epoch}")
+            logger.info(f"Best eval loss so far: {best_eval_loss:.4f}")
+        else:
+            logger.warning("Could not load training state, starting fresh")
     else:
         logger.info("No checkpoint found, starting fresh training")
     
-    for epoch in range(starting_epoch, NUM_TRAIN_EPOCHS):
-            model.train()
-            total_loss = 0
-            
-            # Calculate how many steps to skip if resuming mid-epoch
-            steps_to_skip = 0
-            if epoch == starting_epoch and last_checkpoint:
-                steps_completed_in_epoch = global_step % num_update_steps_per_epoch
-                steps_to_skip = steps_completed_in_epoch
-            
-            # MODIFIED: Add global step info to epoch progress bar description
-            progress_bar = tqdm(
-                total=num_update_steps_per_epoch - steps_to_skip,
-                disable=not accelerator.is_local_main_process,
-                desc=f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
-            )
-            
-            # Skip batches if resuming from checkpoint
-            dataloader_to_use = train_dataloader
-            if steps_to_skip > 0:
-                logger.info(f"Skipping {steps_to_skip * GRADIENT_ACCUMULATION_STEPS} batches to resume from checkpoint")
-                # Calculate number of batches to skip
-                batches_to_skip = steps_to_skip * GRADIENT_ACCUMULATION_STEPS
-                dataloader_to_use = accelerator.skip_first_batches(train_dataloader, batches_to_skip)
-            
-            for step, batch in enumerate(dataloader_to_use):
-                with accelerator.accumulate(model):
-                    outputs = model(**batch)
-                    loss = outputs.loss
-                    total_loss += loss.detach().float()
-                    accelerator.backward(loss)
-                    
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
-                    
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
-                
-                # Periodically clear cache to prevent memory buildup
-                if step % 50 == 0 and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+for epoch in range(starting_epoch, NUM_TRAIN_EPOCHS):
+        model.train()
+        total_loss = 0
+        
+        # Calculate how many steps to skip if resuming mid-epoch
+        steps_to_skip = 0
+        if epoch == starting_epoch and last_checkpoint:
+            steps_completed_in_epoch = global_step % num_update_steps_per_epoch
+            steps_to_skip = steps_completed_in_epoch
+        
+        # MODIFIED: Add global step info to epoch progress bar description
+        progress_bar = tqdm(
+            total=num_update_steps_per_epoch - steps_to_skip,
+            disable=not accelerator.is_local_main_process,
+            desc=f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
+        )
+        
+        # Skip batches if resuming from checkpoint
+        dataloader_to_use = train_dataloader
+        if steps_to_skip > 0:
+            logger.info(f"Skipping {steps_to_skip * GRADIENT_ACCUMULATION_STEPS} batches to resume from checkpoint")
+            # Calculate number of batches to skip
+            batches_to_skip = steps_to_skip * GRADIENT_ACCUMULATION_STEPS
+            dataloader_to_use = accelerator.skip_first_batches(train_dataloader, batches_to_skip)
+        
+        for step, batch in enumerate(dataloader_to_use):
+            with accelerator.accumulate(model):
+                outputs = model(**batch)
+                loss = outputs.loss
+                total_loss += loss.detach().float()
+                accelerator.backward(loss)
                 
                 if accelerator.sync_gradients:
-                    progress_bar.update(1)
-                    global_step += 1
+                    accelerator.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
+                
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+            
+            # Periodically clear cache to prevent memory buildup
+            if step % 50 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
+                
+                # MODIFIED: Update progress bar description with current global step
+                progress_bar.set_description(
+                    f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
+                )
+                
+                if global_step % LOGGING_STEPS == 0:
+                    avg_loss = total_loss / LOGGING_STEPS
+                    current_lr = lr_scheduler.get_last_lr()[0] if hasattr(lr_scheduler, 'get_last_lr') else LEARNING_RATE
                     
-                    # MODIFIED: Update progress bar description with current global step
-                    progress_bar.set_description(
-                        f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
-                    )
+                    # Log memory usage with global step info
+                    if torch.cuda.is_available() and accelerator.is_local_main_process:
+                        memory_used = torch.cuda.max_memory_allocated() / 1024**3
+                        logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}, GPU mem={memory_used:.2f}GB")
+                    else:
+                        logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}")
                     
-                    if global_step % LOGGING_STEPS == 0:
-                        avg_loss = total_loss / LOGGING_STEPS
-                        current_lr = lr_scheduler.get_last_lr()[0] if hasattr(lr_scheduler, 'get_last_lr') else LEARNING_RATE
+                    if accelerator.is_main_process:
+                        accelerator.log(
+                            {
+                                "train_loss": avg_loss,
+                                "learning_rate": current_lr,
+                                "epoch": epoch,
+                            },
+                            step=global_step,
+                        )
+                    total_loss = 0
+                
+                if global_step % EVAL_STEPS == 0:
+                    eval_loss = evaluate(model, val_dataloader, accelerator)
+                    logger.info(f"Global Step {global_step}/{max_train_steps}: eval_loss={eval_loss:.4f}")
+                    
+                    if accelerator.is_main_process:
+                        accelerator.log({"eval_loss": eval_loss}, step=global_step)
                         
-                        # Log memory usage with global step info
-                        if torch.cuda.is_available() and accelerator.is_local_main_process:
-                            memory_used = torch.cuda.max_memory_allocated() / 1024**3
-                            logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}, GPU mem={memory_used:.2f}GB")
-                        else:
-                            logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}")
-                        
-                        if accelerator.is_main_process:
-                            accelerator.log(
-                                {
-                                    "train_loss": avg_loss,
-                                    "learning_rate": current_lr,
-                                    "epoch": epoch,
-                                },
-                                step=global_step,
+                        if eval_loss < best_eval_loss:
+                            best_eval_loss = eval_loss
+                            save_checkpoint(
+                                model, tokenizer, accelerator, 
+                                os.path.join(OUTPUT_DIR, "best_model")
                             )
-                        total_loss = 0
+                            logger.info(f"Saved best model with eval_loss={eval_loss:.4f}")
+                
+                if global_step % SAVE_STEPS == 0:
+                    checkpoint_dir = os.path.join(OUTPUT_DIR, f"checkpoint-{global_step}")
+                    logger.info(f"Saving checkpoint at Global Step {global_step}/{max_train_steps}")
                     
-                    if global_step % EVAL_STEPS == 0:
-                        eval_loss = evaluate(model, val_dataloader, accelerator)
-                        logger.info(f"Global Step {global_step}/{max_train_steps}: eval_loss={eval_loss:.4f}")
+                    try:
+                        # Add timeout to prevent hanging
+                        accelerator.save_state(checkpoint_dir)
+                        logger.info(f"Checkpoint saved to {checkpoint_dir}")
                         
+                        # Only cleanup on main process and add error handling
                         if accelerator.is_main_process:
-                            accelerator.log({"eval_loss": eval_loss}, step=global_step)
-                            
-                            if eval_loss < best_eval_loss:
-                                best_eval_loss = eval_loss
-                                save_checkpoint(
-                                    model, tokenizer, accelerator, 
-                                    os.path.join(OUTPUT_DIR, "best_model")
-                                )
-                                logger.info(f"Saved best model with eval_loss={eval_loss:.4f}")
-                    
-                    if global_step % SAVE_STEPS == 0:
-                        checkpoint_dir = os.path.join(OUTPUT_DIR, f"checkpoint-{global_step}")
-                        logger.info(f"Saving checkpoint at Global Step {global_step}/{max_train_steps}")
+                            try:
+                                cleanup_old_checkpoints(OUTPUT_DIR, keep_last=3)
+                            except Exception as e:
+                                logger.warning(f"Checkpoint cleanup failed: {e}")
                         
-                        try:
-                            # Add timeout to prevent hanging
-                            accelerator.save_state(checkpoint_dir)
-                            logger.info(f"Checkpoint saved to {checkpoint_dir}")
-                            
-                            # Only cleanup on main process and add error handling
-                            if accelerator.is_main_process:
-                                try:
-                                    cleanup_old_checkpoints(OUTPUT_DIR, keep_last=3)
-                                except Exception as e:
-                                    logger.warning(f"Checkpoint cleanup failed: {e}")
-                            
-                            # Force synchronization
-                            accelerator.wait_for_everyone()
-                            
-                        except Exception as e:
-                            logger.error(f"Checkpoint saving failed: {e}")
-                            # Continue training even if checkpoint fails
-                            pass
-            
-            progress_bar.close()
-            
-            eval_loss = evaluate(model, val_dataloader, accelerator)
-            logger.info(f"Epoch {epoch + 1} finished (Global Step {global_step}/{max_train_steps}): eval_loss={eval_loss:.4f}")
-            
-            if accelerator.is_main_process:
-                accelerator.log({"epoch_eval_loss": eval_loss}, step=global_step)
+                        # Force synchronization
+                        accelerator.wait_for_everyone()
+                        
+                    except Exception as e:
+                        logger.error(f"Checkpoint saving failed: {e}")
+                        # Continue training even if checkpoint fails
+                        pass
         
+        progress_bar.close()
+        
+        eval_loss = evaluate(model, val_dataloader, accelerator)
+        logger.info(f"Epoch {epoch + 1} finished (Global Step {global_step}/{max_train_steps}): eval_loss={eval_loss:.4f}")
+        
+        if accelerator.is_main_process:
+            accelerator.log({"epoch_eval_loss": eval_loss}, step=global_step)
+    
     # Close progress bar after all epochs are done
-    if 'progress_bar' in locals() and 'progress_bar' in vars() and progress_bar.is_alive():
+    if 'progress_bar' in locals():
         progress_bar.close()
     
-    # Save final checkpoint
+    # Save final model
     final_checkpoint_dir = os.path.join(OUTPUT_DIR, "final_model")
     logger.info("Saving final model...")
-    accelerator.save_state(final_checkpoint_dir)
-    save_checkpoint(
-        model, tokenizer, accelerator,
-        final_checkpoint_dir
+    
+    save_training_state(
+        accelerator, model, tokenizer, optimizer, lr_scheduler,
+        NUM_TRAIN_EPOCHS, global_step, best_eval_loss, final_checkpoint_dir
     )
     
     logger.info("Training completed!")
     accelerator.end_training()
-    
-# ================================================================================
-# EVALUATION FUNCTION
-# ================================================================================
 
-def evaluate(model, dataloader, accelerator):
-    """Evaluate the model on validation set"""
-    model.eval()
-    losses = []
-    
-    for batch in tqdm(dataloader, desc="Evaluating", disable=not accelerator.is_local_main_process):
-        with torch.no_grad():
-            outputs = model(**batch)
-            loss = outputs.loss
-            losses.append(accelerator.gather_for_metrics(loss.repeat(PER_DEVICE_EVAL_BATCH_SIZE)))
-    
-    losses = torch.cat(losses)
-    eval_loss = torch.mean(losses)
-    
-    # Clear cache after evaluation
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    
-    model.train()
-    return eval_loss.item()
-
-# ================================================================================
-# CHECKPOINT SAVING
-# ================================================================================
-
-def save_checkpoint(model, tokenizer, accelerator, output_dir):
-    """Save model checkpoint"""
-    accelerator.wait_for_everyone()
-    
-    if accelerator.is_main_process:
-        os.makedirs(output_dir, exist_ok=True)
-        
-        unwrapped_model = accelerator.unwrap_model(model)
-        
-        # Save with DeepSpeed state dict if using DeepSpeed
-        if USE_DEEPSPEED:
-            unwrapped_model.save_pretrained(
-                output_dir,
-                is_main_process=accelerator.is_main_process,
-                save_function=accelerator.save,
-                state_dict=accelerator.get_state_dict(model),
-                safe_serialization=True  # Use safetensors for better memory efficiency
-            )
-        else:
-            unwrapped_model.save_pretrained(
-                output_dir,
-                is_main_process=accelerator.is_main_process,
-                save_function=accelerator.save,
-                safe_serialization=True
-            )
-        
-        tokenizer.save_pretrained(output_dir)
-        
-        # Save training config
-        config = {
-            "model_name_or_path": MODEL_NAME_OR_PATH,
-            "learning_rate": LEARNING_RATE,
-            "num_train_epochs": NUM_TRAIN_EPOCHS,
-            "per_device_train_batch_size": PER_DEVICE_TRAIN_BATCH_SIZE,
-            "gradient_accumulation_steps": GRADIENT_ACCUMULATION_STEPS,
-            "max_seq_length": MAX_SEQ_LENGTH,
-            "warmup_ratio": WARMUP_RATIO,
-            "weight_decay": WEIGHT_DECAY,
-            "tow_tokens": SPECIAL_TOKENS,
-        }
-        
-        with open(os.path.join(output_dir, "training_config.json"), 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        logger = get_logger(__name__)
-        logger.info(f"Saved checkpoint to {output_dir}")
 
 # ================================================================================
 # MAIN ENTRY POINT

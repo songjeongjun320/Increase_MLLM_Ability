@@ -5,8 +5,8 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_llama_v2.py
-torchrun --nproc_per_node=4 ToW_Training_llama_v2.py
+deepspeed --num_gpus=2 ToW_Training_qwem_v2.py
+torchrun --nproc_per_node=4 ToW_Training_qwem_v2.py
 """
 
 import os
@@ -46,8 +46,8 @@ from deepspeed import DeepSpeedConfig
 # ================================================================================
 
 # Model Configuration
-MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow"
+MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
+OUTPUT_DIR = "./tow_trained_models/Qwen2.5-3B-Instruct-tow"
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
@@ -573,24 +573,34 @@ def train():
         model.train()
         total_loss = 0
         
-        # Calculate how many steps to skip if resuming mid-epoch
+        # 올바른 계산
+        steps_per_epoch = math.ceil(len(train_dataloader) / GRADIENT_ACCUMULATION_STEPS)
+        
+        # 재시작 시 스킵할 스텝 계산
         steps_to_skip = 0
         if epoch == starting_epoch and last_checkpoint:
-            steps_completed_in_epoch = global_step % num_update_steps_per_epoch
+            steps_completed_in_epoch = global_step % steps_per_epoch
             steps_to_skip = steps_completed_in_epoch
         
+        # 수정된 progress bar
         progress_bar = tqdm(
-            total=num_update_steps_per_epoch - steps_to_skip,
+            total=steps_per_epoch - steps_to_skip,  # 실제 업데이트 스텝 수
             disable=not accelerator.is_local_main_process,
-            desc=f"Training Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS}"
+            desc=f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Steps: {steps_per_epoch})"
         )
         
-        # Skip batches if resuming from checkpoint
+        # 또는 배치 기준으로 하려면:
+        # progress_bar = tqdm(
+        #     total=len(train_dataloader),  # 955 (배치 수)
+        #     disable=not accelerator.is_local_main_process,
+        #     desc=f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Batches: {len(train_dataloader)})"
+        # )
+        
+        # 스킵할 배치 계산
         dataloader_to_use = train_dataloader
         if steps_to_skip > 0:
-            logger.info(f"Skipping {steps_to_skip * GRADIENT_ACCUMULATION_STEPS} batches to resume from checkpoint")
-            # Calculate number of batches to skip
             batches_to_skip = steps_to_skip * GRADIENT_ACCUMULATION_STEPS
+            logger.info(f"Skipping {batches_to_skip} batches to resume from checkpoint")
             dataloader_to_use = accelerator.skip_first_batches(train_dataloader, batches_to_skip)
         
         for step, batch in enumerate(dataloader_to_use):
@@ -607,12 +617,9 @@ def train():
                 lr_scheduler.step()
                 optimizer.zero_grad()
             
-            # Periodically clear cache to prevent memory buildup
-            if step % 50 == 0 and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
+            # Progress bar 업데이트 - 배치마다 또는 스텝마다
             if accelerator.sync_gradients:
-                progress_bar.update(1)
+                progress_bar.update(1)  # 스텝 기준
                 global_step += 1
                 
                 if global_step % LOGGING_STEPS == 0:

@@ -5,8 +5,8 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_llama_v2.py
-torchrun --nproc_per_node=4 ToW_Training_llama_v2.py
+deepspeed --num_gpus=2 ToW_Training_deepseek_v2.py
+torchrun --nproc_per_node=4 ToW_Training_deepseek_v2.py
 """
 
 import os
@@ -46,8 +46,8 @@ from deepspeed import DeepSpeedConfig
 # ================================================================================
 
 # Model Configuration
-MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow"
+MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
+OUTPUT_DIR = "./tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow"
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
@@ -569,7 +569,7 @@ def train():
     else:
         logger.info("No checkpoint found, starting fresh training")
     
-    for epoch in range(starting_epoch, NUM_TRAIN_EPOCHS):
+for epoch in range(starting_epoch, NUM_TRAIN_EPOCHS):
         model.train()
         total_loss = 0
         
@@ -579,10 +579,11 @@ def train():
             steps_completed_in_epoch = global_step % num_update_steps_per_epoch
             steps_to_skip = steps_completed_in_epoch
         
+        # MODIFIED: Add global step info to epoch progress bar description
         progress_bar = tqdm(
             total=num_update_steps_per_epoch - steps_to_skip,
             disable=not accelerator.is_local_main_process,
-            desc=f"Training Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS}"
+            desc=f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
         )
         
         # Skip batches if resuming from checkpoint
@@ -615,16 +616,21 @@ def train():
                 progress_bar.update(1)
                 global_step += 1
                 
+                # MODIFIED: Update progress bar description with current global step
+                progress_bar.set_description(
+                    f"Epoch {epoch + 1}/{NUM_TRAIN_EPOCHS} (Global Step: {global_step}/{max_train_steps})"
+                )
+                
                 if global_step % LOGGING_STEPS == 0:
                     avg_loss = total_loss / LOGGING_STEPS
                     current_lr = lr_scheduler.get_last_lr()[0] if hasattr(lr_scheduler, 'get_last_lr') else LEARNING_RATE
                     
-                    # Log memory usage
+                    # Log memory usage with global step info
                     if torch.cuda.is_available() and accelerator.is_local_main_process:
                         memory_used = torch.cuda.max_memory_allocated() / 1024**3
-                        logger.info(f"Step {global_step}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}, GPU mem={memory_used:.2f}GB")
+                        logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}, GPU mem={memory_used:.2f}GB")
                     else:
-                        logger.info(f"Step {global_step}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}")
+                        logger.info(f"Global Step {global_step}/{max_train_steps}: avg_loss={avg_loss:.4f}, lr={current_lr:.2e}")
                     
                     if accelerator.is_main_process:
                         accelerator.log(
@@ -639,7 +645,7 @@ def train():
                 
                 if global_step % EVAL_STEPS == 0:
                     eval_loss = evaluate(model, val_dataloader, accelerator)
-                    logger.info(f"Step {global_step}: eval_loss={eval_loss:.4f}")
+                    logger.info(f"Global Step {global_step}/{max_train_steps}: eval_loss={eval_loss:.4f}")
                     
                     if accelerator.is_main_process:
                         accelerator.log({"eval_loss": eval_loss}, step=global_step)
@@ -654,7 +660,7 @@ def train():
                 
                 if global_step % SAVE_STEPS == 0:
                     checkpoint_dir = os.path.join(OUTPUT_DIR, f"checkpoint-{global_step}")
-                    logger.info(f"Saving checkpoint at step {global_step}")
+                    logger.info(f"Saving checkpoint at Global Step {global_step}/{max_train_steps}")
                     
                     try:
                         # Add timeout to prevent hanging
@@ -679,10 +685,14 @@ def train():
         progress_bar.close()
         
         eval_loss = evaluate(model, val_dataloader, accelerator)
-        logger.info(f"Epoch {epoch + 1} finished: eval_loss={eval_loss:.4f}")
+        logger.info(f"Epoch {epoch + 1} finished (Global Step {global_step}/{max_train_steps}): eval_loss={eval_loss:.4f}")
         
         if accelerator.is_main_process:
             accelerator.log({"epoch_eval_loss": eval_loss}, step=global_step)
+    
+    # Close progress bar after all epochs are done
+    if 'progress_bar' in locals():
+        progress_bar.close()
     
     # Save final checkpoint
     final_checkpoint_dir = os.path.join(OUTPUT_DIR, "final_model")
@@ -695,7 +705,7 @@ def train():
     
     logger.info("Training completed!")
     accelerator.end_training()
-
+    
 # ================================================================================
 # EVALUATION FUNCTION
 # ================================================================================

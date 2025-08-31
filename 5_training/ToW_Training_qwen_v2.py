@@ -5,8 +5,8 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_qwem_v2.py
-torchrun --nproc_per_node=4 ToW_Training_qwem_v2.py
+deepspeed --num_gpus=2 ToW_Training_qwen_v2.py
+torchrun --nproc_per_node=4 ToW_Training_qwen_v2.py
 """
 
 import os
@@ -608,11 +608,10 @@ def train():
         training_state = load_training_state(last_checkpoint)
         if training_state:
             global_step = training_state["global_step"]
-            starting_epoch = training_state["epoch"]
             best_eval_loss = training_state.get("best_eval_loss", float('inf'))
-            resumed_from_checkpoint = True
             
-            logger.info(f"Resumed from step {global_step}, epoch {starting_epoch}")
+            current_epoch_float = global_step / num_update_steps_per_epoch
+            logger.info(f"Resumed from step {global_step}, epoch {current_epoch_float:.2f}")
             logger.info(f"Best eval loss so far: {best_eval_loss:.4f}")
         else:
             logger.warning("Could not load training state, starting fresh")
@@ -732,10 +731,10 @@ def train():
             steps_in_current_epoch += 1
             
             # Update progress bar
-            current_epoch_display = current_epoch + (steps_in_current_epoch / num_update_steps_per_epoch)
+            current_epoch_float = global_step / num_update_steps_per_epoch
             progress_bar.update(1)
             progress_bar.set_postfix({
-                'epoch': f'{current_epoch_display:.2f}',
+                'epoch': f'{current_epoch_float:.2f}',
                 'loss': f'{loss.item():.4f}',
                 'lr': f'{lr_scheduler.get_last_lr()[0]:.2e}'
             })
@@ -745,14 +744,16 @@ def train():
                 avg_loss = total_loss / LOGGING_STEPS
                 current_lr = lr_scheduler.get_last_lr()[0]
                 
-                logger.info(f"Step {global_step}/{max_train_steps} | Epoch {current_epoch_display:.2f} | loss={avg_loss:.4f} | lr={current_lr:.2e}")
-                
+                current_epoch_float = global_step / num_update_steps_per_epoch
+
+                logger.info(f"Step {global_step}/{max_train_steps} | Epoch {current_epoch_float:.2f} | loss={avg_loss:.4f} | lr={current_lr:.2e}")
+
                 if accelerator.is_main_process:
                     accelerator.log(
                         {
                             "train_loss": avg_loss,
                             "learning_rate": current_lr,
-                            "epoch": current_epoch_display,
+                            "epoch": current_epoch_float,
                         },
                         step=global_step,
                     )

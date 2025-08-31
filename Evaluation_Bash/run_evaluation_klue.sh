@@ -7,10 +7,10 @@ MODEL_NAMES=(
     "google_gemma-3-4b-it"
     "Qwen2.5-3B-Instruct"
     "Llama-3.2-3B-Instruct"
-    "DeepSeek-R1-Distill-Qwen-1.5B-ToW"
-    "google_gemma-3-4b-it-ToW"
-    "Qwen2.5-3B-Instruct-ToW"
-    "Llama-3.2-3B-Instruct-ToW"
+    "DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion"
+    "google_gemma-3-4b-it-ToW-completion"
+    "Qwen2.5-3B-Instruct-ToW-completion"
+    "Llama-3.2-3B-Instruct-ToW-completion"
 )
 
 MODEL_PATHS=(
@@ -29,10 +29,10 @@ ADAPTER_PATHS=(
     ""
     ""
     ""
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/DeepSeek-R1-Distill-Qwen-1.5B-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/google_gemma-3-4b-it-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Qwen2.5-3B-Instruct-ToW"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/ToW_Models_2/Llama-3.2-3B-Instruct-ToW"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-it-tow"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow"
 )
 
 # KLUE 전체 8개 태스크

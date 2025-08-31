@@ -47,7 +47,7 @@ from deepspeed import DeepSpeedConfig
 
 # Model Configuration
 MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-OUTPUT_DIR = "./tow_trained_models/google_gemma-3-4b-it-tow"
+OUTPUT_DIR = "./tow_trained_models/gemma-3-4b-it-tow"
 CACHE_DIR = "./cache"
 
 
@@ -61,7 +61,7 @@ NUM_TRAIN_EPOCHS = 10
 PER_DEVICE_TRAIN_BATCH_SIZE = 2  # Reduced from 4
 PER_DEVICE_EVAL_BATCH_SIZE = 2   # Reduced from 4
 GRADIENT_ACCUMULATION_STEPS = 16  # Increased from 8 to maintain effective batch size
-MAX_SEQ_LENGTH = 2048  # Reduced from 2048
+MAX_SEQ_LENGTH = 1500  # Reduced from 2048
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -454,7 +454,10 @@ def evaluate(model, dataloader, accelerator):
 
 def train():
     """Main training function with single global progress bar"""
-    
+    # DDP 설정을 위한 환경 변수
+    os.environ["NCCL_P2P_DISABLE"] = "1"
+    os.environ["TORCH_DISTRIBUTED_DEBUG"] = "INFO"
+
     # Set environment variables
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -464,6 +467,14 @@ def train():
         torch.cuda.reset_peak_memory_stats()
     
     set_seed(SEED)
+
+    # DDP kwargs 설정 - 여기에 find_unused_parameters 추가
+    from accelerate.utils import DistributedDataParallelKwargs
+    ddp_kwargs = DistributedDataParallelKwargs(
+        find_unused_parameters=True,
+        bucket_cap_mb=25,
+        static_graph=False  # 이 옵션 추가
+    )
     kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))
     
     # Initialize Accelerator
@@ -471,9 +482,9 @@ def train():
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         log_with="tensorboard",
         project_dir=OUTPUT_DIR,
-        kwargs_handlers=[kwargs],
-        mixed_precision="bf16"
-    )
+        kwargs_handlers=[kwargs, ddp_kwargs],
+        mixed_precision="bf16",
+        )
     
     logger = get_logger(__name__)
     logger.setLevel(logging.INFO if accelerator.is_local_main_process else logging.ERROR)
@@ -546,9 +557,15 @@ def train():
             embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding
             logger.info("Initialized ToW tokens with '---' token embedding")
         
+        # Gradient checkpointing을 조건부로 활성화
         if hasattr(model, "gradient_checkpointing_enable"):
-            model.gradient_checkpointing_enable()
-            logger.info("Enabled gradient checkpointing")
+            # DDP를 사용하지 않을 때만 활성화하거나
+            # 또는 다른 방식으로 메모리 최적화
+            if accelerator.num_processes == 1:  # 단일 GPU인 경우만
+                model.gradient_checkpointing_enable()
+                logger.info("Enabled gradient checkpointing")
+            else:
+                logger.info("Skipping gradient checkpointing for multi-GPU training")
         
         if hasattr(model.config, "use_cache"):
             model.config.use_cache = False
@@ -608,11 +625,11 @@ def train():
         training_state = load_training_state(last_checkpoint)
         if training_state:
             global_step = training_state["global_step"]
-            starting_epoch = training_state["epoch"]
             best_eval_loss = training_state.get("best_eval_loss", float('inf'))
-            resumed_from_checkpoint = True
             
-            logger.info(f"Resumed from step {global_step}, epoch {starting_epoch}")
+            current_epoch_float = global_step / num_update_steps_per_epoch
+            logger.info(f"Resumed from step {global_step}, epoch {current_epoch_float:.2f}")
+
             logger.info(f"Best eval loss so far: {best_eval_loss:.4f}")
         else:
             logger.warning("Could not load training state, starting fresh")
@@ -732,10 +749,10 @@ def train():
             steps_in_current_epoch += 1
             
             # Update progress bar
-            current_epoch_display = current_epoch + (steps_in_current_epoch / num_update_steps_per_epoch)
+            current_epoch_float = global_step / num_update_steps_per_epoch
             progress_bar.update(1)
             progress_bar.set_postfix({
-                'epoch': f'{current_epoch_display:.2f}',
+                'epoch': f'{current_epoch_float:.2f}',
                 'loss': f'{loss.item():.4f}',
                 'lr': f'{lr_scheduler.get_last_lr()[0]:.2e}'
             })
@@ -745,14 +762,16 @@ def train():
                 avg_loss = total_loss / LOGGING_STEPS
                 current_lr = lr_scheduler.get_last_lr()[0]
                 
-                logger.info(f"Step {global_step}/{max_train_steps} | Epoch {current_epoch_display:.2f} | loss={avg_loss:.4f} | lr={current_lr:.2e}")
-                
+                current_epoch_float = global_step / num_update_steps_per_epoch
+
+                logger.info(f"Step {global_step}/{max_train_steps} | Epoch {current_epoch_float:.2f} | loss={avg_loss:.4f} | lr={current_lr:.2e}")
+
                 if accelerator.is_main_process:
                     accelerator.log(
                         {
                             "train_loss": avg_loss,
                             "learning_rate": current_lr,
-                            "epoch": current_epoch_display,
+                            "epoch": current_epoch_float,
                         },
                         step=global_step,
                     )

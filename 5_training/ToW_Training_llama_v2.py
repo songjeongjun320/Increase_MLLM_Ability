@@ -40,6 +40,13 @@ from datasets import load_dataset, Dataset as HFDataset, DatasetDict
 from tqdm.auto import tqdm
 import deepspeed
 from deepspeed import DeepSpeedConfig
+from peft import (
+    LoraConfig,
+    get_peft_model,
+    TaskType,
+    PeftModel,
+    prepare_model_for_kbit_training
+)
 
 # ================================================================================
 # CONFIGURATION SECTION - MEMORY OPTIMIZED
@@ -47,20 +54,20 @@ from deepspeed import DeepSpeedConfig
 
 # Model Configuration
 MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow"
+OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow-lora"
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
 DATASET_PATH = "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
 VALIDATION_SPLIT = 0.1
 
-# Training Hyperparameters - REDUCED FOR MEMORY
-LEARNING_RATE = 2e-5
+# Training Hyperparameters - OPTIMIZED FOR LORA
+LEARNING_RATE = 3e-4  # Higher LR for LoRA training
 NUM_TRAIN_EPOCHS = 10
-PER_DEVICE_TRAIN_BATCH_SIZE = 2  # Reduced from 4
-PER_DEVICE_EVAL_BATCH_SIZE = 2   # Reduced from 4
-GRADIENT_ACCUMULATION_STEPS = 16  # Increased from 8 to maintain effective batch size
-MAX_SEQ_LENGTH = 2048  # Reduced from 2048
+PER_DEVICE_TRAIN_BATCH_SIZE = 4  # Can increase due to memory efficiency of LoRA
+PER_DEVICE_EVAL_BATCH_SIZE = 4   # Can increase due to memory efficiency of LoRA
+GRADIENT_ACCUMULATION_STEPS = 8   # Reduced due to increased batch size
+MAX_SEQ_LENGTH = 2048
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -87,6 +94,26 @@ QUANTIZATION_CONFIG = {
     "bnb_4bit_compute_dtype": torch.float16,
     "bnb_4bit_quant_type": "nf4",
     "bnb_4bit_use_double_quant": True,
+}
+
+# LoRA Configuration
+USE_LORA = True
+LORA_CONFIG = {
+    "r": 16,  # LoRA rank
+    "lora_alpha": 32,  # LoRA scaling parameter
+    "target_modules": [
+        "q_proj",
+        "k_proj", 
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+        "lm_head"
+    ],
+    "lora_dropout": 0.1,
+    "bias": "none",
+    "task_type": TaskType.CAUSAL_LM,
 }
 
 # DeepSpeed Configuration - HEAVILY OPTIMIZED FOR MEMORY
@@ -257,7 +284,11 @@ def save_training_state(accelerator, model, tokenizer, optimizer, lr_scheduler,
         
         # Save model config
         unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.config.save_pretrained(checkpoint_dir)
+        if USE_LORA:
+            # For PEFT models, save the adapter config and weights
+            unwrapped_model.save_pretrained(checkpoint_dir)
+        else:
+            unwrapped_model.config.save_pretrained(checkpoint_dir)
         
         # Save training state info
         training_state = {
@@ -407,11 +438,15 @@ def save_best_model(accelerator, model, tokenizer, best_eval_loss, output_dir):
         os.makedirs(best_model_dir, exist_ok=True)
         
         unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.save_pretrained(
-            best_model_dir,
-            save_function=accelerator.save,
-            safe_serialization=True
-        )
+        if USE_LORA:
+            # For PEFT models, save only the adapter weights
+            unwrapped_model.save_pretrained(best_model_dir)
+        else:
+            unwrapped_model.save_pretrained(
+                best_model_dir,
+                save_function=accelerator.save,
+                safe_serialization=True
+            )
         
         tokenizer.save_pretrained(best_model_dir)
         
@@ -544,6 +579,14 @@ def train():
             embeddings.weight.data[len(tokenizer)-2, :] = dash_embedding
             embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding
             logger.info("Initialized ToW tokens with '---' token embedding")
+        
+        # Apply LoRA if enabled
+        if USE_LORA:
+            logger.info("Applying LoRA configuration...")
+            lora_config = LoraConfig(**LORA_CONFIG)
+            model = get_peft_model(model, lora_config)
+            model.print_trainable_parameters()
+            logger.info("LoRA adapters applied successfully")
         
         if hasattr(model, "gradient_checkpointing_enable"):
             model.gradient_checkpointing_enable()

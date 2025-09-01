@@ -5,7 +5,7 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_llama_v2.py
+deepspeed --num_gpus=2 --master_port=29500 ToW_Training_llama_v2.py
 torchrun --nproc_per_node=4 ToW_Training_llama_v2.py
 """
 
@@ -33,7 +33,7 @@ from transformers import (
     get_scheduler,
     set_seed,
 )
-from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate import Accelerator, DeepSpeedPlugin, DistributedDataParallelKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import InitProcessGroupKwargs
 from datasets import load_dataset, Dataset as HFDataset, DatasetDict
@@ -46,6 +46,11 @@ from peft import (
     TaskType,
     PeftModel,
     prepare_model_for_kbit_training
+)
+
+ddp_kwargs = DistributedDataParallelKwargs(
+    find_unused_parameters=True,
+    broadcast_buffers=False
 )
 
 # ================================================================================
@@ -505,7 +510,7 @@ def train():
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         log_with="tensorboard",
         project_dir=OUTPUT_DIR,
-        kwargs_handlers=[kwargs],
+        kwargs_handlers=[kwargs, ddp_kwargs],
         mixed_precision="bf16"
     )
     

@@ -73,14 +73,14 @@ MODEL_CONFIGS = [
     # ),
     ModelConfig(
         name="Llama-3.2-3B-Instruct-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/best_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
         use_quantization=False
     ),
 ]
@@ -133,42 +133,84 @@ def prepare_kmmlu_data_with_dev_split(data, dev_shots_per_subject=5):
     logger.info(f"Split Korean MMLU data: {len(dev_data)} subjects with dev examples, {len(test_data)} test items")
     return dev_data, test_data
 
-def create_5shot_korean_prompt(test_item, dev_examples):
+# --- Generic 5-shot Korean examples ---
+GENERIC_5_SHOT_KOREAN_EXAMPLES = [
+    {
+        "question": "대중사회이론의 주장으로 옳은 것을 고르시오.",
+        "choices": {
+            "A": "미디어 내용은 시장의 힘에 의해 결정된다",
+            "B": "하층계급은 지배계급의 이데올로기 지배를 받는다", 
+            "C": "미디어는 '대중'을 취약하고 수동적인 소비자로 조작한다",
+            "D": "청중은 미디어 메시지를 선택적으로 해석한다"
+        },
+        "answer": "C"
+    },
+    {
+        "question": "2011년 물가를 기준으로 인플레이션과 구매력평가(PPP)를 조정했을 때 1850년 미국의 1인당 GDP?",
+        "choices": {
+            "A": "약 $300",
+            "B": "약 $3000",
+            "C": "약 $8000", 
+            "D": "약 $15000"
+        },
+        "answer": "B"
+    },
+    {
+        "question": "로비스트들이 국회의원들을 설득하는 방법에 해당하지 않는 것은 어느 것입니까?",
+        "choices": {
+            "A": "미디어에의 선전물 배포",
+            "B": "공직 후보자 지지",
+            "C": "정부 관료들과의 교류",
+            "D": "후보자를 위한 기업 선거운동 기부금 획득"
+        },
+        "answer": "D"
+    },
+    {
+        "question": "전위차법의 DC 전압 측정은 전압계를 사용한 직접 측정보다 더 정확한데, 다음 중 그 이유는 무엇입니까?",
+        "choices": {
+            "A": "회로에 적절한 부하를 주기 때문이다.",
+            "B": "회로에 최대한의 부하를 주기 때문이다.",
+            "C": "전압계 대신 센터 제로 검류계를 사용하기 때문이다.",
+            "D": "회로에 부하를 전혀 주지 않기 때문이다."
+        },
+        "answer": "D"
+    },
+    {
+        "question": "밀턴 프리드먼은 기업의 유일한 책임이 무엇이라고 생각하나요?",
+        "choices": {
+            "A": "기업의 유일한 사회적 책임은 주주에 대한 것이다.",
+            "B": "관리자는 사회와 주주의 이익이 균형을 이루는 방식으로 행동해야 한다.",
+            "C": "조직이 갖는 주요 책임은 직원에 대한 것이다.",
+            "D": "조직이 갖는 주요 책임은 주주에 대한 것이다."
+        },
+        "answer": "A"
+    }
+]
+
+def create_generic_5shot_korean_prompt(test_item):
     """
-    Create improved 5-shot Korean MMLU prompt with clear answer format instructions.
-    Based on patterns that work well for avoiding extraction issues.
-    """  
-    prompt_parts = [f"다음은 객관식 문제입니다."]
+    Create improved 5-shot Korean MMLU prompt using generic examples from different subjects.
+    """
+    subject = test_item.get("Subject", "unknown")
+    subject_display = subject.replace("_", " ").title()
+    
+    prompt_parts = [f"다음은 다양한 주제({subject_display} 포함)에 대한 객관식 문제입니다."]
     prompt_parts.append("")  # Empty line
     
-    # Add development examples (few-shot examples)
-    for i, example in enumerate(dev_examples):
-        question = example.get("Question", "")
-        answer_letter = example.get("Answer", "A")
-        
-        # Get choices from Korean MMLU format
-        choice_a = example.get("A", "선택지 A")
-        choice_b = example.get("B", "선택지 B")
-        choice_c = example.get("C", "선택지 C")
-        choice_d = example.get("D", "선택지 D")
-        
-        # Format with clear structure
-        prompt_parts.append(f"문제: {question}")
-        prompt_parts.append(f"A. {choice_a}")
-        prompt_parts.append(f"B. {choice_b}")
-        prompt_parts.append(f"C. {choice_c}")
-        prompt_parts.append(f"D. {choice_d}")
-        
-        # Use clear answer format that's easy to extract
-        prompt_parts.append(f"정답: 정답은 {answer_letter}입니다.")
+    # Add the 5 generic Korean examples
+    for i, example in enumerate(GENERIC_5_SHOT_KOREAN_EXAMPLES):
+        prompt_parts.append(f"문제: {example['question']}")
+        prompt_parts.append(f"A. {example['choices']['A']}")
+        prompt_parts.append(f"B. {example['choices']['B']}")
+        prompt_parts.append(f"C. {example['choices']['C']}")
+        prompt_parts.append(f"D. {example['choices']['D']}")
+        prompt_parts.append(f"정답: 따라서 정답은 {example['answer']}입니다.")
         prompt_parts.append("")  # Empty line between examples
     
-    # Add test question with clear instructions
+    # Add test question
     test_question = test_item.get("Question", "")
-    
-    # Get choices for test question
     test_choice_a = test_item.get("A", "선택지 A")
-    test_choice_b = test_item.get("B", "선택지 B")
+    test_choice_b = test_item.get("B", "선택지 B") 
     test_choice_c = test_item.get("C", "선택지 C")
     test_choice_d = test_item.get("D", "선택지 D")
     
@@ -177,7 +219,6 @@ def create_5shot_korean_prompt(test_item, dev_examples):
     prompt_parts.append(f"B. {test_choice_b}")
     prompt_parts.append(f"C. {test_choice_c}")
     prompt_parts.append(f"D. {test_choice_d}")
-    prompt_parts.append("")
     
     # Clear instructions for answer format
     prompt_parts.append("")
@@ -298,7 +339,7 @@ def get_ground_truth_origin(item):
         return answer.upper()
     return None
 
-# --- Batch Processing Function ---
+# Update process_batch function to use 1024 max_length and Korean extraction
 def process_batch(model, tokenizer, batch_prompts, batch_indices):
     """Processes a batch of prompts efficiently."""
     try:
@@ -307,7 +348,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=2048 # Increased max length for 5-shot
+            max_length=1024  # Reduced from 2048
         ).to(DEVICE)
 
         with torch.no_grad():
@@ -391,36 +432,34 @@ def process_single_with_retry(model, tokenizer, prompt, index, max_retries=5):
 
 
 # --- Single Model Evaluation Function (Uses BASE_OUTPUT_DIR) ---
-
+# Modified evaluation function for Korean MMLU with generic 5-shot
 def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir: str):
     """
-    주어진 설정의 단일 모델에 대해 5-shot Korean MMLU 평가를 수행하고,
+    주어진 설정의 단일 모델에 대해 generic 5-shot Korean MMLU 평가를 수행하고,
     결과와 로그를 base_output_dir 아래 모델 이름의 하위 디렉토리에 저장합니다.
     """
-    # Split data into development (few-shot examples) and test sets
-    dev_data, test_data = prepare_kmmlu_data_with_dev_split(mmlu_data, dev_shots_per_subject=5)
+    # Remove the data splitting part since we're using all data as test data
+    test_data = mmlu_data
     
-    # Sampling
-    # test_data = test_data[:10]
-
     if not test_data:
-        logger.error("No test data available after dev/test split. Check data size and dev_shots_per_subject setting.")
+        logger.error("No test data available.")
         return
 
+    # Sampling for testing (uncomment if needed)
+    # test_data = test_data[:50]
+
     # Construct model-specific output directory and file paths
-    model_output_dir = os.path.join(base_output_dir, config.name) # Subdirectory per model
+    model_output_dir = os.path.join(base_output_dir, config.name)
     os.makedirs(model_output_dir, exist_ok=True)
     results_filepath = os.path.join(model_output_dir, f"results_{config.name}.json")
     log_filepath = os.path.join(model_output_dir, f"eval_{config.name}.log")
     raw_gen_filepath = os.path.join(model_output_dir, f"raw_generations_{config.name}.json")
     failure_cases_filepath = os.path.join(model_output_dir, f"failure_cases_{config.name}.json")
 
-
     # --- Setup Logging for this specific model ---
-    file_handler = logging.FileHandler(log_filepath, mode='w') # Overwrite log file each time
+    file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
     file_handler.setFormatter(formatter)
-    # Add handler to the root logger for this run
     root_logger = logging.getLogger()
     # 기존 파일 핸들러 제거 (중복 로깅 방지)
     for handler in list(root_logger.handlers):
@@ -444,10 +483,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
 
     model = None
     tokenizer = None
+    
     try:
-        # --- Load Model and Tokenizer ---
-        # 1. Determine the correct path for the tokenizer.
-        # If an adapter is used, the updated tokenizer is saved with it.
+        # --- Load Model and Tokenizer (same as before) ---
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
         tokenizer = AutoTokenizer.from_pretrained(
@@ -462,13 +500,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 logger.info("Tokenizer does not have a pad token, setting to eos_token.")
                 tokenizer.pad_token = tokenizer.eos_token
             else:
-                # Add a pad token if EOS is also missing (rare but possible)
                 logger.warning("Tokenizer lacks both pad and eos tokens. Adding a new pad token '[PAD]'.")
                 tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-                # Important: If a new token is added, the model needs resizing.
-                # This should ideally happen BEFORE loading weights, but we'll do it here
-                # and hope the loaded model can handle it or has a resizable embedding layer.
-                # model.resize_token_embeddings(len(tokenizer)) # Needs model loaded first
 
         logger.info(f"Loading model {config.model_id}...")
         quantization_config_bnb = None
@@ -490,12 +523,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             cache_dir=CACHE_DIR
         )
 
-        # 3. Resize model embeddings to match the tokenizer's vocabulary size BEFORE loading the adapter.
         if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
             logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
             model.resize_token_embeddings(len(tokenizer))
 
-        # 4. Load the LoRA adapter onto the correctly-sized base model.
         if config.adapter_path:
             absolute_adapter_path = os.path.abspath(config.adapter_path)
             logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
@@ -506,32 +537,23 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             try:
                 model = PeftModel.from_pretrained(model, absolute_adapter_path)
                 logger.info("Successfully loaded LoRA adapter.")
-                # Optional: Merge the adapter for faster inference
-                # model = model.merge_and_unload()
-                # logger.info("LoRA adapter merged into the base model.")
             except Exception as e:
                 logger.error(f"Failed to load LoRA adapter from {absolute_adapter_path}: {e}")
                 raise e
         else:
             logger.info("No LoRA adapter path specified. Using the base model directly.")
-        # === END: LoRA Adapter Loading Logic ===
 
-        # Handle tokenizer pad token ID config *after* model load
         if tokenizer.pad_token == tokenizer.eos_token and hasattr(model.config, "pad_token_id"):
             model.config.pad_token_id = tokenizer.eos_token_id
-
-        # Resize if we added a pad token (best effort after loading)
-        if tokenizer.pad_token == '[PAD]' and hasattr(model, 'resize_token_embeddings'):
+        elif tokenizer.pad_token == '[PAD]' and hasattr(model, 'resize_token_embeddings'):
              logger.warning("Resizing model embeddings after load due to added PAD token.")
              model.resize_token_embeddings(len(tokenizer))
              if hasattr(model.config, "pad_token_id"):
                   model.config.pad_token_id = tokenizer.pad_token_id
 
-
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
 
-        # Gemma 모델에서만 컴파일 비활성화
         if "gemma" in config.name.lower():
             torch._dynamo.config.disable = True
             logger.info("Disabled torch compilation for Gemma model")
@@ -542,13 +564,12 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         errors = 0
         results_details = []
         raw_generations_list = []
-        failure_cases_list = []  # New: Track failure cases separately
+        failure_cases_list = []
 
-        logger.info("Starting inference loop...")
-        logger.info("Starting 5-shot Korean MMLU inference loop...")
+        logger.info("Starting generic 5-shot Korean MMLU inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
         
-        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (5-shot Korean, errors: 0)")
+        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (generic 5-shot Korean, errors: 0)")
         for i in pbar:
             batch_data = test_data[i:i+BATCH_SIZE]
             batch_prompts = []
@@ -561,52 +582,36 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 item_index_for_log = item.get("index", current_index)
                 ground_truth = get_ground_truth_origin(item)
                 
-                if not ground_truth or ground_truth not in ["A", "B", "C", "D"]:
+                # Use generic 5-shot Korean prompt (no need for subject-specific dev examples)
+                prompt = create_generic_5shot_korean_prompt(item)
+
+                if ground_truth is None or prompt is None:
                     errors += 1
-                    failure_reason = "SKIPPED - Invalid Ground Truth"
-                    results_details.append({"index": current_index, "ground_truth": None, "model_raw_output": failure_reason, "predicted_answer": None, "is_correct": False})
-                    raw_generations_list.append({
-                        "index": current_index, "subject": item.get("Subject", "unknown"), "ground_truth": None,
-                        "raw_output": failure_reason, "extracted_answer": None
+                    output_reason = "SKIPPED - Invalid Ground Truth" if ground_truth is None else "SKIPPED - Prompt Creation Failed"
+                    failure_type = "invalid_ground_truth" if ground_truth is None else "prompt_creation_failed"
+                    
+                    results_details.append({
+                        "index": item_index_for_log, "ground_truth": ground_truth, "model_raw_output": output_reason,
+                        "predicted_answer": None, "is_correct": False
                     })
-                    # Add to failure cases
+                    raw_generations_list.append({
+                        "index": item_index_for_log, "subject": item.get("Subject", "unknown"), "ground_truth": ground_truth,
+                        "raw_output": output_reason, "extracted_answer": None
+                    })
+                    
                     failure_cases_list.append({
-                        "index": current_index,
+                        "index": item_index_for_log,
                         "subject": item.get("Subject", "unknown"),
                         "question": item.get("Question", ""),
                         "ground_truth": ground_truth,
-                        "failure_type": "invalid_ground_truth",
-                        "failure_reason": failure_reason,
-                        "raw_output": failure_reason
+                        "failure_type": failure_type,
+                        "failure_reason": output_reason,
+                        "raw_output": output_reason
                     })
                     continue
                 
-                subject = item.get("Subject", "unknown")
-                dev_examples = dev_data.get(subject, [])
-                prompt = create_5shot_korean_prompt(item, dev_examples) if dev_examples else None
-
-                if prompt is None:
-                    errors += 1
-                    failure_reason = "SKIPPED - Prompt Creation Failed"
-                    results_details.append({"index": current_index, "ground_truth": ground_truth, "model_raw_output": failure_reason, "predicted_answer": None, "is_correct": False})
-                    raw_generations_list.append({
-                        "index": current_index, "subject": subject, "ground_truth": ground_truth,
-                        "raw_output": failure_reason, "extracted_answer": None
-                    })
-                    # Add to failure cases
-                    failure_cases_list.append({
-                        "index": current_index,
-                        "subject": subject,
-                        "question": item.get("Question", ""),
-                        "ground_truth": ground_truth,
-                        "failure_type": "prompt_creation_failed",
-                        "failure_reason": failure_reason,
-                        "raw_output": failure_reason
-                    })
-                    continue
-
                 batch_prompts.append(prompt)
-                batch_indices.append(current_index)
+                batch_indices.append(item_index_for_log)
                 batch_ground_truths.append(ground_truth)
                 batch_original_items.append(item)
 
@@ -614,37 +619,11 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 continue
             
             batch_results = process_batch(model, tokenizer, batch_prompts, batch_indices)
-            
-            # # Retry logic for failed answer extractions
-            # retry_indices = []
-            # retry_prompts = []
-            # retry_ground_truths = []
-            # retry_original_items = []
-            
-            # for i, result in enumerate(batch_results):
-            #     if result['extracted_answer'] is None and not result['raw_output'].startswith("ERROR"):
-            #         # Need to retry this one
-            #         retry_indices.append(i)
-            #         retry_prompts.append(batch_prompts[i])
-            #         retry_ground_truths.append(batch_ground_truths[i])
-            #         retry_original_items.append(batch_original_items[i])
-            
-            # # Process retries individually
-            # if retry_indices:
-            #     logger.info(f"Retrying {len(retry_indices)} failed extractions with individual processing...")
-            #     for j, retry_idx in enumerate(retry_indices):
-            #         retry_result = process_single_with_retry(
-            #             model, tokenizer, retry_prompts[j], 
-            #             batch_results[retry_idx]['index']
-            #         )
-            #         # Update the original result
-            #         batch_results[retry_idx] = retry_result
 
             for result, ground_truth, original_item in zip(batch_results, batch_ground_truths, batch_original_items):
                 model_answer = result['extracted_answer']
                 generated_text = result['raw_output']
                 is_correct = False
-                retry_info = f" (after {result.get('retry_count', 0) + 1} attempts)" if 'retry_count' in result else ""
 
                 if model_answer:
                     total_predictions += 1
@@ -655,11 +634,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                     errors += 1
                     original_generated_text = generated_text
                     if not generated_text.startswith("ERROR"):
-                        if generated_text.startswith("EXTRACTION_FAILED"):
-                            failure_type = "answer_extraction_failed"
-                        else:
-                            generated_text = f"EXTRACTION_FAILED{retry_info}: {generated_text}"
-                            failure_type = "answer_extraction_failed"
+                        generated_text = f"EXTRACTION_FAILED: {generated_text}"
+                        failure_type = "answer_extraction_failed"
                     else:
                         failure_type = "model_error"
                     
@@ -672,7 +648,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                         "failure_type": failure_type,
                         "failure_reason": generated_text,
                         "raw_output": original_generated_text,
-                        "retry_count": result.get('retry_count', 0),
                         "choices": {
                             "A": original_item.get("A", ""),
                             "B": original_item.get("B", ""),
@@ -683,14 +658,14 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
 
                 results_details.append({
                     "index": result['index'], "ground_truth": ground_truth, "model_raw_output": generated_text,
-                    "predicted_answer": model_answer, "is_correct": is_correct, "retry_count": result.get('retry_count', 0)
+                    "predicted_answer": model_answer, "is_correct": is_correct
                 })
                 raw_generations_list.append({
                     "index": result['index'], "subject": original_item.get("Subject", "unknown"), "ground_truth": ground_truth,
-                    "raw_output": generated_text, "extracted_answer": model_answer, "retry_count": result.get('retry_count', 0)
+                    "raw_output": generated_text, "extracted_answer": model_answer
                 })
 
-            pbar.set_description(f"Evaluating {config.name} (5-shot Korean, errors: {errors})")
+            pbar.set_description(f"Evaluating {config.name} (generic 5-shot Korean, errors: {errors})")
 
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
@@ -718,8 +693,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
             if subject_stats[subject]["valid_predictions"] > 0:
                 subject_stats[subject]["accuracy"] = (subject_stats[subject]["correct"] / subject_stats[subject]["valid_predictions"]) * 100
 
-        logger.info(f"--- 5-shot Korean MMLU Results for {config.name} ({config.model_id}) ---")
+        logger.info(f"--- Generic 5-shot Korean MMLU Results for {config.name} ({config.model_id}) ---")
+        logger.info(f"Original Dataset Size: {len(mmlu_data)}")
         logger.info(f"Test Items: {total_processed}")
+        logger.info(f"Generic Korean Examples Used: 5")
         logger.info(f"Valid Predictions: {total_predictions}")
         logger.info(f"Correct Predictions: {correct_predictions}")
         logger.info(f"Errors or Skipped: {errors}")
@@ -731,19 +708,19 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         final_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
-            "evaluation_type": "5-shot Korean MMLU",
+            "evaluation_type": "Generic 5-shot Korean MMLU",
             "total_original_items": len(mmlu_data),
-            "dev_examples_per_subject": 5,
+            "generic_korean_examples_used": 5,
             "test_items": total_processed,
             "valid_predictions": total_predictions,
             "correct_predictions": correct_predictions,
             "errors_or_skipped": errors,
             "accuracy_standard (correct / valid_predictions)": accuracy_standard,
             "accuracy_strict (correct / total_test_items)": accuracy_strict,
-            "subjects_with_dev_examples": list(dev_data.keys()),
             "subject_wise_accuracy": subject_stats,
             "details": results_details
         }
+        
         try:
             with open(results_filepath, 'w', encoding='utf-8') as f:
                 json.dump(final_summary, f, indent=2, ensure_ascii=False)
@@ -751,7 +728,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         except Exception as e:
             logger.error(f"Failed to save results file {results_filepath}: {e}")
 
-        # --- Save Raw Generations ---
+        # Save raw generations and failure cases (same structure as before)
         logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
         try:
             with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
@@ -760,7 +737,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
         except Exception as e:
             logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
 
-        # --- Save Failure Cases ---
         if failure_cases_list:
             logger.info(f"Saving {len(failure_cases_list)} failure cases to {failure_cases_filepath}...")
             try:
@@ -770,7 +746,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                     "failure_cases": failure_cases_list
                 }
                 
-                # Count failure types
                 for case in failure_cases_list:
                     failure_type = case.get("failure_type", "unknown")
                     failure_summary["failure_types"][failure_type] = failure_summary["failure_types"].get(failure_type, 0) + 1
@@ -798,7 +773,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, base_output_dir:
                 file_handler.close()
              except Exception as e:
                 logger.debug(f"Error closing/removing file handler: {e}")
-
 # --- Main Execution Logic (Uses BASE_OUTPUT_DIR) ---
 def main():
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)

@@ -86,14 +86,14 @@ MODEL_CONFIGS = [
     # ),
     ModelConfig(
         name="Llama-3.2-3B-Instruct-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/best_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
         use_quantization=False
     ),
 ]
@@ -113,81 +113,61 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Helper Functions for 5-shot MMLU Evaluation ---
-def prepare_mmlu_data_with_dev_split(data, dev_shots_per_subject=5):
-    """
-    Split MMLU data into development (few-shot examples) and test sets.
-    Uses first N examples per subject as development set.
-    """
-    subjects_data = {}
-    
-    # Group by subject
-    for item in data:
-        subject = item.get("Subject", "unknown")  # MMLU uses 'Subject' field (uppercase)
-        if subject not in subjects_data:
-            subjects_data[subject] = []
-        subjects_data[subject].append(item)
-    
-    dev_data = {}
-    test_data = []
-    
-    for subject, items in subjects_data.items():
-        if len(items) < dev_shots_per_subject:
-            logger.warning(f"Subject {subject} has only {len(items)} items, less than required {dev_shots_per_subject} dev examples")
-            # Use all available items as dev examples, no test items for this subject
-            dev_data[subject] = items
-        else:
-            # First N items as dev examples
-            dev_data[subject] = items[:dev_shots_per_subject]
-            # Remaining items as test
-            test_data.extend(items[dev_shots_per_subject:])
-    
-    logger.info(f"Split data: {len(dev_data)} subjects with dev examples, {len(test_data)} test items")
-    return dev_data, test_data
+# --- Generic 5-shot examples (replacing subject-specific examples) ---
+GENERIC_5_SHOT_EXAMPLES = [
+    {
+        "question": "Mass-society theory suggests that:",
+        "choices": "A. the content of the media is determined by market forces\nB. the subordinate classes are dominated by the ideology of the ruling class\nC. the media manipulate 'the masses' as vulnerable, passive consumers\nD. audiences make selective interpretations of media messages",
+        "explanation": "Mass-society theory suggests that media content is used to manipulate the masses as passive consumers, who are vulnerable to external influence. Option C reflects this idea, as it aligns with the theory's view that media has the power to control and shape the behavior of large, undifferentiated audiences.",
+        "answer": "C"
+    },
+    {
+        "question": "What was GDP per capita in the United States in 1850 when adjusting for inflation and PPP in 2011 prices?",
+        "choices": "A. About $300\nB. About $3k\nC. About $8k\nD. About $15k",
+        "explanation": "To estimate GDP per capita in 1850 using inflation-adjusted and PPP-adjusted 2011 prices, historical economic data suggests that early industrial societies like the United States had modest per capita income compared to modern standards. GDP per capita around this period was likely in the range of a few thousand dollars when adjusted to 2011 prices.",
+        "answer": "B"
+    },
+    {
+        "question": "Which common public relations tactic involves sending journalists on visits to appropriate locations?",
+        "choices": "A. Media release\nB. Media tour\nC. Press room\nD. Promotional days/weeks",
+        "explanation": "A media tour involves sending journalists to relevant locations to give them firsthand experience of a product, service, or event. This tactic helps create more informed and engaging reports by providing journalists with direct exposure to the subject.",
+        "answer": "B"
+    },
+    {
+        "question": "Potentiometer method of DC voltage measurement is more accurate than direct measurement using a voltmeter because",
+        "choices": "A. It loads the circuit moderately.\nB. It loads the circuit to maximum extent.\nC. It uses centre zero galvanometer instead of voltmeter.\nD. It does not load the circuit at all.",
+        "explanation": "The potentiometer method does not draw current from the circuit being measured when balanced, making it highly accurate for DC voltage measurements.",
+        "answer": "D"
+    },
+    {
+        "question": "What does Milton Friedman believe to be the sole responsibility of business?",
+        "choices": "A. The only social responsibility of business is to its shareholders\nB. Managers should act in ways that balance the interest of society and shareholders\nC. The primary responsibility organizations have is to its employees\nD. The primary responsibility organizations have is to its stakeholders",
+        "explanation": "Milton Friedman famously argued that the social responsibility of business is to increase its profits within the rules of the game, meaning its primary responsibility is to shareholders.",
+        "answer": "A"
+    }
+]
 
-def create_5shot_prompt(test_item, dev_examples):
+def create_generic_5shot_prompt(test_item):
     """
-    Create improved 5-shot MMLU prompt with clear answer format instructions.
-    Based on the pattern that works well for avoiding extraction issues.
+    Create improved 5-shot MMLU prompt using generic examples from different subjects.
     """
-    subject = test_item.get("Subject", "unknown")  # MMLU uses 'Subject' field (uppercase)
-    
-    # Format subject name for display (replace underscores with spaces, capitalize)
+    subject = test_item.get("Subject", "unknown")
     subject_display = subject.replace("_", " ").title()
     
-    prompt_parts = [f"The following are multiple choice questions about {subject_display}."]
+    prompt_parts = [f"The following are multiple choice questions about various topics including {subject_display}."]
     prompt_parts.append("")  # Empty line
     
-    # Add development examples (few-shot examples)
-    for i, example in enumerate(dev_examples):
-        question = example.get("Question", "")  # MMLU uses 'Question' field (uppercase)
-        
-        # Get choices from MMLU format (A, B, C, D fields)
-        choice_a = example.get("A", "Option A")
-        choice_b = example.get("B", "Option B")
-        choice_c = example.get("C", "Option C")
-        choice_d = example.get("D", "Option D")
-        
-        # Answer is already in letter format (A, B, C, D)
-        answer_letter = example.get("Answer", "A")
-        
-        # Format question and choices
-        prompt_parts.append(f"Question: {question}")
-        prompt_parts.append(f"A. {choice_a}")
-        prompt_parts.append(f"B. {choice_b}")
-        prompt_parts.append(f"C. {choice_c}")
-        prompt_parts.append(f"D. {choice_d}")
-        
-        # Use clear answer format that's easy to extract
-        prompt_parts.append(f"Answer: The correct answer is {answer_letter}.")
+    # Add the 5 generic examples
+    for i, example in enumerate(GENERIC_5_SHOT_EXAMPLES):
+        prompt_parts.append(f"Question: {example['question']}")
+        prompt_parts.append(example['choices'])
+        prompt_parts.append(f"Answer: The correct answer is {example['answer']}.")
         prompt_parts.append("")  # Empty line between examples
     
-    # Add test question with clear instructions
-    test_question = test_item.get("Question", "")  # MMLU uses 'Question' field (uppercase)
-    
-    # Get choices for test question from MMLU format
+    # Add test question
+    test_question = test_item.get("Question", "")
     test_choice_a = test_item.get("A", "Option A")
-    test_choice_b = test_item.get("B", "Option B")
+    test_choice_b = test_item.get("B", "Option B") 
     test_choice_c = test_item.get("C", "Option C")
     test_choice_d = test_item.get("D", "Option D")
     
@@ -300,7 +280,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=2048
+            max_length=1024
         ).to(DEVICE)
 
         with torch.no_grad():
@@ -385,17 +365,16 @@ def process_single_with_retry(model, tokenizer, prompt, index=None, max_retries=
 # --- Single Model Evaluation Function with 5-shot Prompting ---
 def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_output_dir: str):
     """
-    주어진 설정의 단일 모델에 대해 5-shot MMLU 평가를 수행하고,
-    결과와 로그를 model_specific_output_dir에 저장합니다.
+    Modified evaluation function that uses generic 5-shot examples instead of subject-specific ones.
     """
-    # Split data into development (few-shot examples) and test sets
-    dev_data, test_data = prepare_mmlu_data_with_dev_split(mmlu_data, dev_shots_per_subject=5)
+    # Remove the data splitting part since we're using all data as test data
+    test_data = mmlu_data
     
     if not test_data:
-        logger.error("No test data available after dev/test split. Check data size and dev_shots_per_subject setting.")
+        logger.error("No test data available.")
         return
 
-    # Sampling
+    # Sampling for testing (uncomment if needed)
     # test_data = test_data[:50]
 
     # 결과 및 로그 파일 경로 설정
@@ -404,25 +383,24 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
     raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}.json")
     failure_cases_filepath = os.path.join(model_specific_output_dir, f"failure_cases_{config.name}.json")
 
-
     # --- Setup Logging for this specific model ---
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
     file_handler.setFormatter(formatter)
     root_logger = logging.getLogger()
     # 기존 파일 핸들러 제거 (중복 로깅 방지)
-    for handler in list(root_logger.handlers): # Iterate over a copy
-        if isinstance(handler, logging.FileHandler) and handler is not file_handler : # 자기 자신은 제외
+    for handler in list(root_logger.handlers):
+        if isinstance(handler, logging.FileHandler) and handler is not file_handler:
             try:
                 handler.close()
                 root_logger.removeHandler(handler)
             except Exception as e:
                 logger.debug(f"Error removing old file handler: {e}")
-    if file_handler not in root_logger.handlers: # 중복 추가 방지
+    if file_handler not in root_logger.handlers:
         root_logger.addHandler(file_handler)
 
     logger.info(f"--- Starting Evaluation for Model: {config.name} ({config.model_id}) ---")
-    logger.info(f"Output directory: {model_specific_output_dir}") # 모델별 출력 디렉토리 로깅
+    logger.info(f"Output directory: {model_specific_output_dir}")
     logger.info(f"Results will be saved to: {results_filepath}")
     logger.info(f"Logs will be saved to: {log_filepath}")
     logger.info(f"Raw generations will be saved to: {raw_gen_filepath}")
@@ -431,12 +409,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
 
     model = None
     tokenizer = None
-    raw_generations_list = [] # 리스트 이름 변경
+    raw_generations_list = []
 
     try:
-        # --- Load Model and Tokenizer ---
-        # 1. Determine the correct path for the tokenizer.
-        # If an adapter is used, the updated tokenizer is saved with it.
+        # --- Load Model and Tokenizer (same as before) ---
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
         tokenizer = AutoTokenizer.from_pretrained(
@@ -452,7 +428,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             else:
                 logger.warning("Tokenizer lacks both pad and eos tokens. Adding a new pad token '[PAD]'.")
                 tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-
 
         logger.info(f"Loading model {config.model_id}...")
         quantization_config_bnb = None
@@ -474,12 +449,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             cache_dir=CACHE_DIR
         )
 
-        # 3. Resize model embeddings to match the tokenizer's vocabulary size BEFORE loading the adapter.
         if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
             logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
             model.resize_token_embeddings(len(tokenizer))
 
-        # 4. Load the LoRA adapter onto the correctly-sized base model.
         if config.adapter_path:
             absolute_adapter_path = os.path.abspath(config.adapter_path)
             logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
@@ -488,12 +461,8 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 raise FileNotFoundError(f"Adapter path not found: {absolute_adapter_path}")
             
             try:
-                # Load the PEFT model by applying the adapter to the base model
                 model = PeftModel.from_pretrained(model, absolute_adapter_path)
                 logger.info("Successfully loaded LoRA adapter.")
-                # If you want to merge the adapter into the model for faster inference:
-                # model = model.merge_and_unload()
-                # logger.info("LoRA adapter merged into the base model.")
             except Exception as e:
                 logger.error(f"Failed to load LoRA adapter from {absolute_adapter_path}: {e}")
                 raise e
@@ -511,23 +480,22 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
 
-        # Gemma 모델에서만 컴파일 비활성화
         if "gemma" in config.name.lower():
             torch._dynamo.config.disable = True
             logger.info("Disabled torch compilation for Gemma model")
             
         # --- Run Evaluation ---
         correct_predictions = 0
-        total_predictions = 0 # 유효한 예측 시도 횟수
-        errors_or_skipped = 0 # 데이터 문제, 프롬프트 생성 실패, 추론 오류, 답변 추출 실패 모두 포함
+        total_predictions = 0
+        errors_or_skipped = 0
         results_details = []
         raw_generations_list = []
-        failure_cases_list = []  # New: Track failure cases separately
+        failure_cases_list = []
 
-        logger.info("Starting 5-shot inference loop...")
+        logger.info("Starting generic 5-shot inference loop...")
         logger.info(f"Test data size: {len(test_data)}")
         
-        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (5-shot, errors: 0)")
+        pbar = tqdm(range(0, len(test_data), BATCH_SIZE), desc=f"Evaluating {config.name} (generic 5-shot, errors: 0)")
         for i in pbar:
             batch_data = test_data[i:i+BATCH_SIZE]
             batch_prompts = []
@@ -539,10 +507,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 current_index = i + j
                 item_index_for_log = item.get("index", current_index)
                 ground_truth = get_ground_truth_origin(item)
-                subject = item.get("Subject", "unknown")
-                dev_examples = dev_data.get(subject, [])
                 
-                prompt = create_5shot_prompt(item, dev_examples) if dev_examples else None
+                # Use generic 5-shot prompt (no need for subject-specific dev examples)
+                prompt = create_generic_5shot_prompt(item)
 
                 if ground_truth is None or prompt is None:
                     errors_or_skipped += 1
@@ -554,14 +521,13 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                         "predicted_answer": None, "is_correct": False
                     })
                     raw_generations_list.append({
-                        "index": item_index_for_log, "subject": subject, "ground_truth": ground_truth,
+                        "index": item_index_for_log, "subject": item.get("Subject", "unknown"), "ground_truth": ground_truth,
                         "raw_output": output_reason, "extracted_answer": None
                     })
                     
-                    # Add to failure cases
                     failure_cases_list.append({
                         "index": item_index_for_log,
-                        "subject": subject,
+                        "subject": item.get("Subject", "unknown"),
                         "question": item.get("Question", ""),
                         "ground_truth": ground_truth,
                         "failure_type": failure_type,
@@ -590,38 +556,10 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     if model_answer_log == ground_truth:
                         correct_predictions += 1
                         is_correct_log = True
-                # else:
-                #     # Batch extraction failed, try individual retry for this item
-                #     if not result['raw_output'].startswith("ERROR"):
-                #         logger.warning(f"Batch extraction failed for item {result['index']}, attempting individual retry...")
-                #         retry_result = process_single_with_retry(model, tokenizer, batch_prompt, result['index'])  # 수정!
-                        
-                #         if retry_result['extracted_answer'] is not None:  # 수정!
-                #             generated_text_log = retry_result['raw_output']  # 수정!
-                #             model_answer_log = retry_result['extracted_answer']  # 수정!
-                #             total_predictions += 1
-                #             if model_answer_log == ground_truth:
-                #                 correct_predictions += 1
-                #                 is_correct_log = True
-                #             logger.info(f"Retry successful for item {result['index']}: extracted '{model_answer_log}'")
-                #         else:
-                #             # Even retry failed
-                #             errors_or_skipped += 1
-                #             original_generated_text = retry_result['raw_output']  # 수정!
-                #             if not retry_result['raw_output'].startswith("ERROR"):  # 수정!
-                #                 logger.warning(f"Item {result['index']}: Failed to extract answer after retries")
-                #                 generated_text_log = f"EXTRACTION_FAILED: {retry_result['raw_output']}"  # 수정!
-                #                 failure_type = "answer_extraction_failed"
-                #             else:
-                #                 # This was a model error, not extraction failure  
-                #                 logger.error(f"Item {result['index']}: Model error: {retry_result['raw_output']}")  # 수정!
-                #                 generated_text_log = retry_result['raw_output']  # 수정!
-                #                 failure_type = "model_error"
-                    else:
-                        # This was already a model error from batch processing
-                        errors_or_skipped += 1
-                        original_generated_text = generated_text_log
-                        failure_type = "model_error"
+                else:
+                    errors_or_skipped += 1
+                    original_generated_text = generated_text_log
+                    failure_type = "model_error"
                         
                     # Add to failure cases only if there's a failure
                     if 'failure_type' in locals():
@@ -650,14 +588,13 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     "raw_output": generated_text_log, "extracted_answer": model_answer_log
                 })
 
-            pbar.set_description(f"Evaluating {config.name} (5-shot, errors: {errors_or_skipped})")
+            pbar.set_description(f"Evaluating {config.name} (generic 5-shot, errors: {errors_or_skipped})")
 
         # --- Final Results ---
         logger.info(f"Inference loop finished for {config.name}.")
         
-        # Calculate two types of accuracy
-        accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0  # correct / valid_predictions
-        accuracy_strict = (correct_predictions / len(test_data) * 100) if len(test_data) > 0 else 0  # correct / total_test_items (including skipped/errors)
+        accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+        accuracy_strict = (correct_predictions / len(test_data) * 100) if len(test_data) > 0 else 0
 
         # --- Calculate Category-wise Accuracy ---
         subject_stats = {}
@@ -679,15 +616,14 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 if result['is_correct']:
                     subject_stats[subject]["correct"] += 1
         
-        # Calculate accuracy for each subject
         for subject in subject_stats:
             if subject_stats[subject]["valid_predictions"] > 0:
                 subject_stats[subject]["accuracy"] = (subject_stats[subject]["correct"] / subject_stats[subject]["valid_predictions"]) * 100
 
-        logger.info(f"--- 5-shot MMLU Results for {config.name} ({config.model_id}) ---")
+        logger.info(f"--- Generic 5-shot MMLU Results for {config.name} ({config.model_id}) ---")
         logger.info(f"Original Dataset Size: {len(mmlu_data)}")
-        logger.info(f"Test Items (after dev/test split): {len(test_data)}")
-        logger.info(f"Development Examples per Subject: 5")
+        logger.info(f"Test Items: {len(test_data)}")
+        logger.info(f"Generic Examples Used: 5")
         logger.info(f"Valid Predictions (Answer Extracted): {total_predictions}")
         logger.info(f"Correct Predictions: {correct_predictions}")
         logger.info(f"Errors or Skipped Items: {errors_or_skipped}")
@@ -699,17 +635,16 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         final_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
-            "evaluation_type": "5-shot MMLU",
+            "evaluation_type": "Generic 5-shot MMLU",
             "total_original_items": len(mmlu_data),
-            "dev_examples_per_subject": 5,
+            "generic_examples_used": 5,
             "test_items": len(test_data),
             "valid_predictions": total_predictions,
             "correct_predictions": correct_predictions,
             "errors_or_skipped": errors_or_skipped,
             "accuracy_standard (correct / valid_predictions)": accuracy_standard,
             "accuracy_strict (correct / total_test_items)": accuracy_strict,
-            "subjects_with_dev_examples": list(dev_data.keys()),
-            "subject_wise_accuracy": subject_stats,  # Category-wise accuracy
+            "subject_wise_accuracy": subject_stats,
             "details": results_details
         }
         try:
@@ -719,7 +654,7 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         except Exception as e:
             logger.error(f"Failed to save results file {results_filepath}: {e}")
 
-        # --- Save Raw Generations ---
+        # Save raw generations and failure cases (same as before)
         logger.info(f"Saving raw model generations to {raw_gen_filepath}...")
         try:
             with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
@@ -728,7 +663,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         except Exception as e:
             logger.error(f"Failed to save raw generations file {raw_gen_filepath}: {e}")
 
-        # --- Save Failure Cases ---
         if failure_cases_list:
             logger.info(f"Saving {len(failure_cases_list)} failure cases to {failure_cases_filepath}...")
             try:
@@ -738,7 +672,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                     "failure_cases": failure_cases_list
                 }
                 
-                # Count failure types
                 for case in failure_cases_list:
                     failure_type = case.get("failure_type", "unknown")
                     failure_summary["failure_types"][failure_type] = failure_summary["failure_types"].get(failure_type, 0) + 1
@@ -755,7 +688,6 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
         logger.exception(f"An critical error occurred during evaluation for {config.name}: {e}")
 
     finally:
-        # --- Clean up resources ---
         logger.info(f"Cleaning up resources for {config.name}...")
         del model
         del tokenizer
@@ -769,6 +701,9 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
                 file_handler.close()
              except Exception as e:
                 logger.debug(f"Error closing/removing file handler: {e}")
+
+# Update the BASE_OUTPUT_DIR name to reflect the change
+BASE_OUTPUT_DIR = "mmlu_5shot_results"  # Changed from "mmlu_5shot_results"
 
 # --- Main Execution Logic ---
 def main():

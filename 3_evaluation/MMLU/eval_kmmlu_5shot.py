@@ -37,7 +37,7 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # Base Models (commented out for now)
+    # # Base Models (commented out for now)
     # ModelConfig(
     #     name="Qwen2.5-3B-Instruct",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
@@ -60,9 +60,9 @@ MODEL_CONFIGS = [
     # ),
 
     # ModelConfig(
-    #     name="Qwen2.5-3B-Instruct-ToW-completion",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow",
+    #     name="Qwen2.5-3B-Instruct-ToW-completion-7250",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow/checkpoint-7250",
+    #     # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow",
     #     use_quantization=False
     # ),
     # ModelConfig(
@@ -71,12 +71,12 @@ MODEL_CONFIGS = [
     #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-it-tow",
     #     use_quantization=False
     # ),
-    ModelConfig(
-        name="Llama-3.2-3B-Instruct-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/best_model",
-        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B-Instruct-ToW-completion-final-model",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/final_model",
+    #     # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",

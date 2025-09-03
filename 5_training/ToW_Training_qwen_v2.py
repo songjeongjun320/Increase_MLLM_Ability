@@ -5,7 +5,7 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_qwen_v2.py
+deepspeed --num_gpus=2 --master_port=29501 ToW_Training_qwen_v2.py
 torchrun --nproc_per_node=4 ToW_Training_qwen_v2.py
 """
 
@@ -33,7 +33,7 @@ from transformers import (
     get_scheduler,
     set_seed,
 )
-from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate import Accelerator, DeepSpeedPlugin, DistributedDataParallelKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import InitProcessGroupKwargs
 from datasets import load_dataset, Dataset as HFDataset, DatasetDict
@@ -46,6 +46,11 @@ from peft import (
     TaskType,
     PeftModel,
     prepare_model_for_kbit_training
+)
+
+ddp_kwargs = DistributedDataParallelKwargs(
+    find_unused_parameters=True,
+    broadcast_buffers=False
 )
 
 # ================================================================================
@@ -67,7 +72,7 @@ LEARNING_RATE = 3e-4  # Higher LR for LoRA training
 NUM_TRAIN_EPOCHS = 10
 PER_DEVICE_TRAIN_BATCH_SIZE = 4  # Can increase due to memory efficiency of LoRA
 PER_DEVICE_EVAL_BATCH_SIZE = 4   # Can increase due to memory efficiency of LoRA
-GRADIENT_ACCUMULATION_STEPS = 8   # Reduced due to increased batch size
+GRADIENT_ACCUMULATION_STEPS = 16   # Reduced due to increased batch size
 MAX_SEQ_LENGTH = 2048
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
@@ -506,7 +511,7 @@ def train():
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         log_with="tensorboard",
         project_dir=OUTPUT_DIR,
-        kwargs_handlers=[kwargs],
+        kwargs_handlers=[kwargs, ddp_kwargs],
         mixed_precision="bf16"
     )
     

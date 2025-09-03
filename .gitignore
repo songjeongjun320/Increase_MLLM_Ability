@@ -56,6 +56,7 @@ mmlu_baseline*
 mmlu_tow_model*
 kmmlu_baseline*
 kmmlu_tow_model*
+trained_models
 arc_tow_*
 gsm8k_hrm8k_*
 piqa_ko-piqa_*

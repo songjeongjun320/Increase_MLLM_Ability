@@ -5,8 +5,8 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_llama_v2.py
-torchrun --nproc_per_node=4 ToW_Training_llama_v2.py
+deepspeed --num_gpus=2 ToW_Training_llama_v2_NonMasking.py
+torchrun --nproc_per_node=4 ToW_Training_llama_v2_NonMasking.py
 """
 
 import os
@@ -33,13 +33,25 @@ from transformers import (
     get_scheduler,
     set_seed,
 )
-from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate import Accelerator, DeepSpeedPlugin, DistributedDataParallelKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import InitProcessGroupKwargs
 from datasets import load_dataset, Dataset as HFDataset, DatasetDict
 from tqdm.auto import tqdm
 import deepspeed
 from deepspeed import DeepSpeedConfig
+from peft import (
+    LoraConfig,
+    get_peft_model,
+    TaskType,
+    PeftModel,
+    prepare_model_for_kbit_training
+)
+
+ddp_kwargs = DistributedDataParallelKwargs(
+    find_unused_parameters=False,
+    broadcast_buffers=False
+)
 
 # ================================================================================
 # CONFIGURATION SECTION - MEMORY OPTIMIZED
@@ -47,7 +59,7 @@ from deepspeed import DeepSpeedConfig
 
 # Model Configuration
 MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow"
+OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow-nonmasking-lora" 
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
@@ -55,11 +67,11 @@ DATASET_PATH = "../4_tow_generation/tow_data/filtered_final_multiple_tow.jsonl"
 VALIDATION_SPLIT = 0.1
 
 # Training Hyperparameters - REDUCED FOR MEMORY
-LEARNING_RATE = 2e-5
+LEARNING_RATE = 3e-4
 NUM_TRAIN_EPOCHS = 10
-PER_DEVICE_TRAIN_BATCH_SIZE = 2  # Reduced from 4
-PER_DEVICE_EVAL_BATCH_SIZE = 2   # Reduced from 4
-GRADIENT_ACCUMULATION_STEPS = 16  # Increased from 8 to maintain effective batch size
+PER_DEVICE_TRAIN_BATCH_SIZE = 4
+PER_DEVICE_EVAL_BATCH_SIZE = 4 
+GRADIENT_ACCUMULATION_STEPS = 8
 MAX_SEQ_LENGTH = 2048  # Reduced from 2048
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
@@ -80,6 +92,16 @@ SAVE_TOTAL_LIMIT = 5
 LOAD_BEST_MODEL_AT_END = True
 METRIC_FOR_BEST_MODEL = "eval_loss"
 
+USE_LORA = True
+LORA_CONFIG = {
+    "r": 16,
+    "lora_alpha": 32,
+    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    "lora_dropout": 0.1,
+    "bias": "none",
+    "task_type": TaskType.CAUSAL_LM,
+}
+
 # Quantization Settings
 USE_QUANTIZATION = False
 QUANTIZATION_CONFIG = {
@@ -90,7 +112,7 @@ QUANTIZATION_CONFIG = {
 }
 
 # DeepSpeed Configuration - HEAVILY OPTIMIZED FOR MEMORY
-USE_DEEPSPEED = True
+USE_DEEPSPEED = False
 DEEPSPEED_CONFIG = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -305,7 +327,15 @@ def save_training_state(accelerator, model, tokenizer, optimizer, lr_scheduler,
         
         # Save model config
         unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.config.save_pretrained(checkpoint_dir)
+
+        if USE_LORA:
+            unwrapped_model.save_pretrained(checkpoint_dir)
+        else:
+            unwrapped_model.save_pretrained(
+                checkpoint_dir,
+                save_function=accelerator.save,
+                safe_serialization=True
+            )
         
         # Save training state info
         training_state = {
@@ -455,11 +485,15 @@ def save_best_model(accelerator, model, tokenizer, best_eval_loss, output_dir):
         os.makedirs(best_model_dir, exist_ok=True)
         
         unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.save_pretrained(
-            best_model_dir,
-            save_function=accelerator.save,
-            safe_serialization=True
-        )
+        if USE_LORA:
+            # LoRA adapter만 저장
+            unwrapped_model.save_pretrained(best_model_dir)
+        else:
+            unwrapped_model.save_pretrained(
+                best_model_dir,
+                save_function=accelerator.save,
+                safe_serialization=True
+            )
         
         tokenizer.save_pretrained(best_model_dir)
         
@@ -518,7 +552,7 @@ def train():
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         log_with="tensorboard",
         project_dir=OUTPUT_DIR,
-        kwargs_handlers=[kwargs],
+        # kwargs_handlers=[kwargs, ddp_kwargs],
         mixed_precision="bf16"
     )
     
@@ -593,22 +627,31 @@ def train():
             embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding
             logger.info("Initialized ToW tokens with '---' token embedding")
         
-        if hasattr(model, "gradient_checkpointing_enable"):
-            model.gradient_checkpointing_enable()
-            logger.info("Enabled gradient checkpointing")
+        # if hasattr(model, "gradient_checkpointing_enable"):
+        #     model.gradient_checkpointing_enable()
+        #     logger.info("Enabled gradient checkpointing")
         
         if hasattr(model.config, "use_cache"):
             model.config.use_cache = False
+
+        if USE_LORA:
+            logger.info("Applying LoRA configuration...")
+            lora_config = LoraConfig(**LORA_CONFIG)
+            model = get_peft_model(model, lora_config)
+            model.print_trainable_parameters()
+            logger.info("LoRA adapters applied successfully")
     
     # Setup optimizer
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "params": [p for n, p in model.named_parameters() 
+                    if not any(nd in n for nd in no_decay) and p.requires_grad],  # 이 부분 추가
             "weight_decay": WEIGHT_DECAY
         },
         {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "params": [p for n, p in model.named_parameters() 
+                    if any(nd in n for nd in no_decay) and p.requires_grad],  # 이 부분 추가
             "weight_decay": 0.0
         },
     ]
@@ -632,7 +675,11 @@ def train():
     model, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, val_dataloader, lr_scheduler
     )
-    
+
+    # 모델 준비 후 (accelerator.prepare 이후)
+    if hasattr(model, '_set_static_graph'):
+        model._set_static_graph()
+
     # Initialize training state
     global_step = 0
     starting_epoch = 0

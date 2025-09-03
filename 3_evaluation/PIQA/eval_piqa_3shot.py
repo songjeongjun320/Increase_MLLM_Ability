@@ -83,14 +83,14 @@ MODEL_CONFIGS = [
     # ),
     ModelConfig(
         name="Llama-3.2-3B-Instruct-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/best_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
         use_quantization=False
     ),
     ModelConfig(
         name="DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
         use_quantization=False
     ),
 ]
@@ -387,7 +387,7 @@ def load_dataset(filepath):
             data = json.load(f)
             
             # sample
-            data = data[:10]
+            # data = data[:10]
         logger.info(f"Loaded {len(data)} items from {filepath}")
         return data
     except Exception as e:

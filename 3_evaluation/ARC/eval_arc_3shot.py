@@ -52,30 +52,30 @@ MODEL_CONFIGS = [
     # ),
 
     # ToW Trained Models
-    # ModelConfig(
-    #     name="Qwen2.5-3B-Instruct-ToW-completion",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="Qwen2.5-3B-Instruct-ToW-completion",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow/best_model",
+        # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow",
+        use_quantization=False
+    ),
     # ModelConfig(
     #     name="google_gemma-3-4b-it-ToW-completion",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it",
     #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-it-tow",
     #     use_quantization=False
     # ),
-    ModelConfig(
-        name="Llama-3.2-3B-Instruct-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="Llama-3.2-3B-Instruct-ToW-completion",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/best_model",
+    #     # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
+    #     # adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/final_model",
+    #     use_quantization=False
+    # ),
 ]
 
 # --- General Configuration ---

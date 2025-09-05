@@ -5,24 +5,24 @@
 export TRANSFORMERS_VERBOSITY=info
 
 MODEL_NAMES=(
-    # "DeepSeek-R1-Distill-Qwen-1.5B"
-    # "google_gemma-3-4b-it"
-    # "Qwen2.5-3B-Instruct"
-    "Llama-3.2-3B-Instruct"
-    "Qwen2.5-3B-Instruct-ToW-completion"
-    "Llama-3.2-3B-Instruct-ToW-completion"
-    "DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion"
-    # "google_gemma-3-4b-it-ToW-completion"
+    # "llama-3.2-3b-pt"
+    # "gemma-3-4b-pt"
+    # "qwem-2.5-3b-pt"
+    "llama-3.2-3b-pt-tow-refined_dataset_09_02"
+    "gemma-3-4b-pt-tow-refined_dataset_09_02"
+    "qwem-2.5-3b-pt-tow-refined_dataset_09_02"
+    # "DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion"
+    # "gemma-3-4b-pt-ToW-completion"
 )
 
 MODEL_PATHS=(
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/DeepSeek-R1-Distill-Qwen-1.5B"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow/best_model"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/best_model"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/best_model"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/best_model"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
 )
 
@@ -30,10 +30,10 @@ ADAPTER_PATHS=(
     # ""
     # ""
     # ""
-    ""
-    ""
-    ""
-    ""
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02/checkpoint-3500"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-pt-tow-refined_dataset_09_02/checkpoint-2750"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/final_model"
+    # ""
     # ""
 )
 
@@ -54,7 +54,7 @@ for i in "${!MODEL_NAMES[@]}"; do
     MODEL_PATH=${MODEL_PATHS[$i]}
     ADAPTER_PATH=${ADAPTER_PATHS[$i]}
 
-    MODEL_ARGS="pretrained=$MODEL_PATH"
+MODEL_ARGS="pretrained=$MODEL_PATH,tokenizer=$MODEL_PATH"
     if [ -n "$ADAPTER_PATH" ]; then
         MODEL_ARGS+=",peft=$ADAPTER_PATH,tokenizer=$ADAPTER_PATH"
     fi

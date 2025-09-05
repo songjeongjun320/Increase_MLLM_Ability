@@ -5,7 +5,7 @@ ToW Training Script with Memory-Optimized DeepSpeed Configuration
 Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 --master_port=29501 ToW_Training_qwen_v2.py
+deepspeed --num_gpus=2 --master_port=29500 ToW_Training_qwen_v2.py
 torchrun --nproc_per_node=4 ToW_Training_qwen_v2.py
 """
 
@@ -49,7 +49,7 @@ from peft import (
 )
 
 ddp_kwargs = DistributedDataParallelKwargs(
-    find_unused_parameters=True,
+    find_unused_parameters=False,
     broadcast_buffers=False
 )
 
@@ -58,13 +58,12 @@ ddp_kwargs = DistributedDataParallelKwargs(
 # ================================================================================
 
 # Model Configuration
-MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct"
-OUTPUT_DIR = "./tow_trained_models/Qwen2.5-3B-Instruct-tow-lora"
+MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
+OUTPUT_DIR = "./tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02"
 CACHE_DIR = "./cache"
 
-
 # Dataset Configuration
-DATASET_PATH = "../4_tow_generation/tow_data/final_multiple_tow.jsonl"
+DATASET_PATH = "../4_tow_generation/tow_data/final_tow_dataset_refined_09_02.jsonl"
 VALIDATION_SPLIT = 0.1
 
 # Training Hyperparameters - OPTIMIZED FOR LORA
@@ -72,8 +71,8 @@ LEARNING_RATE = 3e-4  # Higher LR for LoRA training
 NUM_TRAIN_EPOCHS = 10
 PER_DEVICE_TRAIN_BATCH_SIZE = 4  # Can increase due to memory efficiency of LoRA
 PER_DEVICE_EVAL_BATCH_SIZE = 4   # Can increase due to memory efficiency of LoRA
-GRADIENT_ACCUMULATION_STEPS = 16   # Reduced due to increased batch size
-MAX_SEQ_LENGTH = 2048
+GRADIENT_ACCUMULATION_STEPS = 16  # Reduced due to increased batch size
+MAX_SEQ_LENGTH = 1700
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -85,10 +84,10 @@ ADAM_BETA2 = 0.999
 ADAM_EPSILON = 1e-8
 
 # Saving and Logging
-SAVE_STEPS = 250  # Increased to reduce I/O
-EVAL_STEPS = 250  # Increased to reduce evaluation overhead
+SAVE_STEPS = 500  # Increased to reduce I/O
+EVAL_STEPS = 500  # Increased to reduce evaluation overhead
 EVAL_ON_EPOCH_END = False
-LOGGING_STEPS = 50
+LOGGING_STEPS = 25
 SAVE_TOTAL_LIMIT = 5
 LOAD_BEST_MODEL_AT_END = True
 METRIC_FOR_BEST_MODEL = "eval_loss"
@@ -114,8 +113,7 @@ LORA_CONFIG = {
         "o_proj",
         "gate_proj",
         "up_proj",
-        "down_proj",
-        "lm_head"
+        "down_proj"
     ],
     "lora_dropout": 0.1,
     "bias": "none",
@@ -133,21 +131,21 @@ DEEPSPEED_CONFIG = {
         "stage": 2,  # Changed to Stage 2 for better stability
         "offload_optimizer": {
             "device": "cpu",
-            "pin_memory": False,
+            "pin_memory": True,
             "buffer_count": 2,  # Reduced further
             "fast_init": True   # Changed to True for faster init
         },
         "offload_param": {
             "device": "cpu",
-            "pin_memory": False,
+            "pin_memory": True,
             "buffer_count": 2,  # Reduced further
             "buffer_size": 5e7,  # Smaller buffer size
             "max_in_cpu": 5e8   # Reduced
         },
         "overlap_comm": True,
         "contiguous_gradients": True,
-        "sub_group_size": 1e7,  # Significantly reduced
-        "reduce_bucket_size": 1e7,  # Significantly reduced
+        "sub_group_size": 5e6,  # Significantly reduced
+        "reduce_bucket_size": 5e6,  # Significantly reduced
         "stage3_prefetch_bucket_size": 1e7,  # Reduced
         "stage3_param_persistence_threshold": 1e5,  # Reduced
         "stage3_max_live_parameters": 1e7,  # Significantly reduced
@@ -194,11 +192,7 @@ DEEPSPEED_CONFIG = {
 
 # Misc Settings
 SEED = 42
-PREPROCESSING_NUM_WORKERS = 0  # Set to 0 to avoid multiprocessing issues
-DISABLE_TQDM = False
-PUSH_TO_HUB = False
-HUB_MODEL_ID = None
-HUB_TOKEN = None
+PREPROCESSING_NUM_WORKERS = 0
 
 # ================================================================================
 # SETUP LOGGING
@@ -496,7 +490,7 @@ def train():
     """Main training function with single global progress bar"""
     
     # Set environment variables
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512,expandable_segments:True"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     
     if torch.cuda.is_available():
@@ -579,12 +573,18 @@ def train():
         logger.info("Initializing ToW token embeddings...")
         embeddings = model.get_input_embeddings()
         
-        dash_token_ids = tokenizer.encode('---', add_special_tokens=False)
-        if len(dash_token_ids) > 0:
-            dash_embedding = embeddings.weight.data[dash_token_ids[0], :].clone()
-            embeddings.weight.data[len(tokenizer)-2, :] = dash_embedding
-            embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding
-            logger.info("Initialized ToW tokens with '---' token embedding")
+        reasoning_tokens = ['think', 'reason', 'analyze', 'consider']
+        reasoning_embeddings = []
+        for token in reasoning_tokens:
+            token_ids = tokenizer.encode(token, add_special_tokens=False)
+            if len(token_ids) > 0:
+                reasoning_embeddings.append(embeddings.weight.data[token_ids[0], :])
+
+        if reasoning_embeddings:
+            avg_embedding = torch.stack(reasoning_embeddings).mean(dim=0)
+            embeddings.weight.data[len(tokenizer)-2, :] = avg_embedding
+            embeddings.weight.data[len(tokenizer)-1, :] = avg_embedding
+            logger.info("Initialized ToW tokens with 'think', 'reason', 'analyze', 'consider' token embedding")
         
         # Apply LoRA if enabled
         if USE_LORA:
@@ -593,10 +593,6 @@ def train():
             model = get_peft_model(model, lora_config)
             model.print_trainable_parameters()
             logger.info("LoRA adapters applied successfully")
-        
-        if hasattr(model, "gradient_checkpointing_enable"):
-            model.gradient_checkpointing_enable()
-            logger.info("Enabled gradient checkpointing")
         
         if hasattr(model.config, "use_cache"):
             model.config.use_cache = False

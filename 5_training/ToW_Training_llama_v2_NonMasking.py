@@ -58,21 +58,21 @@ ddp_kwargs = DistributedDataParallelKwargs(
 # ================================================================================
 
 # Model Configuration
-MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-tow-nonmasking-lora" 
+MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
+OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-refined_dataset_09_02" 
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
-DATASET_PATH = "../4_tow_generation/tow_data/filtered_final_multiple_tow.jsonl"
+DATASET_PATH = "../4_tow_generation/tow_data/final_tow_dataset_refined_09_02.jsonl"
 VALIDATION_SPLIT = 0.1
 
-# Training Hyperparameters - REDUCED FOR MEMORY
-LEARNING_RATE = 3e-4
+# Training Hyperparameters - OPTIMIZED FOR LORA
+LEARNING_RATE = 3e-4  # Higher LR for LoRA training
 NUM_TRAIN_EPOCHS = 10
-PER_DEVICE_TRAIN_BATCH_SIZE = 4
-PER_DEVICE_EVAL_BATCH_SIZE = 4 
-GRADIENT_ACCUMULATION_STEPS = 8
-MAX_SEQ_LENGTH = 2048  # Reduced from 2048
+PER_DEVICE_TRAIN_BATCH_SIZE = 4  # Can increase due to memory efficiency of LoRA
+PER_DEVICE_EVAL_BATCH_SIZE = 4   # Can increase due to memory efficiency of LoRA
+GRADIENT_ACCUMULATION_STEPS = 16  # Reduced due to increased batch size
+MAX_SEQ_LENGTH = 1700
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -84,23 +84,13 @@ ADAM_BETA2 = 0.999
 ADAM_EPSILON = 1e-8
 
 # Saving and Logging
-SAVE_STEPS = 250  # Increased to reduce I/O
-EVAL_STEPS = 250  # Increased to reduce evaluation overhead
+SAVE_STEPS = 500  # Increased to reduce I/O
+EVAL_STEPS = 500  # Increased to reduce evaluation overhead
 EVAL_ON_EPOCH_END = False
-LOGGING_STEPS = 50
+LOGGING_STEPS = 25
 SAVE_TOTAL_LIMIT = 5
 LOAD_BEST_MODEL_AT_END = True
 METRIC_FOR_BEST_MODEL = "eval_loss"
-
-USE_LORA = True
-LORA_CONFIG = {
-    "r": 16,
-    "lora_alpha": 32,
-    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    "lora_dropout": 0.1,
-    "bias": "none",
-    "task_type": TaskType.CAUSAL_LM,
-}
 
 # Quantization Settings
 USE_QUANTIZATION = False
@@ -111,8 +101,27 @@ QUANTIZATION_CONFIG = {
     "bnb_4bit_use_double_quant": True,
 }
 
+# LoRA Configuration
+USE_LORA = True
+LORA_CONFIG = {
+    "r": 16,  # LoRA rank
+    "lora_alpha": 32,  # LoRA scaling parameter
+    "target_modules": [
+        "q_proj",
+        "k_proj", 
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    "lora_dropout": 0.1,
+    "bias": "none",
+    "task_type": TaskType.CAUSAL_LM,
+}
+
 # DeepSpeed Configuration - HEAVILY OPTIMIZED FOR MEMORY
-USE_DEEPSPEED = False
+USE_DEEPSPEED = True
 DEEPSPEED_CONFIG = {
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
@@ -122,21 +131,21 @@ DEEPSPEED_CONFIG = {
         "stage": 2,  # Changed to Stage 2 for better stability
         "offload_optimizer": {
             "device": "cpu",
-            "pin_memory": False,
+            "pin_memory": True,
             "buffer_count": 2,  # Reduced further
             "fast_init": True   # Changed to True for faster init
         },
         "offload_param": {
             "device": "cpu",
-            "pin_memory": False,
+            "pin_memory": True,
             "buffer_count": 2,  # Reduced further
             "buffer_size": 5e7,  # Smaller buffer size
             "max_in_cpu": 5e8   # Reduced
         },
         "overlap_comm": True,
         "contiguous_gradients": True,
-        "sub_group_size": 1e7,  # Significantly reduced
-        "reduce_bucket_size": 1e7,  # Significantly reduced
+        "sub_group_size": 5e6,  # Significantly reduced
+        "reduce_bucket_size": 5e6,  # Significantly reduced
         "stage3_prefetch_bucket_size": 1e7,  # Reduced
         "stage3_param_persistence_threshold": 1e5,  # Reduced
         "stage3_max_live_parameters": 1e7,  # Significantly reduced
@@ -183,11 +192,7 @@ DEEPSPEED_CONFIG = {
 
 # Misc Settings
 SEED = 42
-PREPROCESSING_NUM_WORKERS = 0  # Set to 0 to avoid multiprocessing issues
-DISABLE_TQDM = False
-PUSH_TO_HUB = False
-HUB_MODEL_ID = None
-HUB_TOKEN = None
+PREPROCESSING_NUM_WORKERS = 0
 
 # ================================================================================
 # SETUP LOGGING
@@ -213,8 +218,9 @@ SPECIAL_TOKENS = {
 # ================================================================================
 # DATASET CLASS
 # ================================================================================
+
 class ToWDataset(Dataset):
-    """Custom dataset for ToW training - only learns ToW token content"""
+    """Custom dataset for ToW training"""
     
     def __init__(self, data, tokenizer, max_seq_length):
         self.data = data
@@ -232,11 +238,7 @@ class ToWDataset(Dataset):
         prompt = item.get("prompt", "")
         completion = item.get("completion", "")
         
-        # Handle case where prompt might be empty
-        if prompt.strip():
-            full_text = f"{prompt} {completion}"
-        else:
-            full_text = completion
+        full_text = f"{prompt} {completion}"
         full_text = full_text + self.tokenizer.eos_token
         
         encoded = self.tokenizer(
@@ -250,60 +252,15 @@ class ToWDataset(Dataset):
         input_ids = encoded["input_ids"].squeeze()
         attention_mask = encoded["attention_mask"].squeeze()
         
-        # Initialize labels - start with all masked (-100)
-        labels = torch.full_like(input_ids, -100)
-        
-        # Encode prompt separately to find where completion starts
-        if prompt.strip():
-            prompt_encoded = self.tokenizer(
-                prompt,
-                truncation=False,
-                add_special_tokens=False,
-                return_tensors="pt"
-            )
-            prompt_length = len(prompt_encoded["input_ids"].squeeze())
-        else:
-            prompt_length = 0
-        
-        input_ids_list = input_ids.tolist()
-        
-        # Find all ToW start and end token positions
-        tow_start_positions = []
-        tow_end_positions = []
-        
-        for i, token_id in enumerate(input_ids_list):
-            if token_id == self.tow_start_id:
-                tow_start_positions.append(i)
-            elif token_id == self.tow_end_id:
-                tow_end_positions.append(i)
-        
-        # ONLY learn ToW token content - nothing else
-        for start_pos in tow_start_positions:
-            corresponding_end = None
-            for end_pos in tow_end_positions:
-                if end_pos > start_pos:
-                    corresponding_end = end_pos
-                    break
-            
-            if corresponding_end is not None:
-                # Unmask ONLY the ToW region (including the tokens themselves)
-                labels[start_pos:corresponding_end + 1] = input_ids[start_pos:corresponding_end + 1]
-        
-        # Debug logging for first few samples
-        if idx < 5:
-            unmasked_positions = (labels != -100).nonzero().flatten()
-            unmasked_tokens = [self.tokenizer.decode([input_ids[pos]]) for pos in unmasked_positions]
-            print(f"Sample {idx}: Learning {len(unmasked_positions)} tokens")
-            print(f"  ToW regions: {len(tow_start_positions)} found")
-            print(f"  Sample tokens: {unmasked_tokens[:15]}...")
-            print(f"  Full text length: {len(input_ids_list)}, Learning: {len(unmasked_positions)}")
-            print("---")
+        labels = input_ids.clone()
+        labels[labels == self.tokenizer.pad_token_id] = -100
         
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels
         }
+
 
 # ================================================================================
 # IMPROVED CHECKPOINT UTILITIES
@@ -327,15 +284,11 @@ def save_training_state(accelerator, model, tokenizer, optimizer, lr_scheduler,
         
         # Save model config
         unwrapped_model = accelerator.unwrap_model(model)
-
         if USE_LORA:
+            # For PEFT models, save the adapter config and weights
             unwrapped_model.save_pretrained(checkpoint_dir)
         else:
-            unwrapped_model.save_pretrained(
-                checkpoint_dir,
-                save_function=accelerator.save,
-                safe_serialization=True
-            )
+            unwrapped_model.config.save_pretrained(checkpoint_dir)
         
         # Save training state info
         training_state = {
@@ -486,7 +439,7 @@ def save_best_model(accelerator, model, tokenizer, best_eval_loss, output_dir):
         
         unwrapped_model = accelerator.unwrap_model(model)
         if USE_LORA:
-            # LoRA adapter만 저장
+            # For PEFT models, save only the adapter weights
             unwrapped_model.save_pretrained(best_model_dir)
         else:
             unwrapped_model.save_pretrained(
@@ -537,7 +490,7 @@ def train():
     """Main training function with single global progress bar"""
     
     # Set environment variables
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512,expandable_segments:True"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     
     if torch.cuda.is_available():
@@ -552,7 +505,7 @@ def train():
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         log_with="tensorboard",
         project_dir=OUTPUT_DIR,
-        # kwargs_handlers=[kwargs, ddp_kwargs],
+        kwargs_handlers=[kwargs, ddp_kwargs],
         mixed_precision="bf16"
     )
     
@@ -620,38 +573,39 @@ def train():
         logger.info("Initializing ToW token embeddings...")
         embeddings = model.get_input_embeddings()
         
-        dash_token_ids = tokenizer.encode('---', add_special_tokens=False)
-        if len(dash_token_ids) > 0:
-            dash_embedding = embeddings.weight.data[dash_token_ids[0], :].clone()
-            embeddings.weight.data[len(tokenizer)-2, :] = dash_embedding
-            embeddings.weight.data[len(tokenizer)-1, :] = dash_embedding
-            logger.info("Initialized ToW tokens with '---' token embedding")
-        
-        # if hasattr(model, "gradient_checkpointing_enable"):
-        #     model.gradient_checkpointing_enable()
-        #     logger.info("Enabled gradient checkpointing")
-        
-        if hasattr(model.config, "use_cache"):
-            model.config.use_cache = False
+        reasoning_tokens = ['think', 'reason', 'analyze', 'consider']
+        reasoning_embeddings = []
+        for token in reasoning_tokens:
+            token_ids = tokenizer.encode(token, add_special_tokens=False)
+            if len(token_ids) > 0:
+                reasoning_embeddings.append(embeddings.weight.data[token_ids[0], :])
 
+        if reasoning_embeddings:
+            avg_embedding = torch.stack(reasoning_embeddings).mean(dim=0)
+            embeddings.weight.data[len(tokenizer)-2, :] = avg_embedding
+            embeddings.weight.data[len(tokenizer)-1, :] = avg_embedding
+            logger.info("Initialized ToW tokens with 'think', 'reason', 'analyze', 'consider' token embedding")
+        
+        # Apply LoRA if enabled
         if USE_LORA:
             logger.info("Applying LoRA configuration...")
             lora_config = LoraConfig(**LORA_CONFIG)
             model = get_peft_model(model, lora_config)
             model.print_trainable_parameters()
             logger.info("LoRA adapters applied successfully")
+        
+        if hasattr(model.config, "use_cache"):
+            model.config.use_cache = False
     
     # Setup optimizer
     no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight"]
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() 
-                    if not any(nd in n for nd in no_decay) and p.requires_grad],  # 이 부분 추가
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
             "weight_decay": WEIGHT_DECAY
         },
         {
-            "params": [p for n, p in model.named_parameters() 
-                    if any(nd in n for nd in no_decay) and p.requires_grad],  # 이 부분 추가
+            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
             "weight_decay": 0.0
         },
     ]
@@ -675,11 +629,7 @@ def train():
     model, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, val_dataloader, lr_scheduler
     )
-
-    # 모델 준비 후 (accelerator.prepare 이후)
-    if hasattr(model, '_set_static_graph'):
-        model._set_static_graph()
-
+    
     # Initialize training state
     global_step = 0
     starting_epoch = 0

@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-ToW Training Script with Memory-Optimized DeepSpeed Configuration
-Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 deepspeed --num_gpus=2 ToW_Training_llama_v2_NonMasking.py
@@ -20,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from datetime import timedelta
+import re
 
 import torch
 import torch.nn as nn
@@ -63,7 +62,7 @@ OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-refined_datase
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
-DATASET_PATH = "../4_tow_generation/tow_data/final_tow_dataset_refined_09_02.jsonl"
+DATASET_PATH = "../4_tow_generation/tow_data/tow_09_05.jsonl"
 VALIDATION_SPLIT = 0.1
 
 # Training Hyperparameters - OPTIMIZED FOR LORA
@@ -218,43 +217,70 @@ SPECIAL_TOKENS = {
 # ================================================================================
 # DATASET CLASS
 # ================================================================================
-
 class ToWDataset(Dataset):
-    """Custom dataset for ToW training"""
-    
+    """<ToW> 태그 안의 내용만 학습하기 위한 커스텀 데이터셋"""
+
     def __init__(self, data, tokenizer, max_seq_length):
         self.data = data
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
-        self.tow_start_id = tokenizer.convert_tokens_to_ids(TOW_START_TOKEN)
-        self.tow_end_id = tokenizer.convert_tokens_to_ids(TOW_END_TOKEN)
-    
+        # <ToW>, </ToW> 토큰은 학습에서 제외하므로 ID를 저장할 필요가 없습니다.
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         item = self.data[idx]
-        
+
         prompt = item.get("prompt", "")
         completion = item.get("completion", "")
-        
-        full_text = f"{prompt} {completion}"
-        full_text = full_text + self.tokenizer.eos_token
-        
-        encoded = self.tokenizer(
+
+        labels = torch.full((self.max_seq_length,), -100, dtype=torch.long)
+
+        matches = list(re.finditer(r"<ToW>.*?</ToW>", completion, re.DOTALL)) # re.DOTALL 추가
+
+        full_text = f"{prompt} {completion}{self.tokenizer.eos_token}"
+
+        encoded_full = self.tokenizer(
             full_text,
             truncation=True,
             max_length=self.max_seq_length,
             padding="max_length",
             return_tensors="pt"
         )
-        
-        input_ids = encoded["input_ids"].squeeze()
-        attention_mask = encoded["attention_mask"].squeeze()
-        
-        labels = input_ids.clone()
-        labels[labels == self.tokenizer.pad_token_id] = -100
-        
+
+        input_ids = encoded_full["input_ids"].squeeze()
+        attention_mask = encoded_full["attention_mask"].squeeze()
+
+        if prompt:
+            prompt_tokens = self.tokenizer(prompt, add_special_tokens=False)["input_ids"]
+            prompt_length = len(prompt_tokens) + 1
+        else:
+            prompt_length = 0
+
+        # completion 텍스트 내에서 학습할 부분(<ToW>...</ToW> 전체)을 찾아
+        # 해당 위치의 labels 값을 원래 토큰 ID로 복원합니다.
+        for match in matches:
+            # <ToW> 태그가 시작되기 전까지의 텍스트
+            prefix = completion[:match.start()]
+            # 학습할 대상 텍스트 (<ToW>와 </ToW>를 포함한 전체)
+            # ★★★★★ 이 부분이 핵심 변경 사항입니다. ★★★★★
+            target = match.group(0) # .group(1) 대신 .group(0) 사용
+
+            prefix_tokens = self.tokenizer(prefix, add_special_tokens=False)["input_ids"]
+            target_tokens = self.tokenizer(target, add_special_tokens=False)["input_ids"]
+
+            start_idx = prompt_length + len(prefix_tokens)
+            end_idx = start_idx + len(target_tokens)
+
+            if start_idx >= self.max_seq_length:
+                continue
+            
+            end_idx = min(end_idx, self.max_seq_length)
+
+            labels[start_idx:end_idx] = input_ids[start_idx:end_idx]
+
+
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,

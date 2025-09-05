@@ -63,7 +63,7 @@ OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02"
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
-DATASET_PATH = "../4_tow_generation/tow_data/final_tow_dataset_refined_09_02.jsonl"
+DATASET_PATH = "../4_tow_generation/tow_data/tow_09_05.jsonl"
 VALIDATION_SPLIT = 0.1
 
 # Training Hyperparameters - OPTIMIZED FOR LORA
@@ -118,6 +118,7 @@ LORA_CONFIG = {
     "lora_dropout": 0.1,
     "bias": "none",
     "task_type": TaskType.CAUSAL_LM,
+    "inference_mode": False
 }
 
 # DeepSpeed Configuration - HEAVILY OPTIMIZED FOR MEMORY
@@ -128,7 +129,7 @@ DEEPSPEED_CONFIG = {
     "gradient_accumulation_steps": "auto",
     "gradient_clipping": "auto",
     "zero_optimization": {
-        "stage": 2,  # Changed to Stage 2 for better stability
+        "stage": 2,
         "offload_optimizer": {
             "device": "cpu",
             "pin_memory": True,

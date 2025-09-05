@@ -63,7 +63,7 @@ OUTPUT_DIR = "./tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow-refined_dat
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
-DATASET_PATH = "../4_tow_generation/tow_data/final_tow_dataset_refined_09_02.jsonl"
+DATASET_PATH = "../4_tow_generation/tow_data/tow_09_05.jsonl"
 VALIDATION_SPLIT = 0.1
 
 # Training Hyperparameters - OPTIMIZED FOR LORA

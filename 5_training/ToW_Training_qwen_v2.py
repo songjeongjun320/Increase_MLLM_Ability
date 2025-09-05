@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-ToW Training Script with Memory-Optimized DeepSpeed Configuration
-Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 deepspeed --num_gpus=2 --master_port=29500 ToW_Training_qwen_v2.py

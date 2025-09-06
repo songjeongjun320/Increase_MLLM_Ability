@@ -439,9 +439,9 @@ def extract_answer_first_token(model_output):
     
     return None
 
-def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+def process_single_with_retry(model, tokenizer, prompt, max_retries=1):
     """
-    Process a single prompt with retry logic for answer extraction failures
+    Process a single prompt with minimal retry (reduced from 5 to 1 for speed)
     Only retries when answer extraction fails (not on genuine model errors)
     """
     for attempt in range(max_retries):
@@ -468,31 +468,16 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
             output_tokens = outputs['sequences'][0][input_length:]
             generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
             
-            # Try to extract answer
+            # Try to extract answer - if fails, just move on (no retry)
             extracted_answer = extract_answer_first_token(generated_text)
-            if extracted_answer is not None:
-                return generated_text, extracted_answer
-            else:
-                # Answer extraction failed - try again if we have retries left
-                if attempt < max_retries - 1:
-                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
-                    # Small delay before retry
-                    time.sleep(0.1 + random.random() * 0.1)
-                    continue
-                else:
-                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
-                    return generated_text, None
+            return generated_text, extracted_answer
                     
         except Exception as e:
-            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(0.2 + random.random() * 0.2)
-                continue
-            else:
-                # Return error info after all retries exhausted
-                return f"ERROR after {max_retries} attempts: {str(e)}", None
+            logger.error(f"Model inference error: {e}")
+            # No retry for errors - just move to next item
+            return f"ERROR: {str(e)}", None
     
-    return f"EXTRACTION_FAILED after {max_retries} attempts", None
+    return f"EXTRACTION_FAILED", None
 
 def load_jsonl_dataset(filepath):
     """Loads dataset from a JSONL file."""
@@ -718,22 +703,10 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 extracted_answer = result['extracted_answer']
                 raw_output = result['raw_output']
                 
-                # Retry logic for failed extractions
+                # No retry logic - just move on if extraction fails for speed
                 if not extracted_answer and not raw_output.startswith("ERROR"):
-                    logger.warning(f"Batch extraction failed for English item {result['index']}, attempting individual retry...")
-                    retry_text, retry_answer = process_single_with_retry(model, tokenizer, batch_prompt)
-                    
-                    if retry_answer is not None:
-                        extracted_answer = retry_answer
-                        raw_output = retry_text
-                        logger.info(f"English retry successful for item {result['index']}: extracted '{retry_answer}'")
-                    else:
-                        if not retry_text.startswith("ERROR"):
-                            logger.warning(f"English item {result['index']}: Failed to extract answer after retries")
-                            raw_output = f"EXTRACTION_FAILED: {retry_text}"
-                        else:
-                            logger.error(f"English item {result['index']}: Model error: {retry_text}")
-                            raw_output = retry_text
+                    logger.warning(f"English item {result['index']}: Failed to extract answer - skipping retry for speed")
+                    raw_output = f"EXTRACTION_FAILED: {raw_output}"
                 
                 is_correct = extracted_answer == ground_truth if extracted_answer else False
                 
@@ -820,22 +793,10 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
                 extracted_answer = result['extracted_answer']
                 raw_output = result['raw_output']
                 
-                # Retry logic for failed extractions
+                # No retry logic - just move on if extraction fails for speed
                 if not extracted_answer and not raw_output.startswith("ERROR"):
-                    logger.warning(f"Batch extraction failed for Korean item {result['index']}, attempting individual retry...")
-                    retry_text, retry_answer = process_single_with_retry(model, tokenizer, batch_prompt)
-                    
-                    if retry_answer is not None:
-                        extracted_answer = retry_answer
-                        raw_output = retry_text
-                        logger.info(f"Korean retry successful for item {result['index']}: extracted '{retry_answer}'")
-                    else:
-                        if not retry_text.startswith("ERROR"):
-                            logger.warning(f"Korean item {result['index']}: Failed to extract answer after retries")
-                            raw_output = f"EXTRACTION_FAILED: {retry_text}"
-                        else:
-                            logger.error(f"Korean item {result['index']}: Model error: {retry_text}")
-                            raw_output = retry_text
+                    logger.warning(f"Korean item {result['index']}: Failed to extract answer - skipping retry for speed")
+                    raw_output = f"EXTRACTION_FAILED: {raw_output}"
                 
                 is_correct = extracted_answer == ground_truth if extracted_answer else False
                 
@@ -904,7 +865,36 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         logger.info(f"MMLU-ProX English Strict Accuracy: {en_strict_accuracy:.2f}% ({all_results['mmlu_prox_en']['correct']}/{len(mmlu_prox_en_data)}) [Errors/Skipped: {en_errors_skipped}]")
         logger.info(f"MMLU-ProX Korean Strict Accuracy: {ko_strict_accuracy:.2f}% ({all_results['mmlu_prox_ko']['correct']}/{len(mmlu_prox_ko_data)}) [Errors/Skipped: {ko_errors_skipped}]")
 
-        # 추가: 실패 케이스만 별도 JSON 파일로 저장
+        # Save failure cases - split by language
+        en_failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_en.json")
+        en_failures_summary = {
+            "model_name": config.name,
+            "language": "en",
+            "evaluation_date": datetime.now().isoformat(),
+            "total_failures": len(all_results["mmlu_prox_en"]["failures"]),
+            "incorrect_answers": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "incorrect_answer"]),
+            "extraction_failures": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "extraction_failed"]),
+            "failure_cases": all_results["mmlu_prox_en"]["failures"]
+        }
+        
+        with open(en_failures_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_failures_summary, f, indent=2, ensure_ascii=False)
+            
+        ko_failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_ko.json")
+        ko_failures_summary = {
+            "model_name": config.name,
+            "language": "ko",
+            "evaluation_date": datetime.now().isoformat(),
+            "total_failures": len(all_results["mmlu_prox_ko"]["failures"]),
+            "incorrect_answers": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "incorrect_answer"]),
+            "extraction_failures": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "extraction_failed"]),
+            "failure_cases": all_results["mmlu_prox_ko"]["failures"]
+        }
+        
+        with open(ko_failures_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_failures_summary, f, indent=2, ensure_ascii=False)
+        
+        # Also save combined failures for compatibility 
         failures_summary = {
             "model_name": config.name,
             "evaluation_date": datetime.now().isoformat(),
@@ -925,11 +915,54 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         with open(failures_filepath, 'w', encoding='utf-8') as f:
             json.dump(failures_summary, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"Failure cases saved to: {failures_filepath}")
-        logger.info(f"Total EN failures: {failures_summary['mmlu_prox_en']['total_failures']} (Incorrect: {failures_summary['mmlu_prox_en']['incorrect_answers']}, Extraction failed: {failures_summary['mmlu_prox_en']['extraction_failures']})")
-        logger.info(f"Total KO failures: {failures_summary['mmlu_prox_ko']['total_failures']} (Incorrect: {failures_summary['mmlu_prox_ko']['incorrect_answers']}, Extraction failed: {failures_summary['mmlu_prox_ko']['extraction_failures']})")
+        logger.info(f"Results saved separately by language: {en_results_filepath}, {ko_results_filepath}")
+        logger.info(f"Raw generations saved separately: {en_raw_gen_filepath}, {ko_raw_gen_filepath}")
+        logger.info(f"Failure cases saved separately: {en_failures_filepath}, {ko_failures_filepath}")
+        logger.info(f"Total EN failures: {en_failures_summary['total_failures']} (Incorrect: {en_failures_summary['incorrect_answers']}, Extraction failed: {en_failures_summary['extraction_failures']})")
+        logger.info(f"Total KO failures: {ko_failures_summary['total_failures']} (Incorrect: {ko_failures_summary['incorrect_answers']}, Extraction failed: {ko_failures_summary['extraction_failures']})")
 
-        # Save Results
+        # Save Results - split by language
+        # English results
+        en_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_en.json")
+        en_summary = {
+            "model_config": {k: str(v) for k, v in config.__dict__.items()},
+            "evaluation_type": "5-shot MMLU-ProX English",
+            "evaluation_date": datetime.now().isoformat(),
+            "language": "en",
+            "results": {
+                "accuracy_strict": en_strict_accuracy,
+                "correct_predictions": all_results["mmlu_prox_en"]["correct"],
+                "total_predictions": all_results["mmlu_prox_en"]["total"],
+                "total_items": len(mmlu_prox_en_data),
+                "errors_or_skipped": en_errors_skipped,
+                "details": all_results["mmlu_prox_en"]["details"]
+            }
+        }
+        
+        with open(en_results_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_summary, f, indent=2, ensure_ascii=False)
+        
+        # Korean results
+        ko_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_ko.json")
+        ko_summary = {
+            "model_config": {k: str(v) for k, v in config.__dict__.items()},
+            "evaluation_type": "5-shot MMLU-ProX Korean",
+            "evaluation_date": datetime.now().isoformat(),
+            "language": "ko",
+            "results": {
+                "accuracy_strict": ko_strict_accuracy,
+                "correct_predictions": all_results["mmlu_prox_ko"]["correct"],
+                "total_predictions": all_results["mmlu_prox_ko"]["total"],
+                "total_items": len(mmlu_prox_ko_data),
+                "errors_or_skipped": ko_errors_skipped,
+                "details": all_results["mmlu_prox_ko"]["details"]
+            }
+        }
+        
+        with open(ko_results_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_summary, f, indent=2, ensure_ascii=False)
+        
+        # Also save original combined results for compatibility
         final_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
             "evaluation_type": "5-shot MMLU-ProX",
@@ -955,7 +988,28 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         with open(results_filepath, 'w', encoding='utf-8') as f:
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         
-        # Save raw generations
+        # Save raw generations - split by language
+        en_raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_en.json")
+        en_raw_generations = {
+            "model_name": config.name,
+            "language": "en", 
+            "evaluation_date": datetime.now().isoformat(),
+            "raw_generations": all_results["mmlu_prox_en"]["raw_generations"]
+        }
+        with open(en_raw_gen_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_raw_generations, f, indent=2, ensure_ascii=False)
+            
+        ko_raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_ko.json")
+        ko_raw_generations = {
+            "model_name": config.name,
+            "language": "ko",
+            "evaluation_date": datetime.now().isoformat(), 
+            "raw_generations": all_results["mmlu_prox_ko"]["raw_generations"]
+        }
+        with open(ko_raw_gen_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_raw_generations, f, indent=2, ensure_ascii=False)
+        
+        # Also save combined raw generations for compatibility
         raw_generations_summary = {
             "mmlu_prox_en": all_results["mmlu_prox_en"]["raw_generations"],
             "mmlu_prox_ko": all_results["mmlu_prox_ko"]["raw_generations"]

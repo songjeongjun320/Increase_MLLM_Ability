@@ -48,17 +48,17 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # # Base Models (commented out for now)
-    ModelConfig(
-        name="qwem-2.5-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="gemma-3-4b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-        use_quantization=False
-    ),
+    # Base Models (commented out for now)
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="llama-3.2-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",

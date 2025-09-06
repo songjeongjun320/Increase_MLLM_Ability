@@ -59,11 +59,11 @@ ddp_kwargs = DistributedDataParallelKwargs(
 
 # Model Configuration
 MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-09_05"
+OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-original-data"
 CACHE_DIR = "./cache"
 
 # Dataset Configuration
-DATASET_PATH = "../4_tow_generation/tow_data/tow_09_05.jsonl"
+DATASET_PATH = "../4_tow_generation/tow_data/ToW.jsonl"
 VALIDATION_SPLIT = 0.1
 
 # Training Hyperparameters - OPTIMIZED FOR LORA
@@ -72,7 +72,7 @@ NUM_TRAIN_EPOCHS = 10
 PER_DEVICE_TRAIN_BATCH_SIZE = 4  # Can increase due to memory efficiency of LoRA
 PER_DEVICE_EVAL_BATCH_SIZE = 4   # Can increase due to memory efficiency of LoRA
 GRADIENT_ACCUMULATION_STEPS = 16  # Reduced due to increased batch size
-MAX_SEQ_LENGTH = 2048
+MAX_SEQ_LENGTH = 1700
 WARMUP_RATIO = 0.1
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
@@ -84,11 +84,11 @@ ADAM_BETA2 = 0.999
 ADAM_EPSILON = 1e-8
 
 # Saving and Logging
-SAVE_STEPS = 100  # Increased to reduce I/O
-EVAL_STEPS = 100  # Increased to reduce evaluation overhead
+SAVE_STEPS = 500  # Increased to reduce I/O
+EVAL_STEPS = 500  # Increased to reduce evaluation overhead
 EVAL_ON_EPOCH_END = False
 LOGGING_STEPS = 25
-SAVE_TOTAL_LIMIT = 3
+SAVE_TOTAL_LIMIT = 5
 LOAD_BEST_MODEL_AT_END = True
 METRIC_FOR_BEST_MODEL = "eval_loss"
 

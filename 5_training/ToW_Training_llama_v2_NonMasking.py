@@ -3,8 +3,8 @@
 """
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_llama_v2_NonMasking.py
-torchrun --nproc_per_node=4 ToW_Training_llama_v2_NonMasking.py
+deepspeed --num_gpus=2 --master_port=29501 ToW_Training_llama_v2_NonMasking.py
+torchrun --nproc_per_node=2 ToW_Training_llama_v2_NonMasking.py
 """
 
 import os
@@ -23,6 +23,7 @@ import re
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
+from accelerate import Accelerator, DeepSpeedPlugin, DistributedDataParallelKwargs
 import transformers
 from transformers import (
     AutoModelForCausalLM,
@@ -525,7 +526,7 @@ def train():
     
     set_seed(SEED)
     kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))
-    
+
     # Initialize Accelerator
     accelerator = Accelerator(
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,

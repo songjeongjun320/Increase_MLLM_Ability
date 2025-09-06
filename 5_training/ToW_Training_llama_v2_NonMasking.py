@@ -58,7 +58,7 @@ ddp_kwargs = DistributedDataParallelKwargs(
 
 # Model Configuration
 MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-refined_dataset_09_02" 
+OUTPUT_DIR = "./tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-09_05" 
 CACHE_DIR = "./cache"
 
 # Dataset Configuration

@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-ToW Training Script with Memory-Optimized DeepSpeed Configuration
-Training entire sequence in "completion" values in dataset.
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 deepspeed --num_gpus=2 --master_port=29500 ToW_Training_qwen_v2.py
@@ -59,7 +57,7 @@ ddp_kwargs = DistributedDataParallelKwargs(
 
 # Model Configuration
 MODEL_NAME_OR_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
-OUTPUT_DIR = "./tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02"
+OUTPUT_DIR = "./tow_trained_models/qwem-2.5-3b-pt-tow-09_05"
 CACHE_DIR = "./cache"
 
 # Dataset Configuration

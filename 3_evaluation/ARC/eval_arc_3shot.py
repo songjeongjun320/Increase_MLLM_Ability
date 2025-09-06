@@ -46,22 +46,29 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt-tow",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/best_model",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt-tow",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-pt-tow-refined_dataset_09_02/best_model",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02/best_model",
+    #     use_quantization=False
+    # ),
+
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/best_model",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="gemma-3-4b-pt-tow",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-pt-tow-refined_dataset_09_02/best_model",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2- 3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02/best_model",
+        name="llama-3.2-3b-pt-tow-original-data",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-original-data/final_model",
         use_quantization=False
     ),
 ]

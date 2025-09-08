@@ -84,8 +84,8 @@ ADAM_BETA2 = 0.999
 ADAM_EPSILON = 1e-8
 
 # Saving and Logging
-SAVE_STEPS = 100  # Increased to reduce I/O
-EVAL_STEPS = 100  # Increased to reduce evaluation overhead
+SAVE_STEPS = 500  # Increased to reduce I/O
+EVAL_STEPS = 500  # Increased to reduce evaluation overhead
 EVAL_ON_EPOCH_END = False
 LOGGING_STEPS = 25
 SAVE_TOTAL_LIMIT = 3

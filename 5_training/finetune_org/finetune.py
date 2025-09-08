@@ -17,8 +17,13 @@
 """module avail cuda
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
-deepspeed --num_gpus=2 ToW_Training_gemma.py
-torchrun --nproc_per_node=4 ToW_Training_gemma.py
+
+llama
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai --exp_name "llama-3.2-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False
+qwen
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False
+gemma
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_05_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False
 """
 import re
 import logging
@@ -82,6 +87,7 @@ class FlatArguments:
     """
     Full arguments class for all fine-tuning jobs.
     """
+    local_rank: Optional[int] = field(default=None)
 
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """The name of this experiment"""
@@ -167,7 +173,7 @@ class FlatArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     max_seq_length: Optional[int] = field(
-        default=None,
+        default=2048,
         metadata={
             "help": (
                 "The maximum total input sequence length after tokenization. "
@@ -198,7 +204,7 @@ class FlatArguments:
         metadata={"help": "The initial learning rate for AdamW optimizer."},
     )
     logging_steps: Optional[int] = field(
-        default=None,
+        default=25,
         metadata={"help": "Log the training loss and learning rate every logging_steps steps."},
     )
     lora_rank: int = field(
@@ -221,7 +227,7 @@ class FlatArguments:
         },
     )
     num_train_epochs: int = field(
-        default=2,
+        default=10,
         metadata={"help": "Total number of training epochs to perform."},
     )
     output_dir: str = field(
@@ -233,11 +239,11 @@ class FlatArguments:
         metadata={"help": "Batch size per GPU/TPU core/CPU for training."},
     )
     use_lora: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "If True, will use LORA (low-rank parameter-efficient training) to train the model."},
     )
     use_qlora: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Use qLoRA training - initializes model in quantized form. Not compatible with deepspeed."},
     )
     use_8bit_optimizer: bool = field(
@@ -267,15 +273,15 @@ class FlatArguments:
         },
     )
     wandb_entity: Optional[str] = field(
-        default=None,
+        default=42,
         metadata={"help": "Entity to use for logging to wandb."},
     )
     resume_from_checkpoint: Optional[str] = field(
-        default=None,
+        default=True,
         metadata={"help": "If the training should continue from a checkpoint folder."},
     )
     with_tracking: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Whether to enable experiment trackers for logging."},
     )
     report_to: Union[str, List[str]] = field(
@@ -301,7 +307,7 @@ class FlatArguments:
     )
     seed: int = field(default=42, metadata={"help": "Random seed for initialization and dataset shuffling."})
     checkpointing_steps: Optional[str] = field(
-        default=None,
+        default=42,
         metadata={
             "help": "Whether the various states should be saved at the end of every n steps, or 'epoch' for each epoch."  # noqa
         },
@@ -494,7 +500,7 @@ def main(args: FlatArguments):
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        use_seedable_sampler=True,
+        # use_seedable_sampler=True,
         **accelerator_log_kwargs,
         kwargs_handlers=[timeout_kwargs],
     )
@@ -872,6 +878,8 @@ def main(args: FlatArguments):
         num_training_steps=num_training_steps_for_scheduler,
         num_warmup_steps=int(num_training_steps_for_scheduler * args.warmup_ratio),
     )
+
+    
     # Prepare everything with `accelerator`.
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler

@@ -763,60 +763,6 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
 
         logger.info(f"MMLU-ProX English evaluation completed: {all_results['mmlu_prox_en']['correct']}/{all_results['mmlu_prox_en']['total']}")
 
-        # Save English results immediately after English evaluation
-        en_strict_accuracy = (all_results["mmlu_prox_en"]["correct"] / len(mmlu_prox_en_data) * 100) if len(mmlu_prox_en_data) > 0 else 0
-        en_errors_skipped = len(mmlu_prox_en_data) - all_results["mmlu_prox_en"]["total"]
-        
-        # Save English results
-        en_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_en.json")
-        en_summary = {
-            "model_config": {k: str(v) for k, v in config.__dict__.items()},
-            "evaluation_type": "5-shot MMLU-ProX English",
-            "evaluation_date": datetime.now().isoformat(),
-            "language": "en",
-            "results": {
-                "accuracy_strict": en_strict_accuracy,
-                "correct_predictions": all_results["mmlu_prox_en"]["correct"],
-                "total_predictions": all_results["mmlu_prox_en"]["total"],
-                "total_items": len(mmlu_prox_en_data),
-                "errors_or_skipped": en_errors_skipped,
-                "details": all_results["mmlu_prox_en"]["details"]
-            }
-        }
-        
-        with open(en_results_filepath, 'w', encoding='utf-8') as f:
-            json.dump(en_summary, f, indent=2, ensure_ascii=False)
-        
-        # Save English raw generations
-        en_raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_en.json")
-        en_raw_generations = {
-            "model_name": config.name,
-            "language": "en", 
-            "evaluation_date": datetime.now().isoformat(),
-            "raw_generations": all_results["mmlu_prox_en"]["raw_generations"]
-        }
-        with open(en_raw_gen_filepath, 'w', encoding='utf-8') as f:
-            json.dump(en_raw_generations, f, indent=2, ensure_ascii=False)
-        
-        # Save English failures
-        en_failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_en.json")
-        en_failures_summary = {
-            "model_name": config.name,
-            "language": "en",
-            "evaluation_date": datetime.now().isoformat(),
-            "total_failures": len(all_results["mmlu_prox_en"]["failures"]),
-            "incorrect_answers": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "incorrect_answer"]),
-            "extraction_failures": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "extraction_failed"]),
-            "failure_cases": all_results["mmlu_prox_en"]["failures"]
-        }
-        
-        with open(en_failures_filepath, 'w', encoding='utf-8') as f:
-            json.dump(en_failures_summary, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"English results saved: {en_results_filepath}")
-        logger.info(f"English raw generations saved: {en_raw_gen_filepath}")
-        logger.info(f"English failures saved: {en_failures_filepath}")
-
         # Evaluate MMLU-ProX Korean (동일한 패턴으로 수정)
         logger.info("Starting MMLU-ProX Korean evaluation...")
         pbar_ko = tqdm(range(0, len(mmlu_prox_ko_data), BATCH_SIZE), desc="Evaluating MMLU-ProX Korean (errors: 0)")
@@ -907,11 +853,96 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
 
         logger.info(f"MMLU-ProX Korean evaluation completed: {all_results['mmlu_prox_ko']['correct']}/{all_results['mmlu_prox_ko']['total']}")
 
-        # Save Korean results immediately after Korean evaluation
+        # Calculate strict accuracies (including errors/skips)
+        en_strict_accuracy = (all_results["mmlu_prox_en"]["correct"] / len(mmlu_prox_en_data) * 100) if len(mmlu_prox_en_data) > 0 else 0
         ko_strict_accuracy = (all_results["mmlu_prox_ko"]["correct"] / len(mmlu_prox_ko_data) * 100) if len(mmlu_prox_ko_data) > 0 else 0
-        ko_errors_skipped = len(mmlu_prox_ko_data) - all_results["mmlu_prox_ko"]["total"]
         
-        # Save Korean results
+        # Calculate error/skip counts
+        en_errors_skipped = len(mmlu_prox_en_data) - all_results["mmlu_prox_en"]["total"]
+        ko_errors_skipped = len(mmlu_prox_ko_data) - all_results["mmlu_prox_ko"]["total"]
+
+        logger.info(f"--- Final Results for {config.name} ---")
+        logger.info(f"MMLU-ProX English Strict Accuracy: {en_strict_accuracy:.2f}% ({all_results['mmlu_prox_en']['correct']}/{len(mmlu_prox_en_data)}) [Errors/Skipped: {en_errors_skipped}]")
+        logger.info(f"MMLU-ProX Korean Strict Accuracy: {ko_strict_accuracy:.2f}% ({all_results['mmlu_prox_ko']['correct']}/{len(mmlu_prox_ko_data)}) [Errors/Skipped: {ko_errors_skipped}]")
+
+        # Save failure cases - split by language
+        en_failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_en.json")
+        en_failures_summary = {
+            "model_name": config.name,
+            "language": "en",
+            "evaluation_date": datetime.now().isoformat(),
+            "total_failures": len(all_results["mmlu_prox_en"]["failures"]),
+            "incorrect_answers": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "incorrect_answer"]),
+            "extraction_failures": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "extraction_failed"]),
+            "failure_cases": all_results["mmlu_prox_en"]["failures"]
+        }
+        
+        with open(en_failures_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_failures_summary, f, indent=2, ensure_ascii=False)
+            
+        ko_failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_ko.json")
+        ko_failures_summary = {
+            "model_name": config.name,
+            "language": "ko",
+            "evaluation_date": datetime.now().isoformat(),
+            "total_failures": len(all_results["mmlu_prox_ko"]["failures"]),
+            "incorrect_answers": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "incorrect_answer"]),
+            "extraction_failures": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "extraction_failed"]),
+            "failure_cases": all_results["mmlu_prox_ko"]["failures"]
+        }
+        
+        with open(ko_failures_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_failures_summary, f, indent=2, ensure_ascii=False)
+        
+        # Also save combined failures for compatibility 
+        failures_summary = {
+            "model_name": config.name,
+            "evaluation_date": datetime.now().isoformat(),
+            "mmlu_prox_en": {
+                "total_failures": len(all_results["mmlu_prox_en"]["failures"]),
+                "incorrect_answers": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "incorrect_answer"]),
+                "extraction_failures": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "extraction_failed"]),
+                "failure_cases": all_results["mmlu_prox_en"]["failures"]
+            },
+            "mmlu_prox_ko": {
+                "total_failures": len(all_results["mmlu_prox_ko"]["failures"]),
+                "incorrect_answers": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "incorrect_answer"]),
+                "extraction_failures": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "extraction_failed"]),
+                "failure_cases": all_results["mmlu_prox_ko"]["failures"]
+            }
+        }
+        
+        with open(failures_filepath, 'w', encoding='utf-8') as f:
+            json.dump(failures_summary, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Results saved separately by language: {en_results_filepath}, {ko_results_filepath}")
+        logger.info(f"Raw generations saved separately: {en_raw_gen_filepath}, {ko_raw_gen_filepath}")
+        logger.info(f"Failure cases saved separately: {en_failures_filepath}, {ko_failures_filepath}")
+        logger.info(f"Total EN failures: {en_failures_summary['total_failures']} (Incorrect: {en_failures_summary['incorrect_answers']}, Extraction failed: {en_failures_summary['extraction_failures']})")
+        logger.info(f"Total KO failures: {ko_failures_summary['total_failures']} (Incorrect: {ko_failures_summary['incorrect_answers']}, Extraction failed: {ko_failures_summary['extraction_failures']})")
+
+        # Save Results - split by language
+        # English results
+        en_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_en.json")
+        en_summary = {
+            "model_config": {k: str(v) for k, v in config.__dict__.items()},
+            "evaluation_type": "5-shot MMLU-ProX English",
+            "evaluation_date": datetime.now().isoformat(),
+            "language": "en",
+            "results": {
+                "accuracy_strict": en_strict_accuracy,
+                "correct_predictions": all_results["mmlu_prox_en"]["correct"],
+                "total_predictions": all_results["mmlu_prox_en"]["total"],
+                "total_items": len(mmlu_prox_en_data),
+                "errors_or_skipped": en_errors_skipped,
+                "details": all_results["mmlu_prox_en"]["details"]
+            }
+        }
+        
+        with open(en_results_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_summary, f, indent=2, ensure_ascii=False)
+        
+        # Korean results
         ko_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_ko.json")
         ko_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
@@ -931,47 +962,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         with open(ko_results_filepath, 'w', encoding='utf-8') as f:
             json.dump(ko_summary, f, indent=2, ensure_ascii=False)
         
-        # Save Korean raw generations
-        ko_raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_ko.json")
-        ko_raw_generations = {
-            "model_name": config.name,
-            "language": "ko",
-            "evaluation_date": datetime.now().isoformat(), 
-            "raw_generations": all_results["mmlu_prox_ko"]["raw_generations"]
-        }
-        with open(ko_raw_gen_filepath, 'w', encoding='utf-8') as f:
-            json.dump(ko_raw_generations, f, indent=2, ensure_ascii=False)
-        
-        # Save Korean failures
-        ko_failures_filepath = os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_ko.json")
-        ko_failures_summary = {
-            "model_name": config.name,
-            "language": "ko",
-            "evaluation_date": datetime.now().isoformat(),
-            "total_failures": len(all_results["mmlu_prox_ko"]["failures"]),
-            "incorrect_answers": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "incorrect_answer"]),
-            "extraction_failures": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "extraction_failed"]),
-            "failure_cases": all_results["mmlu_prox_ko"]["failures"]
-        }
-        
-        with open(ko_failures_filepath, 'w', encoding='utf-8') as f:
-            json.dump(ko_failures_summary, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"Korean results saved: {ko_results_filepath}")
-        logger.info(f"Korean raw generations saved: {ko_raw_gen_filepath}")
-        logger.info(f"Korean failures saved: {ko_failures_filepath}")
-
-        # Calculate strict accuracies (including errors/skips) for final summary
-        en_strict_accuracy = (all_results["mmlu_prox_en"]["correct"] / len(mmlu_prox_en_data) * 100) if len(mmlu_prox_en_data) > 0 else 0
-        
-        # Calculate error/skip counts
-        en_errors_skipped = len(mmlu_prox_en_data) - all_results["mmlu_prox_en"]["total"]
-
-        logger.info(f"--- Final Results for {config.name} ---")
-        logger.info(f"MMLU-ProX English Strict Accuracy: {en_strict_accuracy:.2f}% ({all_results['mmlu_prox_en']['correct']}/{len(mmlu_prox_en_data)}) [Errors/Skipped: {en_errors_skipped}]")
-        logger.info(f"MMLU-ProX Korean Strict Accuracy: {ko_strict_accuracy:.2f}% ({all_results['mmlu_prox_ko']['correct']}/{len(mmlu_prox_ko_data)}) [Errors/Skipped: {ko_errors_skipped}]")
-
-        # Save combined results for compatibility
+        # Also save original combined results for compatibility
         final_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
             "evaluation_type": "5-shot MMLU-ProX",
@@ -997,38 +988,34 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         with open(results_filepath, 'w', encoding='utf-8') as f:
             json.dump(final_summary, f, indent=2, ensure_ascii=False)
         
-        # Save combined raw generations for compatibility
+        # Save raw generations - split by language
+        en_raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_en.json")
+        en_raw_generations = {
+            "model_name": config.name,
+            "language": "en", 
+            "evaluation_date": datetime.now().isoformat(),
+            "raw_generations": all_results["mmlu_prox_en"]["raw_generations"]
+        }
+        with open(en_raw_gen_filepath, 'w', encoding='utf-8') as f:
+            json.dump(en_raw_generations, f, indent=2, ensure_ascii=False)
+            
+        ko_raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_ko.json")
+        ko_raw_generations = {
+            "model_name": config.name,
+            "language": "ko",
+            "evaluation_date": datetime.now().isoformat(), 
+            "raw_generations": all_results["mmlu_prox_ko"]["raw_generations"]
+        }
+        with open(ko_raw_gen_filepath, 'w', encoding='utf-8') as f:
+            json.dump(ko_raw_generations, f, indent=2, ensure_ascii=False)
+        
+        # Also save combined raw generations for compatibility
         raw_generations_summary = {
             "mmlu_prox_en": all_results["mmlu_prox_en"]["raw_generations"],
             "mmlu_prox_ko": all_results["mmlu_prox_ko"]["raw_generations"]
         }
         with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
             json.dump(raw_generations_summary, f, indent=2, ensure_ascii=False)
-        
-        # Save combined failures for compatibility
-        failures_summary = {
-            "model_name": config.name,
-            "evaluation_date": datetime.now().isoformat(),
-            "mmlu_prox_en": {
-                "total_failures": len(all_results["mmlu_prox_en"]["failures"]),
-                "incorrect_answers": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "incorrect_answer"]),
-                "extraction_failures": len([f for f in all_results["mmlu_prox_en"]["failures"] if f["error_type"] == "extraction_failed"]),
-                "failure_cases": all_results["mmlu_prox_en"]["failures"]
-            },
-            "mmlu_prox_ko": {
-                "total_failures": len(all_results["mmlu_prox_ko"]["failures"]),
-                "incorrect_answers": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "incorrect_answer"]),
-                "extraction_failures": len([f for f in all_results["mmlu_prox_ko"]["failures"] if f["error_type"] == "extraction_failed"]),
-                "failure_cases": all_results["mmlu_prox_ko"]["failures"]
-            }
-        }
-        
-        with open(failures_filepath, 'w', encoding='utf-8') as f:
-            json.dump(failures_summary, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"Combined results saved: {results_filepath}")
-        logger.info(f"Combined raw generations saved: {raw_gen_filepath}")
-        logger.info(f"Combined failures saved: {failures_filepath}")
 
         return {
             "model_name": config.name,

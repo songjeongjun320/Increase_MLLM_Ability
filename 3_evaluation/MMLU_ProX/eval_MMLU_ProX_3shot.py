@@ -1127,6 +1127,88 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
 
     except Exception as e:
         logger.exception(f"Critical error during evaluation for {config.name}: {e}")
+        
+        # 에러 발생시에도 기본 JSON 파일들을 저장
+        error_results = {
+            "mmlu_prox_en": {
+                "correct": 0, 
+                "total": 0, 
+                "details": [], 
+                "raw_generations": [], 
+                "failures": [],
+                "all_outputs": []
+            },
+            "mmlu_prox_ko": {
+                "correct": 0, 
+                "total": 0, 
+                "details": [], 
+                "raw_generations": [], 
+                "failures": [],
+                "all_outputs": []
+            }
+        }
+        
+        # 에러 정보를 포함한 JSON 파일들 저장
+        try:
+            error_summary_en = {
+                "model_config": {k: str(v) for k, v in config.__dict__.items()},
+                "evaluation_type": "5-shot MMLU-ProX English",
+                "evaluation_date": datetime.now().isoformat(),
+                "language": "en",
+                "error": str(e),
+                "results": {
+                    "accuracy_strict": 0.0,
+                    "correct_predictions": 0,
+                    "total_predictions": 0,
+                    "total_items": len(mmlu_prox_en_data) if 'mmlu_prox_en_data' in locals() else 0,
+                    "errors_or_skipped": len(mmlu_prox_en_data) if 'mmlu_prox_en_data' in locals() else 0,
+                    "details": []
+                }
+            }
+            
+            error_summary_ko = {
+                "model_config": {k: str(v) for k, v in config.__dict__.items()},
+                "evaluation_type": "5-shot MMLU-ProX Korean", 
+                "evaluation_date": datetime.now().isoformat(),
+                "language": "ko",
+                "error": str(e),
+                "results": {
+                    "accuracy_strict": 0.0,
+                    "correct_predictions": 0,
+                    "total_predictions": 0,
+                    "total_items": len(mmlu_prox_ko_data) if 'mmlu_prox_ko_data' in locals() else 0,
+                    "errors_or_skipped": len(mmlu_prox_ko_data) if 'mmlu_prox_ko_data' in locals() else 0,
+                    "details": []
+                }
+            }
+            
+            # 에러 결과 저장
+            en_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_en.json")
+            ko_results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shot_ko.json")
+            
+            with open(en_results_filepath, 'w', encoding='utf-8') as f:
+                json.dump(error_summary_en, f, indent=2, ensure_ascii=False)
+            with open(ko_results_filepath, 'w', encoding='utf-8') as f:
+                json.dump(error_summary_ko, f, indent=2, ensure_ascii=False)
+                
+            # 빈 raw generations와 failures 파일도 생성
+            empty_raw_gen = {"model_name": config.name, "error": str(e), "raw_generations": []}
+            empty_failures = {"model_name": config.name, "error": str(e), "failure_cases": []}
+            empty_all_outputs = {"model_name": config.name, "error": str(e), "all_outputs": []}
+            
+            for lang in ["en", "ko"]:
+                with open(os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shot_{lang}.json"), 'w', encoding='utf-8') as f:
+                    json.dump({**empty_raw_gen, "language": lang}, f, indent=2, ensure_ascii=False)
+                with open(os.path.join(model_specific_output_dir, f"failures_{config.name}_5shot_{lang}.json"), 'w', encoding='utf-8') as f:
+                    json.dump({**empty_failures, "language": lang}, f, indent=2, ensure_ascii=False)
+                with open(os.path.join(model_specific_output_dir, f"all_outputs_{config.name}_5shot_{lang}.json"), 'w', encoding='utf-8') as f:
+                    json.dump({**empty_all_outputs, "language": lang}, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Error result files saved for {config.name}")
+            
+        except Exception as save_error:
+            logger.error(f"Failed to save error results for {config.name}: {save_error}")
+        
         return {
             "model_name": config.name,
             "mmlu_prox_en_accuracy_strict": 0.0,
@@ -1177,11 +1259,40 @@ def main():
 
     # Evaluate each model
     for config in MODEL_CONFIGS:
+        logger.info(f"Starting evaluation for model: {config.name}")
         model_specific_output_dir = os.path.join(BASE_OUTPUT_DIR, config.name)
         os.makedirs(model_specific_output_dir, exist_ok=True)
         
-        model_result = evaluate_single_model_on_datasets(config, mmlu_prox_en_data, mmlu_prox_ko_data, model_specific_output_dir)
-        all_model_results.append(model_result)
+        try:
+            model_result = evaluate_single_model_on_datasets(config, mmlu_prox_en_data, mmlu_prox_ko_data, model_specific_output_dir)
+            all_model_results.append(model_result)
+            
+            # 성공/실패 상태 로깅
+            if "error" in model_result:
+                logger.error(f"Model {config.name} evaluation failed: {model_result['error']}")
+            else:
+                logger.info(f"Model {config.name} evaluation completed successfully")
+                logger.info(f"  EN Accuracy: {model_result.get('mmlu_prox_en_accuracy_strict', 0):.2f}%")
+                logger.info(f"  KO Accuracy: {model_result.get('mmlu_prox_ko_accuracy_strict', 0):.2f}%")
+                
+        except Exception as e:
+            logger.exception(f"Unexpected error evaluating model {config.name}: {e}")
+            # 최소한의 에러 결과라도 저장
+            error_result = {
+                "model_name": config.name,
+                "mmlu_prox_en_accuracy_strict": 0.0,
+                "mmlu_prox_ko_accuracy_strict": 0.0,
+                "mmlu_prox_en_correct": 0,
+                "mmlu_prox_en_total": 0,
+                "mmlu_prox_en_total_items": len(mmlu_prox_en_data),
+                "mmlu_prox_en_errors_skipped": len(mmlu_prox_en_data),
+                "mmlu_prox_ko_correct": 0,
+                "mmlu_prox_ko_total": 0,
+                "mmlu_prox_ko_total_items": len(mmlu_prox_ko_data),
+                "mmlu_prox_ko_errors_skipped": len(mmlu_prox_ko_data),
+                "error": str(e)
+            }
+            all_model_results.append(error_result)
 
     # Generate summary
     summary_data = {

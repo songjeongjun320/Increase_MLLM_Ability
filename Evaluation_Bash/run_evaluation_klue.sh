@@ -5,7 +5,7 @@
 export TRANSFORMERS_VERBOSITY=info
 
 MODEL_NAMES=(
-    # "llama-3.2-3b-pt"
+    "llama-3.2-3b-pt"
     # "gemma-3-4b-pt"
     # "qwem-2.5-3b-pt"
     # "llama-3.2-3b-pt-tow-original-data"
@@ -16,12 +16,12 @@ MODEL_NAMES=(
     # "qwem-2.5-3b-pt-tow-refined_dataset_09_02"
     # "DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion"
     # "gemma-3-4b-pt-ToW-completion"
-    "llama-3.2-3b-pt-tow-09_05_allenai"
+    # "llama-3.2-3b-pt-tow-09_05_allenai"
     # "qwem-2.5-3b-pt-tow-09_05_allenai"
 )
 
 MODEL_PATHS=(
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
+    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
@@ -32,7 +32,7 @@ MODEL_PATHS=(
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/best_model"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-tow-allenai-merged"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
 )
 
@@ -48,13 +48,13 @@ ADAPTER_PATHS=(
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/final_model"
     # ""
     # ""
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai"
+    ""
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai"
 )
 
 # KLUE 전체 8개 태스크
 # TASKS=("tc" "sts" "nli" "mrc" "ner" "re" "dp" "dst")
-TASKS=("tc" "nli" "re")
+TASKS=("tc")
 
 RESULTS_DIR="./evaluation_results_klue"
 mkdir -p $RESULTS_DIR

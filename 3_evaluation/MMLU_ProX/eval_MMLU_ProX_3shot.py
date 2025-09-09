@@ -90,7 +90,7 @@ MODEL_CONFIGS = [
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.jsonl"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.jsonl"
 BASE_OUTPUT_DIR = "mmlu_prox_3shot"
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -286,9 +286,9 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
     (Corrected Version)
     """
     if language == "ko":
-        prompt_parts = ["다음은 다양한 학문 분야의 전문적이고 어려운 다지선다형 질문입니다.\n"]
+        prompt_parts = ["다음은 다양한 학문 분야의 전문적이고 어려운 다지선다형 질문입니다. A부터 J까지의 보기중 무조건 하나의 답만 선택하세요.\n"]
     else:
-        prompt_parts = ["The following are challenging multiple choice questions from various academic disciplines.\n"]
+        prompt_parts = ["The following are challenging multiple choice questions from various academic disciplines. You MUST choose one of the option A~J.\n"]
     
     # Add few-shot examples
     for example in few_shot_examples:
@@ -409,7 +409,7 @@ def load_jsonl_dataset(filepath):
 
 
         # sampling
-        data = data[:10]
+        data = data[:50]
         return data
     except Exception as e:
         logger.error(f"Error loading data from {filepath}: {e}")

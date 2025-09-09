@@ -498,18 +498,44 @@ def main(args: FlatArguments):
     # if you get timeouts (e.g. due to long tokenization) increase this.
     timeout_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=args.timeout))
 
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         # use_seedable_sampler=True,
         **accelerator_log_kwargs,
         kwargs_handlers=[timeout_kwargs],
     )
-    # Make one log on every process with the configuration for debugging.
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
+    
+    # 모델별 로그 파일 설정
+    if accelerator.is_main_process:
+        # 모델 이름에서 파일명으로 사용할 수 없는 문자 제거
+        model_name = os.path.basename(args.model_name_or_path).replace('/', '_').replace('\\', '_')
+        log_filename = f"{model_name}_{args.exp_name}_log.txt"
+        log_filepath = os.path.join(args.output_dir, log_filename)
+        
+        # 출력 디렉토리 생성
+        os.makedirs(args.output_dir, exist_ok=True)
+        
+        # 파일과 콘솔 모두에 로그 출력
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+            datefmt="%m/%d/%Y %H:%M:%S",
+            handlers=[
+                logging.FileHandler(log_filepath, mode='a', encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+        logger.info(f"Model training logs will be saved to: {log_filepath}")
+        logger.info(f"Starting training for model: {args.model_name_or_path}")
+    else:
+        # 다른 프로세스는 콘솔만 사용
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+            datefmt="%m/%d/%Y %H:%M:%S",
+            level=logging.INFO,
+        )
+    
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
@@ -733,6 +759,33 @@ def main(args: FlatArguments):
     elif args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
+    # Freeze vision tower for Gemma 3 multimodal models
+    def freeze_vision_tower(model):
+        """Freeze vision tower parameters to avoid unused parameter errors"""
+        vision_modules = []
+        
+        # Check various possible paths for vision tower
+        if hasattr(model, 'vision_tower'):
+            vision_modules.append(model.vision_tower)
+        if hasattr(model, 'model') and hasattr(model.model, 'vision_tower'):
+            vision_modules.append(model.model.vision_tower)
+        if hasattr(model, 'base_model'):
+            base_model = model.base_model
+            if hasattr(base_model, 'model') and hasattr(base_model.model, 'vision_tower'):
+                vision_modules.append(base_model.model.vision_tower)
+        
+        # Freeze all vision tower parameters
+        for vision_module in vision_modules:
+            for param in vision_module.parameters():
+                param.requires_grad = False
+                
+        if vision_modules:
+            logger.info(f"Frozen {len(vision_modules)} vision tower module(s) to avoid unused parameter errors")
+        else:
+            logger.info("No vision tower found - proceeding with text-only training")
+    
+    # Apply vision tower freezing
+    freeze_vision_tower(model)
 
 
     # Preprocessing the datasets.
@@ -879,7 +932,12 @@ def main(args: FlatArguments):
         num_warmup_steps=int(num_training_steps_for_scheduler * args.warmup_ratio),
     )
 
-    
+    # For gemma, we added
+    if hasattr(accelerator.state, 'ddp_kwargs'):
+        accelerator.state.ddp_kwargs['find_unused_parameters'] = True
+    else:
+        accelerator.state.ddp_kwargs = {'find_unused_parameters': True}
+
     # Prepare everything with `accelerator`.
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
@@ -1088,7 +1146,7 @@ def main(args: FlatArguments):
     if accelerator.is_local_main_process:
         clean_last_n_checkpoints(args.output_dir, keep_last_n_checkpoints=0)
 
-    if is_beaker_job() and accelerator.is_main_process:
+    if accelerator.is_main_process:
         # dpo script only supports these two options right now for datasets
         if args.dataset_mixer:
             dataset_list = args.dataset_mixer.keys()
@@ -1112,6 +1170,7 @@ def main(args: FlatArguments):
         # save metadata to the output directory. then it should also get pushed to HF.
         with open(os.path.join(args.output_dir, "metadata.json"), "w") as f:
             json.dump(metadata_blob, f)
+        print(f"Metadata saved to {args.output_dir}/metadata.json")
 
         # upload metadata to the dataset if set
         if args.hf_metadata_dataset:

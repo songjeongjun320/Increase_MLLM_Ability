@@ -47,21 +47,21 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # # Base Models (commented out for now)
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
 
     # ModelConfig(
     #     name="qwem-2.5-3b-pt-tow",
@@ -122,9 +122,9 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
     },
     {
         "goal": "To make a simple bookmark",
-        "sol1": "Cut a piece of cardboard to size, decorate it, and punch a hole at the top to thread a ribbon through.",
-        "sol2": "Cut a piece of paper to size, fold it in half, and staple the open edges together.",
-        "label": 0,
+        "sol1": "Cut a piece of paper to size, fold it in half, and staple the open edges together.",
+        "sol2": "Cut a piece of cardboard to size, decorate it, and punch a hole at the top to thread a ribbon through.",
+        "label": 1,
         "reasoning": "For a bookmark to be functional, it should be durable and have a way to easily locate it. Method A creates a sturdy cardboard bookmark with a ribbon that can hang out of the book, making it easy to find. Method B creates a paper pocket that would be less durable and doesn't provide a way to easily locate the bookmark in a closed book."
     },
     {
@@ -135,6 +135,7 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
         "reasoning": "Safe splinter removal requires minimizing tissue damage and infection risk. Method A follows proper first aid by using sterile tools and removing the splinter along its entry path, which minimizes tissue tearing. Method B is dangerous as it would cause unnecessary injury, push bacteria deeper, and potentially break the splinter inside the tissue."
     }
 ]
+
 KOREAN_FEW_SHOT_EXAMPLES = [
     {
         "goal": "달걀 흰자와 달걀 노른자를 어떻게 분리하나요?",
@@ -145,9 +146,9 @@ KOREAN_FEW_SHOT_EXAMPLES = [
     },
     {
         "goal": "간단한 책갈피를 만들려면",
-        "sol1": "판지를 크기에 맞게 자르고 장식한 다음 위쪽에 구멍을 뚫어 리본을 끼운다.",
-        "sol2": "종이를 크기에 맞게 자르고 반으로 접은 다음 열린 가장자리를 함께 스테이플러로 고정한다.",
-        "label": 0,
+        "sol1": "종이를 크기에 맞게 자르고 반으로 접은 다음 열린 가장자리를 함께 스테이플러로 고정한다.",
+        "sol2": "판지를 크기에 맞게 자르고 장식한 다음 위쪽에 구멍을 뚫어 리본을 끼운다.",
+        "label": 1,
         "reasoning": "책갈피가 실용적이려면 내구성이 있고 쉽게 찾을 수 있어야 합니다. 방법 A는 튼튼한 판지로 만들고 리본이 책 밖으로 나와 쉽게 찾을 수 있습니다. 방법 B는 종이 주머니를 만드는 것으로 내구성이 떨어지고 닫힌 책에서 책갈피를 쉽게 찾을 수 있는 방법을 제공하지 않습니다."
     },
     {
@@ -159,38 +160,13 @@ KOREAN_FEW_SHOT_EXAMPLES = [
     }
 ]
 
-def prepare_piqa_data_with_dev_split(piqa_data, ko_piqa_data, dev_shots_per_type=3):
+def create_3shot_prompt(test_item, language="en"):
     """
-    Split PIQA data into development (few-shot examples) and test sets.
-    Uses first N examples as development set.
+    Creates a 3-shot PIQA prompt using predefined few-shot examples with reasoning.
     """
-    # English PIQA
-    if len(piqa_data) < dev_shots_per_type:
-        logger.warning(f"English PIQA has only {len(piqa_data)} items, less than required {dev_shots_per_type} dev examples")
-        piqa_dev_data = piqa_data
-        piqa_test_data = []
-    else:
-        piqa_dev_data = piqa_data[:dev_shots_per_type]
-        piqa_test_data = piqa_data[dev_shots_per_type:]
+    # Select the appropriate few-shot examples based on language
+    few_shot_examples = KOREAN_FEW_SHOT_EXAMPLES if language == "ko" else ENGLISH_FEW_SHOT_EXAMPLES
     
-    # Korean PIQA
-    if len(ko_piqa_data) < dev_shots_per_type:
-        logger.warning(f"Korean PIQA has only {len(ko_piqa_data)} items, less than required {dev_shots_per_type} dev examples")
-        ko_piqa_dev_data = ko_piqa_data
-        ko_piqa_test_data = []
-    else:
-        ko_piqa_dev_data = ko_piqa_data[:dev_shots_per_type]
-        ko_piqa_test_data = ko_piqa_data[dev_shots_per_type:]
-    
-    logger.info(f"Split PIQA data: EN dev={len(piqa_dev_data)}, test={len(piqa_test_data)}")
-    logger.info(f"Split Ko-PIQA data: KO dev={len(ko_piqa_dev_data)}, test={len(ko_piqa_test_data)}")
-    
-    return piqa_dev_data, piqa_test_data, ko_piqa_dev_data, ko_piqa_test_data
-
-def create_3shot_prompt_from_dev(test_item, dev_examples, language="en"):
-    """
-    Creates a 3-shot PIQA prompt using actual development examples from the dataset.
-    """
     if language == "ko":
         prompt_parts = ["다음은 물리적 상식에 대한 다지선다형 질문입니다."]
     else:
@@ -198,63 +174,10 @@ def create_3shot_prompt_from_dev(test_item, dev_examples, language="en"):
     
     prompt_parts.append("")
     
-    # Add few-shot examples from development set
-    for example in dev_examples:
+    # Add few-shot examples with reasoning
+    for example in few_shot_examples:
         goal = example["goal"]
         sol1 = example["sol1"] 
-        sol2 = example["sol2"]
-        correct_answer = "A" if example["label"] == 0 else "B"
-        
-        prompt_parts.append(f"Goal: {goal}")
-        prompt_parts.append(f"A. {sol1}")
-        prompt_parts.append(f"B. {sol2}")
-        prompt_parts.append(f"Answer: {{{correct_answer}}}")
-        prompt_parts.append("")
-    
-    # Add the test question
-    goal = test_item.get("goal", "")
-    sol1 = test_item.get("sol1", "")
-    sol2 = test_item.get("sol2", "")
-    
-    prompt_parts.append(f"Goal: {goal}")
-    prompt_parts.append(f"A. {sol1}")
-    prompt_parts.append(f"B. {sol2}")
-    
-    if language == "ko":
-        prompt_parts.append("답을 {} 안에 써주세요. 답: {}")
-    else:
-        prompt_parts.append("Put your answer inside {}. Answer: {}")
-    
-    return "\n".join(prompt_parts)
-
-# 간단한 0-shot
-def create_simple_prompt(item, language="en"):
-    goal = item.get("goal", "")
-    sol1 = item.get("sol1", "")
-    sol2 = item.get("sol2", "")
-    
-    if language == "ko":
-        prompt = f"목표: {goal}\nA. {sol1}\nB. {sol2}\n\n 답: {{}}"
-    else:
-        prompt = f"Goal: {goal}\nA. {sol1}\nB. {sol2}\n\n Answer: {{}}"
-    
-    return prompt
-
-def create_3shot_prompt(item, few_shot_examples, language="en"):
-    """
-    Creates a 3-shot PIQA prompt with actual reasoning examples.
-    """
-    if language == "ko":
-        prompt_parts = ["다음은 물리적 상식에 대한 다지선다형 질문입니다."]
-    else:
-        prompt_parts = ["The following are multiple choice questions about physical commonsense."]
-    
-    prompt_parts.append("")
-    
-    # Add few-shot examples with actual reasoning
-    for example in few_shot_examples[:3]:  # 3개만 사용
-        goal = example["goal"]
-        sol1 = example["sol1"]
         sol2 = example["sol2"]
         reasoning = example["reasoning"]
         correct_answer = "A" if example["label"] == 0 else "B"
@@ -270,20 +193,46 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
         prompt_parts.append("")
     
     # Add the test question
-    goal = item.get("goal", "")
-    sol1 = item.get("sol1", "")
-    sol2 = item.get("sol2", "")
+    goal = test_item.get("goal", "")
+    sol1 = test_item.get("sol1", "")
+    sol2 = test_item.get("sol2", "")
     
     prompt_parts.append(f"Goal: {goal}")
     prompt_parts.append(f"A. {sol1}")
     prompt_parts.append(f"B. {sol2}")
     
     if language == "ko":
-        prompt_parts.append("답을 {} 안에 써주세요. 답: {}")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다. 따라서 정답은 ")
     else:
-        prompt_parts.append("Put your answer inside {}. Answer: {}")
+        prompt_parts.append("Response: Let's think step by step. Therefore the answer is")
     
     return "\n".join(prompt_parts)
+
+# Remove the old function that used dev data
+# def create_3shot_prompt_from_dev(...): # This function is no longer needed
+
+def prepare_piqa_data_with_dev_split(piqa_data, ko_piqa_data, dev_shots_per_type=3):
+    """
+    Since we're using predefined few-shot examples, we don't need to split for dev.
+    Just return all data as test data.
+    """
+    logger.info(f"Using all PIQA data as test set: EN={len(piqa_data)}, KO={len(ko_piqa_data)}")
+    logger.info("Using predefined few-shot examples instead of dataset splits")
+    
+    return [], piqa_data, [], ko_piqa_data  # Empty dev sets, full test sets
+
+# 간단한 0-shot
+def create_simple_prompt(item, language="en"):
+    goal = item.get("goal", "")
+    sol1 = item.get("sol1", "")
+    sol2 = item.get("sol2", "")
+    
+    if language == "ko":
+        prompt = f"목표: {goal}\nA. {sol1}\nB. {sol2}\n\n 답: {{}}"
+    else:
+        prompt = f"Goal: {goal}\nA. {sol1}\nB. {sol2}\n\n Answer: {{}}"
+    
+    return prompt
 
 def extract_final_answer(model_output):
     """
@@ -344,7 +293,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=MAX_NEW_TOKENS,  # PIQA typically only needs 1 token (A or B)
+                    max_new_tokens=MAX_NEW_TOKENS,  # Allow for reasoning process
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -388,7 +337,7 @@ def load_dataset(filepath):
             data = json.load(f)
             
             # sample
-            # data = data[:10]
+            data = data[:50]
         logger.info(f"Loaded {len(data)} items from {filepath}")
         return data
     except Exception as e:
@@ -411,7 +360,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=2048
+            max_length=1024
         ).to(DEVICE)
         
         with torch.no_grad():
@@ -492,7 +441,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
 # --- Evaluation Function ---
 def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list, ko_piqa_test_data: list, piqa_dev_data: list, ko_piqa_dev_data: list, model_specific_output_dir: str):    
     """
-    Performs 5-shot PIQA and Ko-PIQA evaluation for a single model.
+    Performs 3-shot PIQA and Ko-PIQA evaluation for a single model using predefined examples.
     """
     results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_3shot.json")
     log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_3shot.log")
@@ -510,6 +459,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
     root_logger.addHandler(file_handler)
 
     logger.info(f"--- Starting 3-shot PIQA/Ko-PIQA Evaluation for Model: {config.name} ---")
+    logger.info(f"Using predefined few-shot examples (not dataset splits)")
     logger.info(f"Results will be saved to: {results_filepath}")
 
     model = None
@@ -543,13 +493,64 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
             cache_dir=CACHE_DIR
         )
 
-        if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-            model.resize_token_embeddings(len(tokenizer))
-
         if config.adapter_path:
-            logger.info(f"Loading adapter from: {config.adapter_path}")
-            model = PeftModel.from_pretrained(model, config.adapter_path)
-            logger.info("Successfully loaded LoRA adapter.")
+            # LoRA 어댑터가 있는 경우, 먼저 LoRA의 실제 vocab size를 확인
+            absolute_adapter_path = os.path.abspath(config.adapter_path)
+            logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
+            
+            if not os.path.isdir(absolute_adapter_path):
+                logger.error(f"Adapter path does not exist or is not a directory: {absolute_adapter_path}")
+                raise FileNotFoundError(f"Adapter path not found: {absolute_adapter_path}")
+            
+            # LoRA 어댑터의 실제 vocab size 확인
+            try:
+                import glob
+                pytorch_files = glob.glob(os.path.join(absolute_adapter_path, "*.bin")) + \
+                            glob.glob(os.path.join(absolute_adapter_path, "*.safetensors"))
+                
+                target_vocab_size = None
+                if pytorch_files:
+                    if pytorch_files[0].endswith('.safetensors'):
+                        from safetensors import safe_open
+                        with safe_open(pytorch_files[0], framework="pt") as f:
+                            for key in f.keys():
+                                if 'embed_tokens.weight' in key or 'lm_head.weight' in key:
+                                    target_vocab_size = f.get_tensor(key).shape[0]
+                                    break
+                    else:
+                        checkpoint = torch.load(pytorch_files[0], map_location='cpu')
+                        for key, tensor in checkpoint.items():
+                            if 'embed_tokens.weight' in key or 'lm_head.weight' in key:
+                                target_vocab_size = tensor.shape[0]
+                                break
+                
+                if target_vocab_size:
+                    current_vocab_size = model.get_input_embeddings().weight.shape[0]
+                    if current_vocab_size != target_vocab_size:
+                        logger.info(f"Resizing model from {current_vocab_size} to {target_vocab_size} for LoRA compatibility")
+                        model.resize_token_embeddings(target_vocab_size)
+                else:
+                    # fallback: tokenizer 길이로 리사이즈
+                    if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                        model.resize_token_embeddings(len(tokenizer))
+                        
+            except Exception as e:
+                logger.warning(f"Could not determine LoRA vocab size: {e}. Using tokenizer length.")
+                if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                    model.resize_token_embeddings(len(tokenizer))
+            
+            try:
+                model = PeftModel.from_pretrained(model, absolute_adapter_path)
+                logger.info("Successfully loaded LoRA adapter.")
+            except Exception as e:
+                logger.error(f"Failed to load LoRA adapter from {absolute_adapter_path}: {e}")
+                raise e
+        else:
+            # 베이스 모델인 경우 기존 로직 사용
+            if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+                model.resize_token_embeddings(len(tokenizer))
+            logger.info("No LoRA adapter path specified. Using the base model directly.")
 
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
@@ -561,8 +562,8 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
             
         # Prepare results storage
         all_results = {
-            "piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []},  # failures 추가
-            "ko_piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []}  # failures 추가
+            "piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []},
+            "ko_piqa": {"correct": 0, "total": 0, "details": [], "raw_generations": [], "failures": []}
         }
 
         # Evaluate PIQA (English)
@@ -579,7 +580,8 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
                 if ground_truth is None:
                     continue
                     
-                prompt = create_3shot_prompt_from_dev(item, piqa_dev_data, "en")
+                # Use predefined few-shot examples instead of dev data
+                prompt = create_3shot_prompt(item, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -682,7 +684,8 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
                 if ground_truth is None:
                     continue
                     
-                prompt = create_3shot_prompt_from_dev(item, ko_piqa_dev_data, "ko")
+                # Use predefined few-shot examples instead of dev data
+                prompt = create_3shot_prompt(item, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -792,7 +795,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
         # Save Results
         final_summary = {
             "model_config": {k: str(v) for k, v in config.__dict__.items()},
-            "evaluation_type": "0-shot PIQA/Ko-PIQA",
+            "evaluation_type": "3-shot PIQA/Ko-PIQA with predefined examples",
             "evaluation_date": datetime.now().isoformat(),
             "piqa_results": {
                 "accuracy_standard": piqa_accuracy_standard,
@@ -878,12 +881,12 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
             "ko_piqa_accuracy_strict": 0.0,
             "piqa_correct": 0,
             "piqa_total": 0,
-            "piqa_total_items": len(piqa_test_data) if 'piqa_data' in locals() else 0,
-            "piqa_errors_skipped": len(piqa_errors_skipped) if 'piqa_data' in locals() else 0,
+            "piqa_total_items": len(piqa_test_data) if 'piqa_test_data' in locals() else 0,
+            "piqa_errors_skipped": len(piqa_test_data) if 'piqa_test_data' in locals() else 0,
             "ko_piqa_correct": 0,
             "ko_piqa_total": 0,
-            "ko_piqa_total_items": len(ko_piqa_test_data) if 'ko_piqa_data' in locals() else 0,
-            "ko_piqa_errors_skipped": len(ko_piqa_errors_skipped) if 'ko_piqa_data' in locals() else 0,
+            "ko_piqa_total_items": len(ko_piqa_test_data) if 'ko_piqa_test_data' in locals() else 0,
+            "ko_piqa_errors_skipped": len(ko_piqa_test_data) if 'ko_piqa_test_data' in locals() else 0,
             "error": str(e)
         }
     finally:
@@ -904,7 +907,7 @@ def main():
         logger.error("Failed to load datasets.")
         return
 
-    # Split data into dev and test sets
+    # Since we're using predefined examples, we don't need dev splits
     piqa_dev_data, piqa_test_data, ko_piqa_dev_data, ko_piqa_test_data = prepare_piqa_data_with_dev_split(
         piqa_data, ko_piqa_data, dev_shots_per_type=3
     )
@@ -919,11 +922,11 @@ def main():
         model_specific_output_dir = os.path.join(BASE_OUTPUT_DIR, config.name)
         os.makedirs(model_specific_output_dir, exist_ok=True)
         
-        # Pass dev and test data separately
+        # Pass dev and test data (though dev will be empty since we use predefined examples)
         model_result = evaluate_single_model_on_datasets(
             config, 
             piqa_test_data, ko_piqa_test_data,  # test data
-            piqa_dev_data, ko_piqa_dev_data,    # dev data for few-shot
+            piqa_dev_data, ko_piqa_dev_data,    # dev data (empty, but kept for compatibility)
             model_specific_output_dir
         )
         all_model_results.append(model_result)
@@ -931,12 +934,16 @@ def main():
     # Generate summary
     summary_data = {
         "evaluation_info": {
-            "evaluation_type": "5-shot PIQA/Ko-PIQA",
+            "evaluation_type": "3-shot PIQA/Ko-PIQA with predefined examples",
             "evaluation_date": datetime.now().isoformat(),
             "batch_size": BATCH_SIZE,
             "max_new_tokens": MAX_NEW_TOKENS,
             "total_piqa_items": len(piqa_test_data),
-            "total_ko_piqa_items": len(ko_piqa_test_data)
+            "total_ko_piqa_items": len(ko_piqa_test_data),
+            "few_shot_examples": {
+                "english_examples": len(ENGLISH_FEW_SHOT_EXAMPLES),
+                "korean_examples": len(KOREAN_FEW_SHOT_EXAMPLES)
+            }
         },
         "model_results": all_model_results,
         "summary_statistics": {

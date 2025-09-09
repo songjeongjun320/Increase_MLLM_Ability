@@ -873,6 +873,63 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
 
     except Exception as e:
         logger.exception(f"Critical error during evaluation for {config.name}: {e}")
+        
+        # 에러 발생시에도 기본 JSON 파일들을 저장
+        try:
+            error_summary = {
+                "model_config": {k: str(v) for k, v in config.__dict__.items()},
+                "evaluation_type": "3-shot PIQA/Ko-PIQA with predefined examples",
+                "evaluation_date": datetime.now().isoformat(),
+                "error": str(e),
+                "piqa_results": {
+                    "accuracy_standard": 0.0,
+                    "accuracy_strict": 0.0,
+                    "correct_predictions": 0,
+                    "total_predictions": 0,
+                    "total_items": len(piqa_test_data) if 'piqa_test_data' in locals() else 0,
+                    "errors_or_skipped": len(piqa_test_data) if 'piqa_test_data' in locals() else 0,
+                    "details": []
+                },
+                "ko_piqa_results": {
+                    "accuracy_standard": 0.0,
+                    "accuracy_strict": 0.0,
+                    "correct_predictions": 0,
+                    "total_predictions": 0,
+                    "total_items": len(ko_piqa_test_data) if 'ko_piqa_test_data' in locals() else 0,
+                    "errors_or_skipped": len(ko_piqa_test_data) if 'ko_piqa_test_data' in locals() else 0,
+                    "details": []
+                }
+            }
+            
+            # 에러 결과 저장
+            with open(results_filepath, 'w', encoding='utf-8') as f:
+                json.dump(error_summary, f, indent=2, ensure_ascii=False)
+                
+            # 빈 raw generations와 failures 파일도 생성
+            empty_raw_gen = {
+                "piqa": [],
+                "ko_piqa": []
+            }
+            
+            empty_failures = {
+                "total_piqa_failures": 0,
+                "total_ko_piqa_failures": 0,
+                "piqa_failure_types": {},
+                "ko_piqa_failure_types": {},
+                "piqa_failures": [],
+                "ko_piqa_failures": []
+            }
+            
+            with open(raw_gen_filepath, 'w', encoding='utf-8') as f:
+                json.dump(empty_raw_gen, f, indent=2, ensure_ascii=False)
+            with open(failure_cases_filepath, 'w', encoding='utf-8') as f:
+                json.dump(empty_failures, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Error result files saved for {config.name}")
+            
+        except Exception as save_error:
+            logger.error(f"Failed to save error results for {config.name}: {save_error}")
+        
         return {
             "model_name": config.name,
             "piqa_accuracy_standard": 0.0,
@@ -919,17 +976,50 @@ def main():
 
     # Evaluate each model
     for config in MODEL_CONFIGS:
+        logger.info(f"Starting evaluation for model: {config.name}")
         model_specific_output_dir = os.path.join(BASE_OUTPUT_DIR, config.name)
         os.makedirs(model_specific_output_dir, exist_ok=True)
         
-        # Pass dev and test data (though dev will be empty since we use predefined examples)
-        model_result = evaluate_single_model_on_datasets(
-            config, 
-            piqa_test_data, ko_piqa_test_data,  # test data
-            piqa_dev_data, ko_piqa_dev_data,    # dev data (empty, but kept for compatibility)
-            model_specific_output_dir
-        )
-        all_model_results.append(model_result)
+        try:
+            # Pass dev and test data (though dev will be empty since we use predefined examples)
+            model_result = evaluate_single_model_on_datasets(
+                config, 
+                piqa_test_data, ko_piqa_test_data,  # test data
+                piqa_dev_data, ko_piqa_dev_data,    # dev data (empty, but kept for compatibility)
+                model_specific_output_dir
+            )
+            all_model_results.append(model_result)
+            
+            # 성공/실패 상태 로깅
+            if "error" in model_result:
+                logger.error(f"Model {config.name} evaluation failed: {model_result['error']}")
+            else:
+                logger.info(f"Model {config.name} evaluation completed successfully")
+                logger.info(f"  PIQA Standard: {model_result.get('piqa_accuracy_standard', 0):.2f}%")
+                logger.info(f"  PIQA Strict: {model_result.get('piqa_accuracy_strict', 0):.2f}%")
+                logger.info(f"  Ko-PIQA Standard: {model_result.get('ko_piqa_accuracy_standard', 0):.2f}%")
+                logger.info(f"  Ko-PIQA Strict: {model_result.get('ko_piqa_accuracy_strict', 0):.2f}%")
+                
+        except Exception as e:
+            logger.exception(f"Unexpected error evaluating model {config.name}: {e}")
+            # 최소한의 에러 결과라도 저장
+            error_result = {
+                "model_name": config.name,
+                "piqa_accuracy_standard": 0.0,
+                "piqa_accuracy_strict": 0.0,
+                "ko_piqa_accuracy_standard": 0.0,
+                "ko_piqa_accuracy_strict": 0.0,
+                "piqa_correct": 0,
+                "piqa_total": 0,
+                "piqa_total_items": len(piqa_test_data),
+                "piqa_errors_skipped": len(piqa_test_data),
+                "ko_piqa_correct": 0,
+                "ko_piqa_total": 0,
+                "ko_piqa_total_items": len(ko_piqa_test_data),
+                "ko_piqa_errors_skipped": len(ko_piqa_test_data),
+                "error": str(e)
+            }
+            all_model_results.append(error_result)
 
     # Generate summary
     summary_data = {

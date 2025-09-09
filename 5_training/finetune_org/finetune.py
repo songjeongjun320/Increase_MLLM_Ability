@@ -1141,6 +1141,53 @@ def main(args: FlatArguments):
             args.output_dir,
             args.use_lora,
         )
+        
+        # LoRA 훈련이 끝난 후 기본 모델과 LoRA adapter를 합치기
+        if args.use_lora and accelerator.is_main_process:
+            logger.info("Merging LoRA adapter with base model...")
+            
+            try:
+                # LoRA adapter가 저장된 경로
+                lora_adapter_path = os.path.join(args.output_dir, "final_model")
+                merged_model_path = os.path.join(args.output_dir, "merged_model")
+                
+                # 기본 모델 다시 로드 (quantization 없이)
+                logger.info(f"Loading base model from: {args.model_name_or_path}")
+                base_model = AutoModelForCausalLM.from_pretrained(
+                    args.model_name_or_path,
+                    torch_dtype=torch.bfloat16,
+                    device_map="cpu",  # CPU에서 merge 수행
+                    trust_remote_code=args.trust_remote_code,
+                    low_cpu_mem_usage=True
+                )
+                
+                # LoRA adapter 로드
+                logger.info(f"Loading LoRA adapter from: {lora_adapter_path}")
+                from peft import PeftModel
+                peft_model = PeftModel.from_pretrained(base_model, lora_adapter_path)
+                
+                # LoRA와 기본 모델 합치기
+                logger.info("Merging LoRA adapter with base model...")
+                merged_model = peft_model.merge_and_unload()
+                
+                # 합쳐진 모델 저장
+                logger.info(f"Saving merged model to: {merged_model_path}")
+                os.makedirs(merged_model_path, exist_ok=True)
+                merged_model.save_pretrained(merged_model_path, safe_serialization=True)
+                tokenizer.save_pretrained(merged_model_path)
+                
+                logger.info("✅ Successfully merged LoRA adapter with base model!")
+                logger.info(f"Merged model saved at: {merged_model_path}")
+                
+                # 메모리 정리
+                del base_model
+                del peft_model
+                del merged_model
+                torch.cuda.empty_cache()
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to merge LoRA adapter with base model: {e}")
+                logger.error("The LoRA adapter is still saved separately and can be merged later.")
 
     # remove all checkpoints to save space
     if accelerator.is_local_main_process:

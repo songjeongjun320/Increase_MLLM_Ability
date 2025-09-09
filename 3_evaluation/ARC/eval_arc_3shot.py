@@ -77,12 +77,24 @@ MODEL_CONFIGS = [
     #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-09_05/final_model",
     #     use_quantization=False
     # ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09-05-checkpoint-4500",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-09_05/checkpoint-4500",
+    #     use_quantization=False
+    # ),
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-09-05-checkpoint-4500",
+        name="llama-3.2-3b-pt-tow-09_05_allenai",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-09_05/checkpoint-4500",
+        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai",
         use_quantization=False
     ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt-tow-09_05_allenai",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai",
+    #     use_quantization=False
+    # ),
 ]
 
 # --- General Configuration ---
@@ -474,13 +486,64 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             cache_dir=CACHE_DIR
         )
 
-        if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-            model.resize_token_embeddings(len(tokenizer))
-
         if config.adapter_path:
-            logger.info(f"Loading adapter from: {config.adapter_path}")
-            model = PeftModel.from_pretrained(model, config.adapter_path)
-            logger.info("Successfully loaded LoRA adapter.")
+            # LoRA 어댑터가 있는 경우, 먼저 LoRA의 실제 vocab size를 확인
+            absolute_adapter_path = os.path.abspath(config.adapter_path)
+            logger.info(f"LoRA adapter specified. Loading adapter from: {absolute_adapter_path}")
+            
+            if not os.path.isdir(absolute_adapter_path):
+                logger.error(f"Adapter path does not exist or is not a directory: {absolute_adapter_path}")
+                raise FileNotFoundError(f"Adapter path not found: {absolute_adapter_path}")
+            
+            # LoRA 어댑터의 실제 vocab size 확인
+            try:
+                import glob
+                pytorch_files = glob.glob(os.path.join(absolute_adapter_path, "*.bin")) + \
+                            glob.glob(os.path.join(absolute_adapter_path, "*.safetensors"))
+                
+                target_vocab_size = None
+                if pytorch_files:
+                    if pytorch_files[0].endswith('.safetensors'):
+                        from safetensors import safe_open
+                        with safe_open(pytorch_files[0], framework="pt") as f:
+                            for key in f.keys():
+                                if 'embed_tokens.weight' in key or 'lm_head.weight' in key:
+                                    target_vocab_size = f.get_tensor(key).shape[0]
+                                    break
+                    else:
+                        checkpoint = torch.load(pytorch_files[0], map_location='cpu')
+                        for key, tensor in checkpoint.items():
+                            if 'embed_tokens.weight' in key or 'lm_head.weight' in key:
+                                target_vocab_size = tensor.shape[0]
+                                break
+                
+                if target_vocab_size:
+                    current_vocab_size = model.get_input_embeddings().weight.shape[0]
+                    if current_vocab_size != target_vocab_size:
+                        logger.info(f"Resizing model from {current_vocab_size} to {target_vocab_size} for LoRA compatibility")
+                        model.resize_token_embeddings(target_vocab_size)
+                else:
+                    # fallback: tokenizer 길이로 리사이즈
+                    if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                        model.resize_token_embeddings(len(tokenizer))
+                        
+            except Exception as e:
+                logger.warning(f"Could not determine LoRA vocab size: {e}. Using tokenizer length.")
+                if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                    model.resize_token_embeddings(len(tokenizer))
+            
+            try:
+                model = PeftModel.from_pretrained(model, absolute_adapter_path)
+                logger.info("Successfully loaded LoRA adapter.")
+            except Exception as e:
+                logger.error(f"Failed to load LoRA adapter from {absolute_adapter_path}: {e}")
+                raise e
+        else:
+            # 베이스 모델인 경우 기존 로직 사용
+            if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+                model.resize_token_embeddings(len(tokenizer))
+            logger.info("No LoRA adapter path specified. Using the base model directly.")
 
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")

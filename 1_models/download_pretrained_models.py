@@ -103,12 +103,12 @@ def main():
         #     "model_type": "qwen2",
         #     "display_name": "🤖 Qwen 2.5 3B"
         # },
-        {
-            "model_name": "google/gemma-3-4b-pt",
-            "folder_name": "gemma-3-4b-pt", 
-            "model_type": "gemma3",
-            "display_name": "💎 Gemma 3 4B"
-        },
+        # {
+        #     "model_name": "google/gemma-3-4b-pt",
+        #     "folder_name": "gemma-3-4b-pt", 
+        #     "model_type": "gemma3",
+        #     "display_name": "💎 Gemma 3 4B"
+        # },
         {
             "model_name": "allenai/OLMo-2-0425-1B",
             "folder_name": "olmo-2-0425-1b",

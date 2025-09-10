@@ -23,6 +23,8 @@ qwen
 deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
 deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_05_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+olmo
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_05_allenai --exp_name "olmo-2-0425-1b-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 """
 import re
 import logging
@@ -1214,11 +1216,57 @@ def main(args: FlatArguments):
                 base_model = AutoModelForCausalLM.from_pretrained(
                     args.model_name_or_path,
                     torch_dtype=torch.bfloat16,
-                    device_map=None,  # Don't use device_map to avoid conflicts
+                    device_map="auto",  # Use auto device mapping
                     trust_remote_code=args.trust_remote_code,
                     low_cpu_mem_usage=True,
-                    use_safetensors=True
-                ).cpu()  # Explicitly move to CPU
+                )
+                
+                # vocab size 확인 및 조정 (merge_lora.py 로직 추가)
+                def get_adapter_vocab_size(adapter_path):
+                    """어댑터에서 실제 vocab size 추출"""
+                    import glob
+                    from safetensors import safe_open
+                    try:
+                        # safetensors 파일 우선 검색
+                        safetensor_files = glob.glob(os.path.join(adapter_path, "final_model", "*.safetensors"))
+                        if not safetensor_files:
+                            safetensor_files = glob.glob(os.path.join(adapter_path, "*.safetensors"))
+                        pytorch_files = glob.glob(os.path.join(adapter_path, "final_model", "*.bin"))
+                        if not pytorch_files:
+                            pytorch_files = glob.glob(os.path.join(adapter_path, "*.bin"))
+                        
+                        if safetensor_files:
+                            with safe_open(safetensor_files[0], framework="pt") as f:
+                                for key in f.keys():
+                                    if any(target in key for target in ['embed_tokens.weight', 'lm_head.weight']):
+                                        return f.get_tensor(key).shape[0]
+                        
+                        elif pytorch_files:
+                            checkpoint = torch.load(pytorch_files[0], map_location='cpu')
+                            state_dict = checkpoint.get('state_dict', checkpoint)
+                            for key, tensor in state_dict.items():
+                                if any(target in key for target in ['embed_tokens.weight', 'lm_head.weight']):
+                                    return tensor.shape[0]
+                            del checkpoint
+                                
+                    except Exception as e:
+                        logger.warning(f"Error extracting vocab size: {e}")
+                    return None
+
+                # 현재 모델과 어댑터의 vocab size 확인
+                base_vocab_size = base_model.get_input_embeddings().weight.shape[0]
+                adapter_vocab_size = get_adapter_vocab_size(lora_adapter_path)
+                
+                logger.info(f"Base model vocab size: {base_vocab_size}")
+                logger.info(f"Adapter vocab size: {adapter_vocab_size}")
+                
+                # vocab size가 다르면 베이스 모델을 어댑터에 맞춰 조정
+                if adapter_vocab_size and adapter_vocab_size != base_vocab_size:
+                    logger.info(f"Vocab size mismatch resolved: {base_vocab_size} -> {adapter_vocab_size}")
+                    base_model.resize_token_embeddings(adapter_vocab_size)
+                    logger.info("Base model embedding size adjusted successfully")
+                else:
+                    logger.info("Vocab size match - no adjustment needed")
                 
                 # Force garbage collection after base model load
                 gc.collect()

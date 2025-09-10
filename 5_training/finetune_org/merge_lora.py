@@ -8,7 +8,7 @@ from safetensors import safe_open
 
 # --- 설정 (본인 환경에 맞게 수정하세요) ---
 base_model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-adapter_path = "./tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai"
+adapter_path = "./scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai"
 output_merged_model_path = "./merged_models/llama-tow-allenai-merged"
 # -----------------------------------------
 

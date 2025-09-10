@@ -108,6 +108,12 @@ def main():
             "folder_name": "gemma-3-4b-pt", 
             "model_type": "gemma3",
             "display_name": "💎 Gemma 3 4B"
+        },
+        {
+            "model_name": "allenai/OLMo-2-0425-1B",
+            "folder_name": "olmo-2-0425-1b",
+            "model_type": "olmo",
+            "display_name": "🧠 OLMo 2 0425 1B"
         }
     ]
     
@@ -198,7 +204,7 @@ def test_model_loading():
     print("\n🧪 저장된 모델 로딩 테스트...")
     
     base_models_dir = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models"
-    model_folders = ["llama-3.2-3b-pt", "qwem-2.5-3b-pt", "gemma-3-4b-pt"]
+    model_folders = ["llama-3.2-3b-pt", "qwem-2.5-3b-pt", "gemma-3-4b-pt", "olmo-2-0425-1b"]
     
     for folder in model_folders:
         model_path = os.path.join(base_models_dir, folder)

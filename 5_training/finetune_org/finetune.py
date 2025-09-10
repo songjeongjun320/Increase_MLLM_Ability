@@ -19,11 +19,11 @@ module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 
 llama
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai --exp_name "llama-3.2-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False
-qwen
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai --exp_name "llama-3.2-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+qwen 
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_05_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_05.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_05_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 """
 import re
 import logging
@@ -957,23 +957,46 @@ def main(args: FlatArguments):
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
+    beaker_config = None
     if is_beaker_job():
-        beaker_config = maybe_get_beaker_config()
+        try:
+            beaker_config = maybe_get_beaker_config()
+        except Exception as e:
+            logger.warning(f"Failed to get beaker config: {e}")
+            beaker_config = None
+    
+    wandb_tracker = None
     if args.with_tracking:
-        experiment_config = vars(args)
-        # TensorBoard cannot log Enums, need the raw value
-        experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"]
+        try:
+            experiment_config = vars(args)
+            # TensorBoard cannot log Enums, need the raw value
+            experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"]
 
-        # (Optional) Ai2 internal tracking
-        if args.wandb_entity is None:
-            args.wandb_entity = maybe_use_ai2_wandb_entity()
-            experiment_config.update(vars(beaker_config))
-        accelerator.init_trackers(
-            "open_instruct_internal",
-            experiment_config,
-            init_kwargs={"wandb": {"entity": args.wandb_entity, "tags": [args.exp_name] + get_wandb_tags()}},
-        )
-        wandb_tracker = accelerator.get_tracker("wandb")
+            # (Optional) Ai2 internal tracking
+            if args.wandb_entity is None:
+                args.wandb_entity = maybe_use_ai2_wandb_entity()
+            if beaker_config:
+                experiment_config.update(vars(beaker_config))
+            
+            accelerator.init_trackers(
+                "open_instruct_internal",
+                experiment_config,
+                init_kwargs={"wandb": {"entity": args.wandb_entity, "tags": [args.exp_name] + get_wandb_tags()}},
+            )
+            
+            # Try to get wandb tracker with fallback
+            try:
+                wandb_tracker = accelerator.get_tracker("wandb")
+            except:
+                # Try alternative approaches to get wandb tracker
+                for tracker in accelerator.trackers:
+                    if hasattr(tracker, 'run') or 'wandb' in str(type(tracker)).lower():
+                        wandb_tracker = tracker
+                        break
+                
+        except Exception as e:
+            logger.warning(f"Failed to initialize tracking: {e}")
+            wandb_tracker = None
 
     # Train!
     total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1147,33 +1170,92 @@ def main(args: FlatArguments):
             logger.info("Merging LoRA adapter with base model...")
             
             try:
+                # Wait for all processes to complete model saving
+                accelerator.wait_for_everyone()
+                
                 # LoRA adapter가 저장된 경로
                 lora_adapter_path = os.path.join(args.output_dir, "final_model")
                 merged_model_path = os.path.join(args.output_dir, "merged_model")
                 
+                # Ensure adapter path exists
+                if not os.path.exists(lora_adapter_path):
+                    raise FileNotFoundError(f"LoRA adapter path does not exist: {lora_adapter_path}")
+                
+                # Clear GPU memory and gradients before merge
+                if hasattr(model, 'zero_grad'):
+                    model.zero_grad()
+                torch.cuda.empty_cache()
+                
+                # Move training model to CPU and clear CUDA cache
+                try:
+                    if hasattr(model, 'cpu'):
+                        model = model.cpu()
+                except Exception as move_error:
+                    logger.warning(f"Could not move training model to CPU: {move_error}")
+                
+                # Clear all CUDA cached memory
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                
+                # Import required modules
+                import gc
+                from peft import PeftModel, PeftConfig
+                
+                # Force garbage collection
+                gc.collect()
+                
                 # 기본 모델 다시 로드 (quantization 없이)
                 logger.info(f"Loading base model from: {args.model_name_or_path}")
+                
+                # Load PEFT config first to understand the setup
+                peft_config = PeftConfig.from_pretrained(lora_adapter_path)
+                
+                # Load base model with minimal memory usage
                 base_model = AutoModelForCausalLM.from_pretrained(
                     args.model_name_or_path,
                     torch_dtype=torch.bfloat16,
-                    device_map="cpu",  # CPU에서 merge 수행
+                    device_map=None,  # Don't use device_map to avoid conflicts
                     trust_remote_code=args.trust_remote_code,
-                    low_cpu_mem_usage=True
-                )
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True
+                ).cpu()  # Explicitly move to CPU
+                
+                # Force garbage collection after base model load
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 
                 # LoRA adapter 로드
                 logger.info(f"Loading LoRA adapter from: {lora_adapter_path}")
-                from peft import PeftModel
-                peft_model = PeftModel.from_pretrained(base_model, lora_adapter_path)
+                peft_model = PeftModel.from_pretrained(
+                    base_model, 
+                    lora_adapter_path,
+                    torch_dtype=torch.bfloat16,
+                    is_trainable=False  # Ensure it's not trainable during merge
+                )
                 
                 # LoRA와 기본 모델 합치기
                 logger.info("Merging LoRA adapter with base model...")
-                merged_model = peft_model.merge_and_unload()
+                # Set recursion limit higher temporarily
+                import sys
+                old_recursion_limit = sys.getrecursionlimit()
+                sys.setrecursionlimit(10000)
+                
+                try:
+                    merged_model = peft_model.merge_and_unload()
+                finally:
+                    # Restore original recursion limit
+                    sys.setrecursionlimit(old_recursion_limit)
                 
                 # 합쳐진 모델 저장
                 logger.info(f"Saving merged model to: {merged_model_path}")
                 os.makedirs(merged_model_path, exist_ok=True)
-                merged_model.save_pretrained(merged_model_path, safe_serialization=True)
+                merged_model.save_pretrained(
+                    merged_model_path, 
+                    safe_serialization=True,
+                    max_shard_size="5GB"  # Prevent huge single files
+                )
                 tokenizer.save_pretrained(merged_model_path)
                 
                 logger.info("✅ Successfully merged LoRA adapter with base model!")
@@ -1183,15 +1265,50 @@ def main(args: FlatArguments):
                 del base_model
                 del peft_model
                 del merged_model
-                torch.cuda.empty_cache()
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 
             except Exception as e:
                 logger.error(f"❌ Failed to merge LoRA adapter with base model: {e}")
                 logger.error("The LoRA adapter is still saved separately and can be merged later.")
+                logger.error("You can merge it manually using the separate merge script.")
+                # Don't re-raise the exception to allow training completion
 
-    # remove all checkpoints to save space
+    # Conditional checkpoint cleanup - preserve steps for restart capability
     if accelerator.is_local_main_process:
-        clean_last_n_checkpoints(args.output_dir, keep_last_n_checkpoints=0)
+        try:
+            # Wait for all processes to complete before cleanup
+            accelerator.wait_for_everyone()
+            
+            # Only clean checkpoints if both conditions are met:
+            # 1. Training completed successfully (final or merged model exists)
+            # 2. User explicitly wants cleanup (keep_last_n_checkpoints >= 0)
+            # 3. keep_last_n_checkpoints is 0 (full cleanup) - be extra careful
+            final_model_path = os.path.join(args.output_dir, "final_model")
+            merged_model_path = os.path.join(args.output_dir, "merged_model")
+            
+            training_completed_successfully = os.path.exists(final_model_path) or os.path.exists(merged_model_path)
+            
+            if training_completed_successfully and args.keep_last_n_checkpoints == 0:
+                # Full cleanup only if training completed AND explicitly requested
+                logger.info("Training completed successfully. Performing full checkpoint cleanup.")
+                clean_last_n_checkpoints(args.output_dir, keep_last_n_checkpoints=0)
+            elif training_completed_successfully and args.keep_last_n_checkpoints > 0:
+                # Partial cleanup - keep specified number of checkpoints
+                logger.info(f"Training completed successfully. Keeping last {args.keep_last_n_checkpoints} checkpoints.")
+                clean_last_n_checkpoints(args.output_dir, keep_last_n_checkpoints=args.keep_last_n_checkpoints)
+            else:
+                # Preserve all checkpoints if training failed or cleanup disabled
+                logger.info("Preserving all checkpoints to enable restart from failure point.")
+                if not training_completed_successfully:
+                    logger.warning("Training may have failed - all checkpoints preserved for restart")
+                else:
+                    logger.info("Cleanup disabled (keep_last_n_checkpoints < 0) - all checkpoints preserved")
+                    
+        except Exception as e:
+            logger.error(f"Error during checkpoint evaluation: {e}")
+            logger.info("Defaulting to preserving all checkpoints for safety")
 
     if accelerator.is_main_process:
         # dpo script only supports these two options right now for datasets
@@ -1210,10 +1327,39 @@ def main(args: FlatArguments):
             "model_type": "sft",
             "datasets": dataset_list,
             "base_model": args.model_name_or_path,
-            "wandb_path": wandb_tracker.run.get_url(),
-            "beaker_experiment": beaker_config.beaker_experiment_url,
-            "beaker_datasets": beaker_config.beaker_dataset_id_urls,
         }
+        
+        # Safely add wandb URL if tracker is available
+        if wandb_tracker is not None:
+            try:
+                # Handle both GeneralTracker and direct WandB tracker
+                if hasattr(wandb_tracker, 'tracker') and hasattr(wandb_tracker.tracker, 'url'):
+                    metadata_blob["wandb_path"] = wandb_tracker.tracker.url
+                elif hasattr(wandb_tracker, 'run') and hasattr(wandb_tracker.run, 'get_url'):
+                    metadata_blob["wandb_path"] = wandb_tracker.run.get_url()
+                elif hasattr(wandb_tracker, 'run') and hasattr(wandb_tracker.run, 'url'):
+                    metadata_blob["wandb_path"] = wandb_tracker.run.url
+                else:
+                    logger.warning("WandB tracker available but cannot extract URL")
+                    metadata_blob["wandb_path"] = "unavailable"
+            except Exception as e:
+                logger.warning(f"Failed to get WandB URL: {e}")
+                metadata_blob["wandb_path"] = "error"
+        else:
+            metadata_blob["wandb_path"] = "not_configured"
+            
+        # Safely add beaker info if available
+        if beaker_config is not None:
+            try:
+                metadata_blob["beaker_experiment"] = getattr(beaker_config, 'beaker_experiment_url', 'unavailable')
+                metadata_blob["beaker_datasets"] = getattr(beaker_config, 'beaker_dataset_id_urls', 'unavailable')
+            except Exception as e:
+                logger.warning(f"Failed to get beaker config info: {e}")
+                metadata_blob["beaker_experiment"] = "error"
+                metadata_blob["beaker_datasets"] = "error"
+        else:
+            metadata_blob["beaker_experiment"] = "not_beaker_job"
+            metadata_blob["beaker_datasets"] = "not_beaker_job"
         # save metadata to the output directory. then it should also get pushed to HF.
         with open(os.path.join(args.output_dir, "metadata.json"), "w") as f:
             json.dump(metadata_blob, f)
@@ -1228,25 +1374,34 @@ def main(args: FlatArguments):
                 "results/" + args.hf_repo_revision,  # to match what the auto-evals name as.
             )
 
-        if args.try_launch_beaker_eval_jobs:
-            command = f"""\
-            python mason.py  \
-                --cluster ai2/allennlp-cirrascale ai2/general-cirrascale-a5000 ai2/general-cirrascale-a5000 ai2/s2-cirrascale ai2/general-cirrascale \
-                --priority low \
-                --preemptible \
-                --budget ai2/allennlp \
-                --workspace ai2/tulu-2-improvements \
-                --image nathanl/open_instruct_auto \
-                --pure_docker_mode \
-                --gpus 0 -- python scripts/wait_beaker_dataset_model_upload_then_evaluate_model.py \
-                --beaker_workload_id {beaker_config.beaker_workload_id} \
-                --model_name {args.hf_repo_revision}
-            """
-            process = subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
-            print(f"Submit jobs after model training is finished - Stdout:\n{stdout.decode()}")
-            print(f"Submit jobs after model training is finished - Stderr:\n{stderr.decode()}")
-            print(f"Submit jobs after model training is finished - process return code: {process.returncode}")
+        if args.try_launch_beaker_eval_jobs and beaker_config is not None:
+            try:
+                beaker_workload_id = getattr(beaker_config, 'beaker_workload_id', None)
+                if beaker_workload_id:
+                    command = f"""\
+                    python mason.py  \
+                        --cluster ai2/allennlp-cirrascale ai2/general-cirrascale-a5000 ai2/general-cirrascale-a5000 ai2/s2-cirrascale ai2/general-cirrascale \
+                        --priority low \
+                        --preemptible \
+                        --budget ai2/allennlp \
+                        --workspace ai2/tulu-2-improvements \
+                        --image nathanl/open_instruct_auto \
+                        --pure_docker_mode \
+                        --gpus 0 -- python scripts/wait_beaker_dataset_model_upload_then_evaluate_model.py \
+                        --beaker_workload_id {beaker_workload_id} \
+                        --model_name {args.hf_repo_revision}
+                    """
+                    process = subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    stdout, stderr = process.communicate()
+                    print(f"Submit jobs after model training is finished - Stdout:\n{stdout.decode()}")
+                    print(f"Submit jobs after model training is finished - Stderr:\n{stderr.decode()}")
+                    print(f"Submit jobs after model training is finished - process return code: {process.returncode}")
+                else:
+                    logger.warning("Beaker workload ID not available, skipping evaluation job launch")
+            except Exception as e:
+                logger.error(f"Failed to launch beaker evaluation jobs: {e}")
+        elif args.try_launch_beaker_eval_jobs:
+            logger.warning("Beaker evaluation jobs requested but beaker_config is not available")
 
     if args.push_to_hub:
         push_folder_to_hub(
@@ -1257,7 +1412,19 @@ def main(args: FlatArguments):
         )
     accelerator.wait_for_everyone()
     if args.with_tracking:
-        accelerator.end_training()
+        try:
+            accelerator.end_training()
+        except Exception as e:
+            logger.warning(f"Error ending tracking: {e}")
+            # Try to finish wandb run manually if possible
+            if wandb_tracker is not None:
+                try:
+                    if hasattr(wandb_tracker, 'tracker'):
+                        wandb_tracker.tracker.finish()
+                    elif hasattr(wandb_tracker, 'run'):
+                        wandb_tracker.run.finish()
+                except Exception as wandb_error:
+                    logger.warning(f"Could not manually finish wandb run: {wandb_error}")
 
 
 if __name__ == "__main__":

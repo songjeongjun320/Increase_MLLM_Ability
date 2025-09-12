@@ -91,7 +91,7 @@ def extract_answer_robust(model_output: str) -> Optional[str]:
     
     return None
 
-def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, show_examples: int = 5):
+def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, show_examples: int = 5, dataset_name: str = None):
     """
     Re-evaluate results from a JSON file by re-extracting answers from raw_output
     """
@@ -119,8 +119,30 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         print("Detected results file with 'datasets' structure")
         datasets = data.get('datasets', {})
         
-        # Check for ARC dataset
-        if 'ARC' in datasets:
+        # Check for ARC or Ko-ARC dataset
+        if dataset_name:
+            # Use specified dataset
+            if dataset_name in datasets:
+                print(f"Using specified dataset: {dataset_name}")
+                results = datasets[dataset_name].get('details', [])
+            else:
+                available_datasets = list(datasets.keys())
+                print(f"Error: Dataset '{dataset_name}' not found. Available datasets: {available_datasets}")
+                return
+        elif 'ARC' in datasets and 'Ko-ARC' in datasets:
+            print("Found both ARC and Ko-ARC datasets")
+            print("Available datasets:", list(datasets.keys()))
+            choice = input("Which dataset to process? (ARC/Ko-ARC): ").strip().upper()
+            if choice == 'ARC':
+                results = datasets['ARC'].get('details', [])
+                print("Processing ARC dataset...")
+            elif choice == 'KO-ARC':
+                results = datasets['Ko-ARC'].get('details', [])
+                print("Processing Ko-ARC dataset...")
+            else:
+                print("Invalid choice. Processing ARC by default...")
+                results = datasets['ARC'].get('details', [])
+        elif 'ARC' in datasets:
             print("Found ARC dataset, processing...")
             results = datasets['ARC'].get('details', [])
         elif 'Ko-ARC' in datasets:
@@ -249,10 +271,11 @@ def main():
     parser.add_argument('json_file', help='Path to the JSON file containing raw_output data')
     parser.add_argument('-o', '--output', help='Output file path (optional)')
     parser.add_argument('-e', '--examples', type=int, default=5, help='Number of example changes to show (default: 5)')
+    parser.add_argument('-d', '--dataset', help='Specify dataset name (e.g., ARC, Ko-ARC)')
     
     args = parser.parse_args()
     
-    re_evaluate_json_results(args.json_file, args.output, args.examples)
+    re_evaluate_json_results(args.json_file, args.output, args.examples, args.dataset)
 
 if __name__ == "__main__":
     main()

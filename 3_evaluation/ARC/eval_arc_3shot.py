@@ -8,6 +8,12 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from tqdm import tqdm
 import re
+try:
+    from tqdm.contrib.logging import logging_redirect_tqdm
+except ImportError:
+    # Fallback for older tqdm versions
+    from contextlib import nullcontext
+    logging_redirect_tqdm = nullcontext
 from dataclasses import dataclass, field
 import gc
 import sys
@@ -545,93 +551,78 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             results_details = []
             failure_cases = []  # Store failure cases for this dataset
             
-            # Batch processing loop
+            # Batch processing loop with tqdm logging redirect
             num_batches = (len(dataset) + BATCH_SIZE - 1) // BATCH_SIZE
-            pbar = tqdm(range(num_batches), desc=f"Evaluating {config.name} on {dataset_name} (3-shot, errors: 0)")
-            for i in pbar:
-                batch_start = i * BATCH_SIZE
-                batch_end = batch_start + BATCH_SIZE
-                batch = dataset[batch_start:batch_end]
+            
+            with logging_redirect_tqdm():
+                pbar = tqdm(range(num_batches), 
+                           desc=f"Evaluating {config.name} on {dataset_name} (3-shot, errors: 0)",
+                           ncols=100,  # 고정 너비
+                           unit="batch",
+                           leave=True,
+                           dynamic_ncols=False,
+                           file=sys.stdout,
+                           flush=True,
+                           position=0)
                 
-                prompts = []
-                ground_truths = []
-                valid_items_in_batch = []
+                for i in pbar:
+                    batch_start = i * BATCH_SIZE
+                    batch_end = batch_start + BATCH_SIZE
+                    batch = dataset[batch_start:batch_end]
+                    
+                    prompts = []
+                    ground_truths = []
+                    valid_items_in_batch = []
 
-                for item in batch:
-                    ground_truth = get_ground_truth(item)
-                    if ground_truth is None:
-                        errors_or_skipped += 1
-                        # Log skipped item if needed
+                    for item in batch:
+                        ground_truth = get_ground_truth(item)
+                        if ground_truth is None:
+                            errors_or_skipped += 1
+                            # Log skipped item if needed
+                            continue
+
+                        prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
+                        prompts.append(prompt)
+                        ground_truths.append(ground_truth)
+                        valid_items_in_batch.append(item)
+
+                    if not prompts:
                         continue
 
-                    prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
-                    prompts.append(prompt)
-                    ground_truths.append(ground_truth)
-                    valid_items_in_batch.append(item)
-
-                if not prompts:
-                    continue
-
-                try:
-                    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
-                    
-                    with torch.no_grad():
-                        outputs = model.generate(
-                            **inputs,
-                            max_new_tokens=1024,
-                            pad_token_id=tokenizer.pad_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            do_sample=False,
-                        )
-                    
-                    generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-                    
-                    input_lengths = inputs['input_ids'].shape[1]
-                    # The generated text includes the prompt, so we need to remove it.
-                    # Be careful with batch_decode, it might handle prompts differently.
-                    # A safer way is to decode only the generated part.
-                    output_only_tokens = outputs[:, input_lengths:]
-                    decoded_outputs = tokenizer.batch_decode(output_only_tokens, skip_special_tokens=True)
+                    try:
+                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+                        
+                        with torch.no_grad():
+                            outputs = model.generate(
+                                **inputs,
+                                max_new_tokens=1024,
+                                pad_token_id=tokenizer.pad_token_id,
+                                eos_token_id=tokenizer.eos_token_id,
+                                do_sample=False,
+                            )
+                        
+                        generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+                        
+                        input_lengths = inputs['input_ids'].shape[1]
+                        # The generated text includes the prompt, so we need to remove it.
+                        # Be careful with batch_decode, it might handle prompts differently.
+                        # A safer way is to decode only the generated part.
+                        output_only_tokens = outputs[:, input_lengths:]
+                        decoded_outputs = tokenizer.batch_decode(output_only_tokens, skip_special_tokens=True)
 
 
-                    for j, (item, ground_truth, gen_text) in enumerate(zip(valid_items_in_batch, ground_truths, decoded_outputs)):
-                        generated_text_log = gen_text.strip()
-                        model_answer_log = extract_answer_robust(generated_text_log)
-                        is_correct_log = False
+                        for j, (item, ground_truth, gen_text) in enumerate(zip(valid_items_in_batch, ground_truths, decoded_outputs)):
+                            generated_text_log = gen_text.strip()
+                            model_answer_log = extract_answer_robust(generated_text_log)
+                            is_correct_log = False
 
-                        if model_answer_log:
-                            total_predictions += 1
-                            if model_answer_log == ground_truth:
-                                correct_predictions += 1
-                                is_correct_log = True
-                            else:
-                                # This is a wrong answer - add to failure cases
-                                failure_cases.append({
-                                    "index": batch_start + j,
-                                    "id": item.get("id", ""),
-                                    "dataset": dataset_name,
-                                    "question": item.get("question", ""),
-                                    "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                                    "ground_truth": ground_truth,
-                                    "predicted_answer": model_answer_log,
-                                    "raw_output": generated_text_log,
-                                    "failure_type": "incorrect_answer"
-                                })
-                        else:
-                            # Batch extraction failed, try individual retry for this item
-                            logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
-                            prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
-                            retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
-                            
-                            if retry_answer is not None:
-                                generated_text_log = retry_text
-                                model_answer_log = retry_answer
+                            if model_answer_log:
                                 total_predictions += 1
                                 if model_answer_log == ground_truth:
                                     correct_predictions += 1
                                     is_correct_log = True
                                 else:
-                                    # This is a wrong answer after retry - add to failure cases
+                                    # This is a wrong answer - add to failure cases
                                     failure_cases.append({
                                         "index": batch_start + j,
                                         "id": item.get("id", ""),
@@ -641,81 +632,107 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                         "ground_truth": ground_truth,
                                         "predicted_answer": model_answer_log,
                                         "raw_output": generated_text_log,
-                                        "failure_type": "incorrect_answer_after_retry"
+                                        "failure_type": "incorrect_answer"
                                     })
-                                logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
                             else:
-                                # Even retry failed - add to failure cases
-                                if not retry_text.startswith("ERROR"):
-                                    logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
-                                    errors_or_skipped += 1
-                                    generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
-                                    failure_cases.append({
-                                        "index": batch_start + j,
-                                        "id": item.get("id", ""),
-                                        "dataset": dataset_name,
-                                        "question": item.get("question", ""),
-                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                                        "ground_truth": ground_truth,
-                                        "predicted_answer": None,
-                                        "raw_output": generated_text_log,
-                                        "failure_type": "extraction_failed"
-                                    })
-                                else:
-                                    # This was a model error, not extraction failure  
-                                    logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
-                                    errors_or_skipped += 1
+                                # Batch extraction failed, try individual retry for this item
+                                logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
+                                prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
+                                retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
+                            
+                                if retry_answer is not None:
                                     generated_text_log = retry_text
-                                    failure_cases.append({
-                                        "index": batch_start + j,
-                                        "id": item.get("id", ""),
-                                        "dataset": dataset_name,
-                                        "question": item.get("question", ""),
-                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                                        "ground_truth": ground_truth,
-                                        "predicted_answer": None,
-                                        "raw_output": generated_text_log,
-                                        "failure_type": "model_error"
-                                    })
+                                    model_answer_log = retry_answer
+                                    total_predictions += 1
+                                    if model_answer_log == ground_truth:
+                                        correct_predictions += 1
+                                        is_correct_log = True
+                                    else:
+                                        # This is a wrong answer after retry - add to failure cases
+                                        failure_cases.append({
+                                            "index": batch_start + j,
+                                            "id": item.get("id", ""),
+                                            "dataset": dataset_name,
+                                            "question": item.get("question", ""),
+                                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                            "ground_truth": ground_truth,
+                                            "predicted_answer": model_answer_log,
+                                            "raw_output": generated_text_log,
+                                            "failure_type": "incorrect_answer_after_retry"
+                                        })
+                                    logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
+                                else:
+                                    # Even retry failed - add to failure cases
+                                    if not retry_text.startswith("ERROR"):
+                                        logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
+                                        errors_or_skipped += 1
+                                        generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
+                                        failure_cases.append({
+                                            "index": batch_start + j,
+                                            "id": item.get("id", ""),
+                                            "dataset": dataset_name,
+                                            "question": item.get("question", ""),
+                                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                            "ground_truth": ground_truth,
+                                            "predicted_answer": None,
+                                            "raw_output": generated_text_log,
+                                            "failure_type": "extraction_failed"
+                                        })
+                                    else:
+                                        # This was a model error, not extraction failure  
+                                        logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
+                                        errors_or_skipped += 1
+                                        generated_text_log = retry_text
+                                        failure_cases.append({
+                                            "index": batch_start + j,
+                                            "id": item.get("id", ""),
+                                            "dataset": dataset_name,
+                                            "question": item.get("question", ""),
+                                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                            "ground_truth": ground_truth,
+                                            "predicted_answer": None,
+                                            "raw_output": generated_text_log,
+                                            "failure_type": "model_error"
+                                        })
 
-                        current_item_index = batch_start + j # or find a better way to get original index
-                        results_details.append({
-                            "index": current_item_index, 
-                            "id": item.get("id", ""),
-                            "ground_truth": ground_truth, 
-                            "model_raw_output": generated_text_log,
-                            "predicted_answer": model_answer_log, 
-                            "is_correct": is_correct_log
-                        })
-                        
-                        raw_generations_list.append({
-                            "dataset": dataset_name,
-                            "index": current_item_index, 
-                            "id": item.get("id", ""),
-                            "ground_truth": ground_truth,
-                            "raw_output": generated_text_log, 
-                            "extracted_answer": model_answer_log
-                        })
+                            current_item_index = batch_start + j # or find a better way to get original index
+                            results_details.append({
+                                "index": current_item_index, 
+                                "id": item.get("id", ""),
+                                "ground_truth": ground_truth, 
+                                "model_raw_output": generated_text_log,
+                                "predicted_answer": model_answer_log, 
+                                "is_correct": is_correct_log
+                            })
+                            
+                            raw_generations_list.append({
+                                "dataset": dataset_name,
+                                "index": current_item_index, 
+                                "id": item.get("id", ""),
+                                "ground_truth": ground_truth,
+                                "raw_output": generated_text_log, 
+                                "extracted_answer": model_answer_log
+                            })
 
-                except Exception as e:
-                    logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
-                    # Add all items in this batch to failure cases
-                    for j, (item, ground_truth) in enumerate(zip(valid_items_in_batch, ground_truths)):
-                        failure_cases.append({
-                            "index": batch_start + j,
-                            "id": item.get("id", ""),
-                            "dataset": dataset_name,
-                            "question": item.get("question", ""),
-                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                            "ground_truth": ground_truth,
-                            "predicted_answer": None,
-                            "raw_output": f"BATCH_ERROR: {str(e)}",
-                            "failure_type": "batch_inference_error"
-                        })
-                    errors_or_skipped += len(prompts)
+                    except Exception as e:
+                        logger.error(f"Batch {i}: Inference error: {e}", exc_info=False)
+                        # Add all items in this batch to failure cases
+                        for j, (item, ground_truth) in enumerate(zip(valid_items_in_batch, ground_truths)):
+                            failure_cases.append({
+                                "index": batch_start + j,
+                                "id": item.get("id", ""),
+                                "dataset": dataset_name,
+                                "question": item.get("question", ""),
+                                "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                "ground_truth": ground_truth,
+                                "predicted_answer": None,
+                                "raw_output": f"BATCH_ERROR: {str(e)}",
+                                "failure_type": "batch_inference_error"
+                            })
+                        errors_or_skipped += len(prompts)
                 
-                # Update progress bar with current error count
-                pbar.set_description(f"Evaluating {config.name} on {dataset_name} (3-shot, errors: {errors_or_skipped})")
+                    # Update progress bar with current error count
+                    pbar.set_description(f"Evaluating {config.name} on {dataset_name} (3-shot, errors: {errors_or_skipped})")
 
             
             # Calculate accuracy

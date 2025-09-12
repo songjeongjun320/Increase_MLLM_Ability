@@ -710,9 +710,19 @@ def main(args: FlatArguments):
 
 
     with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
-        tow_init_embeddings = embeddings.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :]
-        embeddings.weight.data[len(tokenizer)-1, :] = tow_init_embeddings
-        embeddings.weight.data[len(tokenizer)-2, :] = tow_init_embeddings
+        # Initialize <ToW> token with "Let's think step by step in English." average embedding
+        start_tokens = tokenizer.encode("Let's think step by step in English.", add_special_tokens=False)
+        start_embeddings = embeddings.weight.data[start_tokens, :]
+        tow_start_embedding = start_embeddings.mean(dim=0)
+        
+        # Initialize </ToW> token with "What is the proper next word?" average embedding
+        end_tokens = tokenizer.encode("What is the proper next word?", add_special_tokens=False)
+        end_embeddings = embeddings.weight.data[end_tokens, :]
+        tow_end_embedding = end_embeddings.mean(dim=0)
+        
+        # Apply initializations
+        embeddings.weight.data[len(tokenizer)-2, :] = tow_start_embedding  # <ToW>
+        embeddings.weight.data[len(tokenizer)-1, :] = tow_end_embedding    # </ToW>
     # tow_init_embeddings = torch.unsqueeze(model.model.embed_tokens.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :], dim=0)
     # model.model.embed_tokens.weight.data[-2:, :] = torch.concat([tow_init_embeddings, tow_init_embeddings], dim=0)
 

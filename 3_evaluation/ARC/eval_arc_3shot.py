@@ -617,66 +617,66 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                     "raw_output": generated_text_log,
                                     "failure_type": "incorrect_answer"
                                 })
-                        # else:
-                        #     # Batch extraction failed, try individual retry for this item
-                        #     logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
-                        #     prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
-                        #     retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
+                        else:
+                            # Batch extraction failed, try individual retry for this item
+                            logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
+                            prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
+                            retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
                             
-                        #     if retry_answer is not None:
-                        #         generated_text_log = retry_text
-                        #         model_answer_log = retry_answer
-                        #         total_predictions += 1
-                        #         if model_answer_log == ground_truth:
-                        #             correct_predictions += 1
-                        #             is_correct_log = True
-                        #         else:
-                        #             # This is a wrong answer after retry - add to failure cases
-                        #             failure_cases.append({
-                        #                 "index": batch_start + j,
-                        #                 "id": item.get("id", ""),
-                        #                 "dataset": dataset_name,
-                        #                 "question": item.get("question", ""),
-                        #                 "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                        #                 "ground_truth": ground_truth,
-                        #                 "predicted_answer": model_answer_log,
-                        #                 "raw_output": generated_text_log,
-                        #                 "failure_type": "incorrect_answer_after_retry"
-                        #             })
-                        #         logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
-                        #     else:
-                        #         # Even retry failed - add to failure cases
-                        #         if not retry_text.startswith("ERROR"):
-                        #             logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
-                        #             errors_or_skipped += 1
-                        #             generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
-                        #             failure_cases.append({
-                        #                 "index": batch_start + j,
-                        #                 "id": item.get("id", ""),
-                        #                 "dataset": dataset_name,
-                        #                 "question": item.get("question", ""),
-                        #                 "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                        #                 "ground_truth": ground_truth,
-                        #                 "predicted_answer": None,
-                        #                 "raw_output": generated_text_log,
-                        #                 "failure_type": "extraction_failed"
-                        #             })
-                        #         else:
-                        #             # This was a model error, not extraction failure  
-                        #             logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
-                        #             errors_or_skipped += 1
-                        #             generated_text_log = retry_text
-                        #             failure_cases.append({
-                        #                 "index": batch_start + j,
-                        #                 "id": item.get("id", ""),
-                        #                 "dataset": dataset_name,
-                        #                 "question": item.get("question", ""),
-                        #                 "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                        #                 "ground_truth": ground_truth,
-                        #                 "predicted_answer": None,
-                        #                 "raw_output": generated_text_log,
-                        #                 "failure_type": "model_error"
-                        #             })
+                            if retry_answer is not None:
+                                generated_text_log = retry_text
+                                model_answer_log = retry_answer
+                                total_predictions += 1
+                                if model_answer_log == ground_truth:
+                                    correct_predictions += 1
+                                    is_correct_log = True
+                                else:
+                                    # This is a wrong answer after retry - add to failure cases
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": model_answer_log,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "incorrect_answer_after_retry"
+                                    })
+                                logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
+                            else:
+                                # Even retry failed - add to failure cases
+                                if not retry_text.startswith("ERROR"):
+                                    logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
+                                    errors_or_skipped += 1
+                                    generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": None,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "extraction_failed"
+                                    })
+                                else:
+                                    # This was a model error, not extraction failure  
+                                    logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
+                                    errors_or_skipped += 1
+                                    generated_text_log = retry_text
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": None,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "model_error"
+                                    })
 
                         current_item_index = batch_start + j # or find a better way to get original index
                         results_details.append({

@@ -134,16 +134,24 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
             all_results = []
             processed_datasets = []
             
+            # Check for ARC dataset
             if 'ARC' in datasets:
                 arc_results = datasets['ARC'].get('details', [])
                 if arc_results:
+                    # Add dataset field to each item
+                    for item in arc_results:
+                        item['dataset'] = 'ARC'
                     all_results.extend(arc_results)
                     processed_datasets.append('ARC')
                     print(f"Found ARC dataset with {len(arc_results)} items")
             
+            # Check for Ko-ARC dataset
             if 'Ko-ARC' in datasets:
                 ko_arc_results = datasets['Ko-ARC'].get('details', [])
                 if ko_arc_results:
+                    # Add dataset field to each item
+                    for item in ko_arc_results:
+                        item['dataset'] = 'Ko-ARC'
                     all_results.extend(ko_arc_results)
                     processed_datasets.append('Ko-ARC')
                     print(f"Found Ko-ARC dataset with {len(ko_arc_results)} items")

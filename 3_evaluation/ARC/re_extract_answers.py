@@ -173,19 +173,21 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     
     # Re-extract answers
     total_items = len(results)
-    correct_count = 0
-    extraction_failed = 0
     re_extracted_results = []
     
-    # Count items per dataset for tracking
-    arc_count = sum(1 for item in results if item.get('dataset') == 'ARC')
-    ko_arc_count = sum(1 for item in results if item.get('dataset') == 'Ko-ARC')
+    # Separate results by dataset
+    arc_results = [item for item in results if item.get('dataset') == 'ARC']
+    ko_arc_results = [item for item in results if item.get('dataset') == 'Ko-ARC']
+    
+    arc_count = len(arc_results)
+    ko_arc_count = len(ko_arc_results)
     
     print(f"Re-evaluating {total_items} items...")
     if arc_count > 0 and ko_arc_count > 0:
         print(f"  - ARC: {arc_count} items")
         print(f"  - Ko-ARC: {ko_arc_count} items")
     
+    # Process all items
     for i, item in enumerate(results):
         if (i + 1) % 100 == 0 or i == 0:
             print(f"  Progress: {i + 1}/{total_items} ({(i + 1)/total_items*100:.1f}%)")
@@ -200,12 +202,6 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         # Check correctness
         is_correct = new_extracted == ground_truth if new_extracted else False
         old_correct = old_extracted == ground_truth if old_extracted else False
-        
-        if new_extracted is None:
-            extraction_failed += 1
-        else:
-            if is_correct:
-                correct_count += 1
         
         # Store results
         result_item = {
@@ -224,10 +220,46 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         
         re_extracted_results.append(result_item)
     
-    # Calculate accuracy
-    valid_predictions = total_items - extraction_failed
-    accuracy_standard = (correct_count / valid_predictions * 100) if valid_predictions > 0 else 0
-    accuracy_strict = (correct_count / total_items * 100) if total_items > 0 else 0
+    # Calculate accuracy separately for each dataset
+    def calculate_dataset_accuracy(dataset_results, dataset_name):
+        total_items = len(dataset_results)
+        if total_items == 0:
+            return {
+                "total_items": 0,
+                "valid_predictions": 0,
+                "correct_predictions": 0,
+                "extraction_failed": 0,
+                "accuracy_standard": 0.0,
+                "accuracy_strict": 0.0
+            }
+        
+        valid_predictions = sum(1 for item in dataset_results if item['new_extracted_answer'] is not None)
+        correct_predictions = sum(1 for item in dataset_results if item['new_correct'])
+        extraction_failed = total_items - valid_predictions
+        
+        accuracy_standard = (correct_predictions / valid_predictions * 100) if valid_predictions > 0 else 0
+        accuracy_strict = (correct_predictions / total_items * 100) if total_items > 0 else 0
+        
+        return {
+            "total_items": total_items,
+            "valid_predictions": valid_predictions,
+            "correct_predictions": correct_predictions,
+            "extraction_failed": extraction_failed,
+            "accuracy_standard": accuracy_standard,
+            "accuracy_strict": accuracy_strict
+        }
+    
+    # Calculate accuracy for each dataset
+    arc_accuracy = calculate_dataset_accuracy(arc_results, "ARC")
+    ko_arc_accuracy = calculate_dataset_accuracy(ko_arc_results, "Ko-ARC")
+    
+    # Overall accuracy
+    total_valid_predictions = arc_accuracy["valid_predictions"] + ko_arc_accuracy["valid_predictions"]
+    total_correct_predictions = arc_accuracy["correct_predictions"] + ko_arc_accuracy["correct_predictions"]
+    total_extraction_failed = arc_accuracy["extraction_failed"] + ko_arc_accuracy["extraction_failed"]
+    
+    overall_accuracy_standard = (total_correct_predictions / total_valid_predictions * 100) if total_valid_predictions > 0 else 0
+    overall_accuracy_strict = (total_correct_predictions / total_items * 100) if total_items > 0 else 0
     
     # Count changes
     extraction_changes = sum(1 for item in re_extracted_results if item['extraction_changed'])
@@ -235,24 +267,43 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     accuracy_degradations = sum(1 for item in re_extracted_results if item['accuracy_changed'] and not item['new_correct'])
     
     # Print summary
-    print("\n" + "="*60)
+    print("\n" + "="*80)
     print("RE-EXTRACTION RESULTS SUMMARY")
-    print("="*60)
-    print(f"Total Items: {total_items}")
-    if arc_count > 0 and ko_arc_count > 0:
-        print(f"  - ARC: {arc_count} items")
-        print(f"  - Ko-ARC: {ko_arc_count} items")
-    print(f"Valid Predictions (new): {valid_predictions}")
-    print(f"Correct Predictions (new): {correct_count}")
-    print(f"Extraction Failed: {extraction_failed}")
-    print(f"Accuracy (Standard): {accuracy_standard:.2f}%")
-    print(f"Accuracy (Strict): {accuracy_strict:.2f}%")
+    print("="*80)
+    print(f"OVERALL:")
+    print(f"  Total Items: {total_items}")
+    print(f"  Valid Predictions: {total_valid_predictions}")
+    print(f"  Correct Predictions: {total_correct_predictions}")
+    print(f"  Extraction Failed: {total_extraction_failed}")
+    print(f"  Accuracy (Standard): {overall_accuracy_standard:.2f}%")
+    print(f"  Accuracy (Strict): {overall_accuracy_strict:.2f}%")
     print()
+    
+    if arc_count > 0:
+        print(f"ARC DATASET:")
+        print(f"  Items: {arc_accuracy['total_items']}")
+        print(f"  Valid Predictions: {arc_accuracy['valid_predictions']}")
+        print(f"  Correct Predictions: {arc_accuracy['correct_predictions']}")
+        print(f"  Extraction Failed: {arc_accuracy['extraction_failed']}")
+        print(f"  Accuracy (Standard): {arc_accuracy['accuracy_standard']:.2f}%")
+        print(f"  Accuracy (Strict): {arc_accuracy['accuracy_strict']:.2f}%")
+        print()
+    
+    if ko_arc_count > 0:
+        print(f"KO-ARC DATASET:")
+        print(f"  Items: {ko_arc_accuracy['total_items']}")
+        print(f"  Valid Predictions: {ko_arc_accuracy['valid_predictions']}")
+        print(f"  Correct Predictions: {ko_arc_accuracy['correct_predictions']}")
+        print(f"  Extraction Failed: {ko_arc_accuracy['extraction_failed']}")
+        print(f"  Accuracy (Standard): {ko_arc_accuracy['accuracy_standard']:.2f}%")
+        print(f"  Accuracy (Strict): {ko_arc_accuracy['accuracy_strict']:.2f}%")
+        print()
+    
     print("CHANGES:")
-    print(f"Extraction Changed: {extraction_changes}")
-    print(f"Accuracy Improved: {accuracy_improvements}")
-    print(f"Accuracy Degraded: {accuracy_degradations}")
-    print("="*60)
+    print(f"  Extraction Changed: {extraction_changes}")
+    print(f"  Accuracy Improved: {accuracy_improvements}")
+    print(f"  Accuracy Degraded: {accuracy_degradations}")
+    print("="*80)
     
     # Save results
     if output_filepath is None:
@@ -261,15 +312,21 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     
     summary_data = {
         "original_file": json_filepath,
-        "total_items": total_items,
-        "valid_predictions": valid_predictions,
-        "correct_predictions": correct_count,
-        "extraction_failed": extraction_failed,
-        "accuracy_standard": accuracy_standard,
-        "accuracy_strict": accuracy_strict,
-        "extraction_changes": extraction_changes,
-        "accuracy_improvements": accuracy_improvements,
-        "accuracy_degradations": accuracy_degradations,
+        "overall": {
+            "total_items": total_items,
+            "valid_predictions": total_valid_predictions,
+            "correct_predictions": total_correct_predictions,
+            "extraction_failed": total_extraction_failed,
+            "accuracy_standard": overall_accuracy_standard,
+            "accuracy_strict": overall_accuracy_strict
+        },
+        "arc_dataset": arc_accuracy,
+        "ko_arc_dataset": ko_arc_accuracy,
+        "changes": {
+            "extraction_changed": extraction_changes,
+            "accuracy_improved": accuracy_improvements,
+            "accuracy_degraded": accuracy_degradations
+        },
         "detailed_results": re_extracted_results
     }
     

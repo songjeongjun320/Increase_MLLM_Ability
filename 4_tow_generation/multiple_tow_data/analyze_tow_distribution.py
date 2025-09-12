@@ -96,16 +96,17 @@ def estimate_token_length(text):
 def create_dynamic_token_categories(max_tokens):
     """
     Create token length categories based on the maximum token length in the dataset.
+    Provides detailed breakdown for 0-100 token range: 0-30, 31-60, 61-100.
     """
     if max_tokens <= 1000:
-        return ["0-100", "101-200", "201-500", "501-1000", "1000+"]
+        return ["0-30", "31-60", "61-100", "101-200", "201-500", "501-1000", "1000+"]
     elif max_tokens <= 2000:
-        return ["0-100", "101-200", "201-500", "501-1000", "1001-1500", "1501-2000", "2000+"]
+        return ["0-30", "31-60", "61-100", "101-200", "201-500", "501-1000", "1001-1500", "1501-2000", "2000+"]
     elif max_tokens <= 4000:
-        return ["0-100", "101-200", "201-500", "501-1000", "1001-1500", "1501-2000", "2001-2500", "2501-3000", "3001-3500", "3501-4000", "4000+"]
+        return ["0-30", "31-60", "61-100", "101-200", "201-500", "501-1000", "1001-1500", "1501-2000", "2001-2500", "2501-3000", "3001-3500", "3501-4000", "4000+"]
     else:
         # For very large datasets, create more granular categories
-        categories = ["0-100", "101-200", "201-500", "501-1000"]
+        categories = ["0-30", "31-60", "61-100", "101-200", "201-500", "501-1000"]
         # Add 500-token increments up to max_tokens
         current = 1000
         while current < max_tokens:
@@ -151,6 +152,11 @@ def analyze_jsonl_file(file_path):
     total_hcot_open = 0
     total_hcot_close = 0
     
+    # Analysis for samples with 100+ original tokens
+    samples_100plus_original_tokens = 0
+    total_tow_tokens_in_100plus_samples = 0
+    tow_counts_in_100plus_samples = []
+    
     items_with_tow = 0
     items_without_tow = 0
     items_with_hcot = 0
@@ -194,6 +200,13 @@ def analyze_jsonl_file(file_path):
                     
                     estimated_tokens_without_tow = estimate_token_length(completion_without_tow)
                     token_lengths_excluding_tow.append(estimated_tokens_without_tow)
+                    
+                    # Check if original text has 100+ tokens
+                    if estimated_tokens_without_tow >= 100:
+                        samples_100plus_original_tokens += 1
+                        tow_open, tow_close = count_tow_tokens(completion)
+                        total_tow_tokens_in_100plus_samples += tow_open
+                        tow_counts_in_100plus_samples.append(tow_open)
                 
                 # Calculate lengths excluding hCoT content
                 if ANALYZE_HCOT:
@@ -427,6 +440,27 @@ def analyze_jsonl_file(file_path):
                 count = token_length_distribution_excluding_tow[category]
                 percentage = count / total_items_original * 100
                 print(f"  {category} tokens: {count:,} items ({percentage:.1f}%)")
+        
+        # Analysis for samples with 100+ original tokens
+        if samples_100plus_original_tokens > 0:
+            print(f"\nAnalysis for Samples with 100+ Original Tokens:")
+            print(f"Total samples with 100+ original tokens: {samples_100plus_original_tokens:,}")
+            print(f"Percentage of total dataset: {samples_100plus_original_tokens / total_items * 100:.2f}%")
+            print(f"Total ToW tokens in these samples: {total_tow_tokens_in_100plus_samples:,}")
+            print(f"Average ToW tokens per sample (100+ original): {total_tow_tokens_in_100plus_samples / samples_100plus_original_tokens:.2f}")
+            
+            # ToW count distribution for 100+ samples
+            tow_count_dist = {}
+            for tow_count in tow_counts_in_100plus_samples:
+                tow_count_dist[tow_count] = tow_count_dist.get(tow_count, 0) + 1
+            
+            print(f"\nToW Count Distribution (for 100+ original token samples):")
+            for tow_count in sorted(tow_count_dist.keys()):
+                count = tow_count_dist[tow_count]
+                percentage = count / samples_100plus_original_tokens * 100
+                print(f"  {tow_count} ToW tokens: {count:,} samples ({percentage:.1f}%)")
+        else:
+            print(f"\nNo samples found with 100+ original tokens.")
     
     # Original text ratio analysis (excluding hCoT content)  
     if ANALYZE_HCOT and token_lengths_excluding_hcot:
@@ -493,7 +527,7 @@ def main():
     Main function to analyze the JSONL file.
     """
     # Define the input file
-    input_file = Path("C:/Users/songj/OneDrive/Desktop/Increase_MLLM_Ability/4_tow_generation/multiple_tow_data/tow_09_05.jsonl")
+    input_file = Path("C:/Users/songj/OneDrive/Desktop/Increase_MLLM_Ability/4_tow_generation/multiple_tow_data/tow_09_11.jsonl")
     
     if not input_file.exists():
         print(f"Error: File not found - {input_file}")

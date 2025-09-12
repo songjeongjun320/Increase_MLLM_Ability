@@ -45,6 +45,24 @@ def count_hcot_tokens(completion):
     
     return hcot_open_count, hcot_close_count
 
+def remove_tow_content(completion):
+    """
+    Remove all content between <ToW> and </ToW> tokens, including the tokens themselves.
+    Returns the cleaned text with only the original content.
+    """
+    # Remove everything between <ToW> and </ToW> (including the tags)
+    cleaned = re.sub(r'<ToW>.*?</ToW>', '', completion, flags=re.DOTALL)
+    return cleaned
+
+def remove_hcot_content(completion):
+    """
+    Remove all content between <hCoT> and </hCoT> tokens, including the tokens themselves.
+    Returns the cleaned text with only the original content.
+    """
+    # Remove everything between <hCoT> and </hCoT> (including the tags)
+    cleaned = re.sub(r'<hCoT>.*?</hCoT>', '', completion, flags=re.DOTALL)
+    return cleaned
+
 def count_words_before_first_hcot(completion):
     """
     Count the number of words before the first <hCoT> token in completion.
@@ -126,6 +144,8 @@ def analyze_jsonl_file(file_path):
     total_words_before_first_tow = 0
     total_words_before_first_hcot = 0
     total_words_in_all_completions = 0
+    total_words_excluding_tow = 0
+    total_words_excluding_hcot = 0
     total_tow_open = 0
     total_tow_close = 0
     total_hcot_open = 0
@@ -139,8 +159,14 @@ def analyze_jsonl_file(file_path):
     word_counts_before_first_tow = []
     word_counts_before_first_hcot = []
     completion_lengths = []
+    completion_lengths_excluding_tow = []
+    completion_lengths_excluding_hcot = []
     token_lengths = []
+    token_lengths_excluding_tow = []
+    token_lengths_excluding_hcot = []
     token_length_distribution = Counter()
+    token_length_distribution_excluding_tow = Counter()
+    token_length_distribution_excluding_hcot = Counter()
     
     with open(file_path, 'r', encoding='utf-8') as f:
         for line_num, line in enumerate(f, 1):
@@ -158,6 +184,26 @@ def analyze_jsonl_file(file_path):
                 # Estimate token length
                 estimated_tokens = estimate_token_length(completion)
                 token_lengths.append(estimated_tokens)
+                
+                # Calculate lengths excluding ToW content
+                if ANALYZE_TOW:
+                    completion_without_tow = remove_tow_content(completion)
+                    words_without_tow = len(completion_without_tow.split())
+                    total_words_excluding_tow += words_without_tow
+                    completion_lengths_excluding_tow.append(words_without_tow)
+                    
+                    estimated_tokens_without_tow = estimate_token_length(completion_without_tow)
+                    token_lengths_excluding_tow.append(estimated_tokens_without_tow)
+                
+                # Calculate lengths excluding hCoT content
+                if ANALYZE_HCOT:
+                    completion_without_hcot = remove_hcot_content(completion)
+                    words_without_hcot = len(completion_without_hcot.split())
+                    total_words_excluding_hcot += words_without_hcot
+                    completion_lengths_excluding_hcot.append(words_without_hcot)
+                    
+                    estimated_tokens_without_hcot = estimate_token_length(completion_without_hcot)
+                    token_lengths_excluding_hcot.append(estimated_tokens_without_hcot)
                 
                 # Count words before first ToW (only if ToW analysis is enabled)
                 if ANALYZE_TOW:
@@ -206,6 +252,24 @@ def analyze_jsonl_file(file_path):
     for estimated_tokens in token_lengths:
         category = categorize_token_length(estimated_tokens, token_categories)
         token_length_distribution[category] += 1
+    
+    # Categorize token lengths excluding ToW content
+    if ANALYZE_TOW and token_lengths_excluding_tow:
+        max_tokens_excluding_tow = max(token_lengths_excluding_tow)
+        token_categories_excluding_tow = create_dynamic_token_categories(max_tokens_excluding_tow)
+        
+        for estimated_tokens in token_lengths_excluding_tow:
+            category = categorize_token_length(estimated_tokens, token_categories_excluding_tow)
+            token_length_distribution_excluding_tow[category] += 1
+    
+    # Categorize token lengths excluding hCoT content
+    if ANALYZE_HCOT and token_lengths_excluding_hcot:
+        max_tokens_excluding_hcot = max(token_lengths_excluding_hcot)
+        token_categories_excluding_hcot = create_dynamic_token_categories(max_tokens_excluding_hcot)
+        
+        for estimated_tokens in token_lengths_excluding_hcot:
+            category = categorize_token_length(estimated_tokens, token_categories_excluding_hcot)
+            token_length_distribution_excluding_hcot[category] += 1
     
     # Calculate statistics
     print("\n" + "="*60)
@@ -329,6 +393,74 @@ def analyze_jsonl_file(file_path):
         count = token_length_distribution[category]
         percentage = count / total_items_for_dist * 100
         print(f"  {category} tokens: {count:,} items ({percentage:.1f}%)")
+    
+    # Original text ratio analysis (excluding ToW content)
+    if ANALYZE_TOW and token_lengths_excluding_tow:
+        print(f"\nOriginal Text Analysis (Excluding ToW Content):")
+        avg_tokens_excluding_tow = sum(token_lengths_excluding_tow) / len(token_lengths_excluding_tow)
+        avg_tokens_total = sum(token_lengths) / len(token_lengths)
+        
+        print(f"Average estimated tokens (original text only): {avg_tokens_excluding_tow:.2f}")
+        print(f"Average estimated tokens (total with ToW): {avg_tokens_total:.2f}")
+        print(f"Original text ratio: {avg_tokens_excluding_tow / avg_tokens_total:.3f} ({avg_tokens_excluding_tow / avg_tokens_total * 100:.1f}%)")
+        print(f"ToW content ratio: {(avg_tokens_total - avg_tokens_excluding_tow) / avg_tokens_total:.3f} ({(avg_tokens_total - avg_tokens_excluding_tow) / avg_tokens_total * 100:.1f}%)")
+        
+        # Token length percentiles for original text
+        token_lengths_excluding_tow_sorted = sorted(token_lengths_excluding_tow)
+        n_tokens_original = len(token_lengths_excluding_tow_sorted)
+        
+        print(f"\nOriginal Text Token Length Percentiles:")
+        for p in percentiles:
+            idx = int(n_tokens_original * p / 100)
+            if idx >= n_tokens_original:
+                idx = n_tokens_original - 1
+            print(f"  {p}th percentile: {token_lengths_excluding_tow_sorted[idx]} tokens")
+        
+        print(f"  Min tokens (original): {min(token_lengths_excluding_tow)} tokens")
+        print(f"  Max tokens (original): {max(token_lengths_excluding_tow)} tokens")
+        
+        # Original text token distribution
+        if token_length_distribution_excluding_tow:
+            print(f"\nOriginal Text Token Length Distribution:")
+            total_items_original = sum(token_length_distribution_excluding_tow.values())
+            for category in sorted(token_length_distribution_excluding_tow.keys()):
+                count = token_length_distribution_excluding_tow[category]
+                percentage = count / total_items_original * 100
+                print(f"  {category} tokens: {count:,} items ({percentage:.1f}%)")
+    
+    # Original text ratio analysis (excluding hCoT content)  
+    if ANALYZE_HCOT and token_lengths_excluding_hcot:
+        print(f"\nOriginal Text Analysis (Excluding hCoT Content):")
+        avg_tokens_excluding_hcot = sum(token_lengths_excluding_hcot) / len(token_lengths_excluding_hcot)
+        avg_tokens_total = sum(token_lengths) / len(token_lengths)
+        
+        print(f"Average estimated tokens (original text only): {avg_tokens_excluding_hcot:.2f}")
+        print(f"Average estimated tokens (total with hCoT): {avg_tokens_total:.2f}")
+        print(f"Original text ratio: {avg_tokens_excluding_hcot / avg_tokens_total:.3f} ({avg_tokens_excluding_hcot / avg_tokens_total * 100:.1f}%)")
+        print(f"hCoT content ratio: {(avg_tokens_total - avg_tokens_excluding_hcot) / avg_tokens_total:.3f} ({(avg_tokens_total - avg_tokens_excluding_hcot) / avg_tokens_total * 100:.1f}%)")
+        
+        # Token length percentiles for original text
+        token_lengths_excluding_hcot_sorted = sorted(token_lengths_excluding_hcot)
+        n_tokens_original_hcot = len(token_lengths_excluding_hcot_sorted)
+        
+        print(f"\nOriginal Text Token Length Percentiles (excluding hCoT):")
+        for p in percentiles:
+            idx = int(n_tokens_original_hcot * p / 100)
+            if idx >= n_tokens_original_hcot:
+                idx = n_tokens_original_hcot - 1
+            print(f"  {p}th percentile: {token_lengths_excluding_hcot_sorted[idx]} tokens")
+        
+        print(f"  Min tokens (original): {min(token_lengths_excluding_hcot)} tokens")
+        print(f"  Max tokens (original): {max(token_lengths_excluding_hcot)} tokens")
+        
+        # Original text token distribution
+        if token_length_distribution_excluding_hcot:
+            print(f"\nOriginal Text Token Length Distribution (excluding hCoT):")
+            total_items_original_hcot = sum(token_length_distribution_excluding_hcot.values())
+            for category in sorted(token_length_distribution_excluding_hcot.keys()):
+                count = token_length_distribution_excluding_hcot[category]
+                percentage = count / total_items_original_hcot * 100
+                print(f"  {category} tokens: {count:,} items ({percentage:.1f}%)")
     
     # Training recommendations
     print(f"\nTraining Recommendations:")

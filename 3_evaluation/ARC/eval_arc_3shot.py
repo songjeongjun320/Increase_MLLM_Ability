@@ -561,7 +561,6 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                            leave=True,
                            dynamic_ncols=False,
                            file=sys.stdout,
-                           flush=True,
                            position=0)
                 
                 for i in pbar:

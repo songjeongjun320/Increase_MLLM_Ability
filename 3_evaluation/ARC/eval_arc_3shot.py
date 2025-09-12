@@ -309,7 +309,7 @@ def extract_answer_robust(model_output: str) -> str:
     for pattern in structured_patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[-1]  # Return the last match (final answer)
+            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
     
     # Priority 2: Start of text patterns
     start_patterns = [
@@ -336,7 +336,7 @@ def extract_answer_robust(model_output: str) -> str:
     for pattern in end_patterns:
         matches = re.findall(pattern, last_part)
         if matches:
-            return matches[-1]  # Return the last match
+            return matches[0]  # Return the first match (avoid repetitions)
     
     # Priority 4: Absolute fallback - scan from end backwards
     # This avoids picking random letters from the beginning/middle of text

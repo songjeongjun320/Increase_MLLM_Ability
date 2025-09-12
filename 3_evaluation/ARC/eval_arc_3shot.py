@@ -300,9 +300,10 @@ def extract_answer_robust(model_output: str) -> str:
     
     # Priority 1: Structured answer patterns (most reliable)
     structured_patterns = [
-        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*([A-D])',  # #### Answer: A or #### 정답: A
-        r'(?:정답|답|ANSWER)\s*:?\s*([A-D])',        # Answer: A or 정답: A
-        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*([A-D])',  # So the answer is A
+        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-D])\}?',  # #### Answer: A or #### 정답: A or {A}
+        r'\{([A-D])\}',  # {A} box format matching prompt style
+        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-D])\}?',        # Answer: A or 정답: A or {A}
+        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-D])\}?',  # So the answer is A or {A}
     ]
     
     for pattern in structured_patterns:

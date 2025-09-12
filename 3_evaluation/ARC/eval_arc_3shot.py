@@ -193,13 +193,13 @@ def create_3shot_prompt(item, examples, dataset_type="arc"):
     ARC / Ko-ARC 평가 프롬프트를 동적으로 생성합니다.
     """
     if dataset_type == "arc":
-        prompt_parts = ["The following are multiple choice questions about science and reasoning.\n"]
+        prompt_parts = ["The following are multiple choice questions about science and reasoning. You MUST choose one of the option A~D.\n"]
         response_header = "Response:"
         cot_trigger = "Let's think step by step."
         final_answer_prefix = "Therefore Answer:"
         
     else:  # ko-arc
-        prompt_parts = ["다음은 과학과 추론에 관한 객관식 문제들입니다.\n"]
+        prompt_parts = ["다음은 과학과 추론에 관한 객관식 문제들입니다. A부터 D까지의 보기중 무조건 하나의 답만 선택하세요.\n"]
         response_header = "응답:"
         cot_trigger = "단계적으로 생각해봅시다."
         final_answer_prefix = "따라서 정답:"
@@ -218,7 +218,7 @@ def create_3shot_prompt(item, examples, dataset_type="arc"):
             prompt_parts.append(f"{key}. {value}")
         
         # 실제 추론 과정과 최종 답변 형식을 포함한 완전한 응답 블록을 만듭니다.
-        full_response_block = f"{response_header} {cot_content} #### {final_answer_prefix} {answer}. #### {answer}."
+        full_response_block = f"{response_header} {cot_content} #### {final_answer_prefix} {{{answer}}}. #### {{{answer}}}."
         prompt_parts.append(full_response_block)
         prompt_parts.append("") # 예제 사이에 빈 줄 추가
 

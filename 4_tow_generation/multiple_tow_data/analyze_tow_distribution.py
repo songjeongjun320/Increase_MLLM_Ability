@@ -471,16 +471,16 @@ def analyze_jsonl_file(file_path):
     print(f"  Average token length: {avg_tokens:.0f}")
     
     if max_tokens > 4000:
-        print(f"  ⚠️  Warning: Some samples exceed 4000 tokens. Consider:")
+        print(f"  WARNING: Some samples exceed 4000 tokens. Consider:")
         print(f"     - Using models with larger context windows (8K+)")
         print(f"     - Truncating very long samples")
         print(f"     - Implementing dynamic batching")
     elif max_tokens > 2000:
-        print(f"  ℹ️  Most samples fit within 4K context. Consider:")
+        print(f"  INFO: Most samples fit within 4K context. Consider:")
         print(f"     - Standard 4K context models should work well")
         print(f"     - Monitor for any truncation issues")
     else:
-        print(f"  ✅ All samples fit within 2K context. Standard models should work well.")
+        print(f"  OK: All samples fit within 2K context. Standard models should work well.")
     
     # Memory estimation for training
     print(f"\nMemory Estimation (rough):")

@@ -221,8 +221,10 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         re_extracted_results.append(result_item)
     
     # Calculate accuracy separately for each dataset
-    def calculate_dataset_accuracy(dataset_results, dataset_name):
-        total_items = len(dataset_results)
+    def calculate_dataset_accuracy(dataset_name):
+        # Filter re_extracted_results by dataset
+        dataset_items = [item for item in re_extracted_results if item['dataset'] == dataset_name]
+        total_items = len(dataset_items)
         if total_items == 0:
             return {
                 "total_items": 0,
@@ -233,8 +235,8 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
                 "accuracy_strict": 0.0
             }
         
-        valid_predictions = sum(1 for item in dataset_results if item['new_extracted_answer'] is not None)
-        correct_predictions = sum(1 for item in dataset_results if item['new_correct'])
+        valid_predictions = sum(1 for item in dataset_items if item['new_extracted_answer'] is not None)
+        correct_predictions = sum(1 for item in dataset_items if item['new_correct'])
         extraction_failed = total_items - valid_predictions
         
         accuracy_standard = (correct_predictions / valid_predictions * 100) if valid_predictions > 0 else 0
@@ -250,8 +252,8 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         }
     
     # Calculate accuracy for each dataset
-    arc_accuracy = calculate_dataset_accuracy(arc_results, "ARC")
-    ko_arc_accuracy = calculate_dataset_accuracy(ko_arc_results, "Ko-ARC")
+    arc_accuracy = calculate_dataset_accuracy("ARC")
+    ko_arc_accuracy = calculate_dataset_accuracy("Ko-ARC")
     
     # Overall accuracy
     total_valid_predictions = arc_accuracy["valid_predictions"] + ko_arc_accuracy["valid_predictions"]

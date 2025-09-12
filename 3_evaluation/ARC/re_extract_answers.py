@@ -129,29 +129,32 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
                 available_datasets = list(datasets.keys())
                 print(f"Error: Dataset '{dataset_name}' not found. Available datasets: {available_datasets}")
                 return
-        elif 'ARC' in datasets and 'Ko-ARC' in datasets:
-            print("Found both ARC and Ko-ARC datasets")
-            print("Available datasets:", list(datasets.keys()))
-            choice = input("Which dataset to process? (ARC/Ko-ARC): ").strip().upper()
-            if choice == 'ARC':
-                results = datasets['ARC'].get('details', [])
-                print("Processing ARC dataset...")
-            elif choice == 'KO-ARC':
-                results = datasets['Ko-ARC'].get('details', [])
-                print("Processing Ko-ARC dataset...")
-            else:
-                print("Invalid choice. Processing ARC by default...")
-                results = datasets['ARC'].get('details', [])
-        elif 'ARC' in datasets:
-            print("Found ARC dataset, processing...")
-            results = datasets['ARC'].get('details', [])
-        elif 'Ko-ARC' in datasets:
-            print("Found Ko-ARC dataset, processing...")
-            results = datasets['Ko-ARC'].get('details', [])
         else:
-            available_datasets = list(datasets.keys())
-            print(f"Error: No ARC or Ko-ARC dataset found. Available datasets: {available_datasets}")
-            return
+            # Process both ARC and Ko-ARC if available
+            all_results = []
+            processed_datasets = []
+            
+            if 'ARC' in datasets:
+                arc_results = datasets['ARC'].get('details', [])
+                if arc_results:
+                    all_results.extend(arc_results)
+                    processed_datasets.append('ARC')
+                    print(f"Found ARC dataset with {len(arc_results)} items")
+            
+            if 'Ko-ARC' in datasets:
+                ko_arc_results = datasets['Ko-ARC'].get('details', [])
+                if ko_arc_results:
+                    all_results.extend(ko_arc_results)
+                    processed_datasets.append('Ko-ARC')
+                    print(f"Found Ko-ARC dataset with {len(ko_arc_results)} items")
+            
+            if not all_results:
+                available_datasets = list(datasets.keys())
+                print(f"Error: No ARC or Ko-ARC dataset found. Available datasets: {available_datasets}")
+                return
+            
+            results = all_results
+            print(f"Processing both datasets: {', '.join(processed_datasets)} (Total: {len(results)} items)")
         
         if not results:
             print("Error: No details found in the dataset")
@@ -166,7 +169,14 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     extraction_failed = 0
     re_extracted_results = []
     
+    # Count items per dataset for tracking
+    arc_count = sum(1 for item in results if item.get('dataset') == 'ARC')
+    ko_arc_count = sum(1 for item in results if item.get('dataset') == 'Ko-ARC')
+    
     print(f"Re-evaluating {total_items} items...")
+    if arc_count > 0 and ko_arc_count > 0:
+        print(f"  - ARC: {arc_count} items")
+        print(f"  - Ko-ARC: {ko_arc_count} items")
     
     for i, item in enumerate(results):
         if (i + 1) % 100 == 0 or i == 0:
@@ -200,7 +210,8 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
             "old_correct": old_correct,
             "new_correct": is_correct,
             "extraction_changed": old_extracted != new_extracted,
-            "accuracy_changed": old_correct != is_correct
+            "accuracy_changed": old_correct != is_correct,
+            "source_dataset": item.get('dataset', 'Unknown')
         }
         
         re_extracted_results.append(result_item)
@@ -220,6 +231,9 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     print("RE-EXTRACTION RESULTS SUMMARY")
     print("="*60)
     print(f"Total Items: {total_items}")
+    if arc_count > 0 and ko_arc_count > 0:
+        print(f"  - ARC: {arc_count} items")
+        print(f"  - Ko-ARC: {ko_arc_count} items")
     print(f"Valid Predictions (new): {valid_predictions}")
     print(f"Correct Predictions (new): {correct_count}")
     print(f"Extraction Failed: {extraction_failed}")

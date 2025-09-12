@@ -696,6 +696,72 @@ def main(args: FlatArguments):
 
     tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
 
+    # ===== ToW Token Debugging =====
+    if accelerator.is_main_process:
+        logger.info("=" * 50)
+        logger.info("ToW Token Debugging Information")
+        logger.info("=" * 50)
+        
+        # 1. 토큰화기 기본 정보
+        logger.info(f"Tokenizer vocab size: {len(tokenizer)}")
+        logger.info(f"Additional special tokens: {tokenizer.additional_special_tokens}")
+        
+        # 2. ToW 토큰 ID 확인
+        tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
+        tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
+        logger.info(f"<ToW> token ID: {tow_start_id}")
+        logger.info(f"</ToW> token ID: {tow_end_id}")
+        
+        # 3. 역변환 확인
+        logger.info(f"Token ID {tow_start_id} -> '{tokenizer.convert_ids_to_tokens([tow_start_id])}'")
+        logger.info(f"Token ID {tow_end_id} -> '{tokenizer.convert_ids_to_tokens([tow_end_id])}'")
+        
+        # 4. 실제 텍스트에서 토큰화 테스트
+        test_samples = [
+            "Question: What is 2+2? <ToW> Let me think step by step. </ToW> The answer is 4.",
+            "<ToW> This is a thinking process. </ToW>",
+            "Before <ToW> thinking </ToW> after",
+            "Multiple <ToW> first thought </ToW> and <ToW> second thought </ToW> test"
+        ]
+        
+        for i, sample in enumerate(test_samples):
+            logger.info(f"\nTest Sample {i+1}: {sample}")
+            tokens = tokenizer.tokenize(sample)
+            token_ids = tokenizer.encode(sample, add_special_tokens=False)
+            decoded = tokenizer.decode(token_ids)
+            
+            logger.info(f"  Tokens: {tokens}")
+            logger.info(f"  Token IDs: {token_ids}")
+            logger.info(f"  Decoded: {decoded}")
+            
+            # ToW 토큰이 올바르게 인식되는지 확인
+            if tow_start_id in token_ids:
+                start_positions = [j for j, x in enumerate(token_ids) if x == tow_start_id]
+                logger.info(f"  <ToW> found at positions: {start_positions}")
+            else:
+                logger.info(f"  ❌ <ToW> token NOT found!")
+                
+            if tow_end_id in token_ids:
+                end_positions = [j for j, x in enumerate(token_ids) if x == tow_end_id]
+                logger.info(f"  </ToW> found at positions: {end_positions}")
+            else:
+                logger.info(f"  ❌ </ToW> token NOT found!")
+        
+        # 5. 특수 토큰만 따로 테스트
+        logger.info(f"\nDirect tokenization test:")
+        tow_start_tokens = tokenizer.tokenize('<ToW>')
+        tow_end_tokens = tokenizer.tokenize('</ToW>')
+        logger.info(f"  tokenize('<ToW>') = {tow_start_tokens}")
+        logger.info(f"  tokenize('</ToW>') = {tow_end_tokens}")
+        
+        tow_start_ids = tokenizer.encode('<ToW>', add_special_tokens=False)
+        tow_end_ids = tokenizer.encode('</ToW>', add_special_tokens=False)
+        logger.info(f"  encode('<ToW>') = {tow_start_ids}")
+        logger.info(f"  encode('</ToW>') = {tow_end_ids}")
+        
+        logger.info("=" * 50)
+        logger.info("End ToW Token Debugging")
+        logger.info("=" * 50)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # gather deepspeed to get "real" embedding size

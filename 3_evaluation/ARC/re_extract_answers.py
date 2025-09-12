@@ -115,12 +115,27 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         # Raw generations format
         results = data
     elif isinstance(data, dict) and 'datasets' in data:
-        # Check if it has datasets structure
-        print("Error: Please provide a raw_generations JSON file (list format)")
-        print("This appears to be a results file with 'datasets' structure")
-        return
+        # Results file with datasets structure
+        print("Detected results file with 'datasets' structure")
+        datasets = data.get('datasets', {})
+        
+        # Check for ARC dataset
+        if 'ARC' in datasets:
+            print("Found ARC dataset, processing...")
+            results = datasets['ARC'].get('details', [])
+        elif 'Ko-ARC' in datasets:
+            print("Found Ko-ARC dataset, processing...")
+            results = datasets['Ko-ARC'].get('details', [])
+        else:
+            available_datasets = list(datasets.keys())
+            print(f"Error: No ARC or Ko-ARC dataset found. Available datasets: {available_datasets}")
+            return
+        
+        if not results:
+            print("Error: No details found in the dataset")
+            return
     else:
-        print("Error: Unrecognized JSON format. Expected a list of items.")
+        print("Error: Unrecognized JSON format. Expected a list of items or datasets structure.")
         return
     
     # Re-extract answers
@@ -134,9 +149,10 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     for i, item in enumerate(results):
         if (i + 1) % 100 == 0 or i == 0:
             print(f"  Progress: {i + 1}/{total_items} ({(i + 1)/total_items*100:.1f}%)")
-        raw_output = item.get('raw_output', '')
+        # Handle different field names for raw output
+        raw_output = item.get('raw_output', '') or item.get('model_raw_output', '')
         ground_truth = item.get('ground_truth', '')
-        old_extracted = item.get('extracted_answer', '')
+        old_extracted = item.get('extracted_answer', '') or item.get('predicted_answer', '')
         
         # Re-extract answer
         new_extracted = extract_answer_robust(raw_output)

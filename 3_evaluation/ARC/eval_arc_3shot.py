@@ -108,7 +108,7 @@ KO_ARC_DATASET_PATH = "../../2_datasets/ARC/Ko-ARC.json"
 BASE_OUTPUT_DIR = "arc_3shot_09_11"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
-BATCH_SIZE = 8
+BATCH_SIZE = 10
 
 # --- Logging Setup ---
 logging.basicConfig(

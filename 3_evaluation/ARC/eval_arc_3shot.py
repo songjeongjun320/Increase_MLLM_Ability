@@ -100,7 +100,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 ARC_DATASET_PATH = "../../2_datasets/ARC/ARC.json"
 KO_ARC_DATASET_PATH = "../../2_datasets/ARC/Ko-ARC.json"
-BASE_OUTPUT_DIR = "arc_3shot"
+BASE_OUTPUT_DIR = "arc_3shot_09_11"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BATCH_SIZE = 16
@@ -122,13 +122,7 @@ ARC_5SHOT_EXAMPLES = [
             "C": "The Sun",
             "D": "Carnivores"
         },
-        "cot_content": """Let's think step by step.
-1. The question asks for the primary, or ultimate, source of energy for most ecosystems.
-2. Let's analyze the options. A food chain shows how energy is transferred.
-3. Option A, Fungi, are decomposers. They get energy from dead organic material, so they are part of the energy cycle, but not the primary source.
-4. Option B, Herbivores, are primary consumers. They get their energy by eating plants (producers). So they are not the source.
-5. Option D, Carnivores, are secondary or tertiary consumers. They get energy by eating other animals. They are even further down the energy transfer chain.
-6. Option C, The Sun. Plants (producers) use sunlight to create their own food through photosynthesis. This chemical energy is the foundation of almost every food chain. Therefore, the sun is the primary source of energy.""",
+        "cot_content": """Let's think step by step. The question asks for the primary, or ultimate, source of energy for most ecosystems. Let's analyze the options. A food chain shows how energy is transferred. Option A, Fungi, are decomposers. They get energy from dead organic material, so they are part of the energy cycle, but not the primary source. Option B, Herbivores, are primary consumers. They get their energy by eating plants (producers). So they are not the source. Option D, Carnivores, are secondary or tertiary consumers. They get energy by eating other animals. They are even further down the energy transfer chain. Option C, The Sun. Plants (producers) use sunlight to create their own food through photosynthesis. This chemical energy is the foundation of almost every food chain. Therefore, the sun is the primary source of energy.""",
         "answer": "C"
     },
     {
@@ -139,12 +133,7 @@ ARC_5SHOT_EXAMPLES = [
             "C": "Condensation",
             "D": "Evaporation"
         },
-        "cot_content": """Let's think step by step.
-1. The question is about the phase transition from liquid to gas.
-2. Option A, Melting, is the process of a solid turning into a liquid. This is incorrect.
-3. Option B, Freezing, is the process of a liquid turning into a solid. This is incorrect.
-4. Option C, Condensation, is the process of a gas turning into a liquid. This is the reverse of what the question asks. This is incorrect.
-5. Option D, Evaporation (or boiling), is the process where a liquid substance becomes a gas. This directly matches the question.""",
+        "cot_content": """Let's think step by step. The question is about the phase transition from liquid to gas. Option A, Melting, is the process of a solid turning into a liquid. This is incorrect. Option B, Freezing, is the process of a liquid turning into a solid. This is incorrect. Option C, Condensation, is the process of a gas turning into a liquid. This is the reverse of what the question asks. This is incorrect. Option D, Evaporation (or boiling), is the process where a liquid substance becomes a gas. This directly matches the question.""",
         "answer": "D"
     },
     {
@@ -155,12 +144,7 @@ ARC_5SHOT_EXAMPLES = [
             "C": "the amount of sunlight",
             "D": "the type of soil"
         },
-        "cot_content": """Let's think step by step.
-1. An experiment tests how an independent variable affects a dependent variable. The independent variable is the one factor that the scientist intentionally changes or manipulates.
-2. The student wants to see the effect *of* the amount of sunlight. This is the factor she will change.
-3. Option A, the height of the plant, is what is being measured to see the effect. This is the dependent variable.
-4. Option B, the amount of water, and Option D, the type of soil, should be kept the same for all plants to ensure a fair test. These are controlled variables.
-5. Option C, the amount of sunlight, is the one thing the student is purposefully changing to observe its effect on growth. Therefore, it is the independent variable.""",
+        "cot_content": """Let's think step by step. An experiment tests how an independent variable affects a dependent variable. The independent variable is the one factor that the scientist intentionally changes or manipulates. The student wants to see the effect *of* the amount of sunlight. This is the factor she will change. Option A, the height of the plant, is what is being measured to see the effect. This is the dependent variable. Option B, the amount of water, and Option D, the type of soil, should be kept the same for all plants to ensure a fair test. These are controlled variables. Option C, the amount of sunlight, is the one thing the student is purposefully changing to observe its effect on growth. Therefore, it is the independent variable.""",
         "answer": "C"
     },
 ]
@@ -174,13 +158,7 @@ KO_ARC_5SHOT_EXAMPLES = [
             "C": "태양",
             "D": "육식동물"
         },
-        "cot_content": """단계별로 생각해봅시다.
-1. 이 질문은 대부분의 생태계에서 가장 근원적인 에너지 공급원이 무엇인지 묻고 있습니다.
-2. 선택지를 분석해 봅시다. 먹이 사슬은 에너지가 어떻게 전달되는지를 보여줍니다.
-3. 선택지 A, 균류는 분해자입니다. 죽은 유기물로부터 에너지를 얻으므로 에너지 순환의 일부이지만 근원적인 에너지원은 아닙니다.
-4. 선택지 B, 초식동물은 1차 소비자입니다. 식물(생산자)을 먹음으로써 에너지를 얻으므로 에너지원이 아닙니다.
-5. 선택지 D, 육식동물은 2차 또는 3차 소비자입니다. 다른 동물을 먹음으로써 에너지를 얻으며, 에너지 전달 단계에서 더 뒤에 있습니다.
-6. 선택지 C, 태양. 식물(생산자)은 광합성을 통해 태양빛을 이용하여 스스로 양분을 만듭니다. 이 화학 에너지가 거의 모든 먹이 사슬의 기초가 됩니다. 따라서 태양이 주요 에너지원입니다.""",
+        "cot_content": """단계별로 생각해봅시다. 이 질문은 대부분의 생태계에서 가장 근원적인 에너지 공급원이 무엇인지 묻고 있습니다. 선택지를 분석해 봅시다. 먹이 사슬은 에너지가 어떻게 전달되는지를 보여줍니다. 선택지 A, 균류는 분해자입니다. 죽은 유기물로부터 에너지를 얻으므로 에너지 순환의 일부이지만 근원적인 에너지원은 아닙니다. 선택지 B, 초식동물은 1차 소비자입니다. 식물(생산자)을 먹음으로써 에너지를 얻으므로 에너지원이 아닙니다. 선택지 D, 육식동물은 2차 또는 3차 소비자입니다. 다른 동물을 먹음으로써 에너지를 얻으며, 에너지 전달 단계에서 더 뒤에 있습니다. 선택지 C, 태양. 식물(생산자)은 광합성을 통해 태양빛을 이용하여 스스로 양분을 만듭니다. 이 화학 에너지가 거의 모든 먹이 사슬의 기초가 됩니다. 따라서 태양이 주요 에너지원입니다.""",
         "answer": "C"
     },
     {
@@ -191,12 +169,7 @@ KO_ARC_5SHOT_EXAMPLES = [
             "C": "액화",
             "D": "증발"
         },
-        "cot_content": """단계별로 생각해봅시다.
-1. 이 질문은 액체에서 기체로의 상태 변화에 관한 것입니다.
-2. 선택지 A, 융해는 고체가 액체로 변하는 과정입니다. 틀렸습니다.
-3. 선택지 B, 응고는 액체가 고체로 변하는 과정입니다. 틀렸습니다.
-4. 선택지 C, 액화는 기체가 액체로 변하는 과정입니다. 질문과 반대되는 과정입니다. 틀렸습니다.
-5. 선택지 D, 증발(또는 끓음)은 액체 물질이 기체로 변하는 과정입니다. 이는 질문과 정확히 일치합니다.""",
+        "cot_content": """단계별로 생각해봅시다. 이 질문은 액체에서 기체로의 상태 변화에 관한 것입니다. 선택지 A, 융해는 고체가 액체로 변하는 과정입니다. 틀렸습니다. 선택지 B, 응고는 액체가 고체로 변하는 과정입니다. 틀렸습니다. 선택지 C, 액화는 기체가 액체로 변하는 과정입니다. 질문과 반대되는 과정입니다. 틀렸습니다. 선택지 D, 증발(또는 끓음)은 액체 물질이 기체로 변하는 과정입니다. 이는 질문과 정확히 일치합니다.""",
         "answer": "D"
     },
     {
@@ -207,12 +180,7 @@ KO_ARC_5SHOT_EXAMPLES = [
             "C": "햇빛의 양",
             "D": "토양의 종류"
         },
-        "cot_content": """단계별로 생각해봅시다.
-1. 실험은 독립 변인이 종속 변인에 미치는 영향을 시험합니다. 독립 변인은 과학자가 의도적으로 변화시키거나 조작하는 하나의 요인입니다.
-2. 학생은 햇빛의 양이 미치는 '영향'을 보고 싶어 하므로, 햇빛의 양이 바로 학생이 변화시킬 요인입니다.
-3. 선택지 A, 식물의 키는 햇빛의 영향을 확인하기 위해 측정되는 것입니다. 이것은 종속 변인입니다.
-4. 선택지 B, 물의 양과 선택지 D, 토양의 종류는 공정한 실험을 위해 모든 식물에게 동일하게 유지되어야 합니다. 이것들은 통제 변인입니다.
-5. 선택지 C, 햇빛의 양은 학생이 성장에 미치는 영향을 관찰하기 위해 의도적으로 변화시키는 유일한 것입니다. 따라서 이것이 독립 변인입니다.""",
+        "cot_content": """단계별로 생각해봅시다. 실험은 독립 변인이 종속 변인에 미치는 영향을 시험합니다. 독립 변인은 과학자가 의도적으로 변화시키거나 조작하는 하나의 요인입니다. 학생은 햇빛의 양이 미치는 '영향'을 보고 싶어 하므로, 햇빛의 양이 바로 학생이 변화시킬 요인입니다. 선택지 A, 식물의 키는 햇빛의 영향을 확인하기 위해 측정되는 것입니다. 이것은 종속 변인입니다. 선택지 B, 물의 양과 선택지 D, 토양의 종류는 공정한 실험을 위해 모든 식물에게 동일하게 유지되어야 합니다. 이것들은 통제 변인입니다. 선택지 C, 햇빛의 양은 학생이 성장에 미치는 영향을 관찰하기 위해 의도적으로 변화시키는 유일한 것입니다. 따라서 이것이 독립 변인입니다.""",
         "answer": "C"
     },
 ]
@@ -281,7 +249,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=256,
+                    max_new_tokens=1024,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -609,7 +577,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                     with torch.no_grad():
                         outputs = model.generate(
                             **inputs,
-                            max_new_tokens=256,
+                            max_new_tokens=1024,
                             pad_token_id=tokenizer.pad_token_id,
                             eos_token_id=tokenizer.eos_token_id,
                             do_sample=False,

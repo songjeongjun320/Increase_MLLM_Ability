@@ -18,20 +18,23 @@
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 llama
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_11_allenai --exp_name "llama-3.2-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/ToW.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-org --exp_name "llama-3.2-3b-pt-tow-org-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 200 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 qwen 
 deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_11_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
 deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_11_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 olmo
 deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_allenai --exp_name "olmo-2-0425-1b-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+
+deepspeed --num_gpus=2 finetune_hcot.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/ToW.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-org --exp_name "llama-3.2-3b-pt-tow-org-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 200 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3 && deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_11_allenai --exp_name "llama-3.2-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3 && deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_11_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3 && deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_11_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3 && deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_allenai --exp_name "olmo-2-0425-1b-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+
 """
 import re
 import logging
 import math
 import os
 import random
-import subprocessF
+import subprocess
 import time
 import json
 from dataclasses import dataclass, field
@@ -694,7 +697,7 @@ def main(args: FlatArguments):
             num_added_tokens = tokenizer.add_special_tokens({"pad_token": "<pad>"})
             assert num_added_tokens == 1, "We detected no padding token but add_special_tokens did not add one."
 
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
+    tokenizer.add_special_tokens({'additional_special_tokens': ['<hcot>', '</hcot>']})
 
     # ===== ToW Token Debugging =====
     if accelerator.is_main_process:
@@ -707,10 +710,10 @@ def main(args: FlatArguments):
         logger.info(f"Additional special tokens: {tokenizer.additional_special_tokens}")
         
         # 2. ToW 토큰 ID 확인
-        tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
-        tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
-        logger.info(f"<ToW> token ID: {tow_start_id}")
-        logger.info(f"</ToW> token ID: {tow_end_id}")
+        tow_start_id = tokenizer.convert_tokens_to_ids('<hcot>')
+        tow_end_id = tokenizer.convert_tokens_to_ids('</hcot>')
+        logger.info(f"<hcot> token ID: {tow_start_id}")
+        logger.info(f"</hcot> token ID: {tow_end_id}")
         
         # 3. 역변환 확인
         logger.info(f"Token ID {tow_start_id} -> '{tokenizer.convert_ids_to_tokens([tow_start_id])}'")
@@ -718,10 +721,10 @@ def main(args: FlatArguments):
         
         # 4. 실제 텍스트에서 토큰화 테스트
         test_samples = [
-            "Question: What is 2+2? <ToW> Let me think step by step. </ToW> The answer is 4.",
-            "<ToW> This is a thinking process. </ToW>",
-            "Before <ToW> thinking </ToW> after",
-            "Multiple <ToW> first thought </ToW> and <ToW> second thought </ToW> test"
+            "Question: What is 2+2? <hcot> Let me think step by step. </hcot> The answer is 4.",
+            "<hcot> This is a thinking process. </hcot>",
+            "Before <hcot> thinking </hcot> after",
+            "Multiple <hcot> first thought </hcot> and <hcot> second thought </hcot> test"
         ]
         
         for i, sample in enumerate(test_samples):
@@ -737,30 +740,30 @@ def main(args: FlatArguments):
             # ToW 토큰이 올바르게 인식되는지 확인
             if tow_start_id in token_ids:
                 start_positions = [j for j, x in enumerate(token_ids) if x == tow_start_id]
-                logger.info(f"  <ToW> found at positions: {start_positions}")
+                logger.info(f"  <hcot> found at positions: {start_positions}")
             else:
-                logger.info(f"  ❌ <ToW> token NOT found!")
+                logger.info(f"  ❌ <hcot> token NOT found!")
                 
             if tow_end_id in token_ids:
                 end_positions = [j for j, x in enumerate(token_ids) if x == tow_end_id]
-                logger.info(f"  </ToW> found at positions: {end_positions}")
+                logger.info(f"  </hcot> found at positions: {end_positions}")
             else:
-                logger.info(f"  ❌ </ToW> token NOT found!")
+                logger.info(f"  ❌ </hcot> token NOT found!")
         
         # 5. 특수 토큰만 따로 테스트
         logger.info(f"\nDirect tokenization test:")
-        tow_start_tokens = tokenizer.tokenize('<ToW>')
-        tow_end_tokens = tokenizer.tokenize('</ToW>')
-        logger.info(f"  tokenize('<ToW>') = {tow_start_tokens}")
-        logger.info(f"  tokenize('</ToW>') = {tow_end_tokens}")
+        tow_start_tokens = tokenizer.tokenize('<hcot>')
+        tow_end_tokens = tokenizer.tokenize('</hcot>')
+        logger.info(f"  tokenize('<hcot>') = {tow_start_tokens}")
+        logger.info(f"  tokenize('</hcot>') = {tow_end_tokens}")
         
-        tow_start_ids = tokenizer.encode('<ToW>', add_special_tokens=False)
-        tow_end_ids = tokenizer.encode('</ToW>', add_special_tokens=False)
-        logger.info(f"  encode('<ToW>') = {tow_start_ids}")
-        logger.info(f"  encode('</ToW>') = {tow_end_ids}")
+        tow_start_ids = tokenizer.encode('<hcot>', add_special_tokens=False)
+        tow_end_ids = tokenizer.encode('</hcot>', add_special_tokens=False)
+        logger.info(f"  encode('<hcot>') = {tow_start_ids}")
+        logger.info(f"  encode('</hcot>') = {tow_end_ids}")
         
         logger.info("=" * 50)
-        logger.info("End ToW Token Debugging")
+        logger.info("End hcot Token Debugging")
         logger.info("=" * 50)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch

@@ -73,7 +73,7 @@ MODEL_CONFIGS = [
 
     ModelConfig(
         name="llama-tow-allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models//llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
         use_quantization=False
     ),
     # ModelConfig(
@@ -229,7 +229,7 @@ def create_3shot_prompt(item, examples, dataset_type="arc"):
     return "\n".join(prompt_parts)
 
 
-def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+def process_single_with_retry(model, tokenizer, prompt, max_retries=1):
     """
     Process a single prompt with retry logic for answer extraction failures
     Only retries when answer extraction fails (not on genuine model errors)

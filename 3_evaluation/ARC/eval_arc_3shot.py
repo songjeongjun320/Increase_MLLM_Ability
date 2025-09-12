@@ -71,29 +71,16 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-original-data",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-original-data/final_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-nonmasking-09-05",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-09_05/final_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09-05-checkpoint-4500",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-09_05/checkpoint-4500",
-    #     use_quantization=False
-    # ),
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        name="llama-tow-allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models//llama-3.2-3b-pt",
         use_quantization=False
     ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
     # ModelConfig(
     #     name="qwem-2.5-3b-pt-tow-09_05_allenai",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",

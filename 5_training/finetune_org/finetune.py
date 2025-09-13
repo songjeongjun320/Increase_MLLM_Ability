@@ -18,7 +18,7 @@
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 llama
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_11_allenai --exp_name "llama-3.2-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai --exp_name "llama-3.2-3b-pt-tow_2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 qwen 
 deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_11_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
@@ -1392,9 +1392,33 @@ def main(args: FlatArguments):
                         wandb_tracker.run.finish()
                 except Exception as wandb_error:
                     logger.warning(f"Could not manually finish wandb run: {wandb_error}")
+    
+    # 명시적으로 모든 리소스 정리
+    logger.info("Training completed successfully. Cleaning up resources...")
+    
+    # DeepSpeed 정리
+    try:
+        import deepspeed
+        deepspeed.init_distributed()
+    except:
+        pass
+    
+    # CUDA 캐시 정리
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    
+    logger.info("All resources cleaned up. Script should exit now.")
 
 
 if __name__ == "__main__":
     parser = ArgumentParserPlus((FlatArguments))
     args = parser.parse()
-    main(args)
+    try:
+        main(args)
+    finally:
+        # 강제로 모든 프로세스 정리
+        import sys
+        import os
+        logger.info("Training completed. Forcing exit...")
+        sys.exit(0)

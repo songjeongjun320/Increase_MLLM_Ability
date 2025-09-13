@@ -521,7 +521,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             config.model_id,
             torch_dtype=config.torch_dtype,
             quantization_config=quantization_config_bnb,
-            device_map=DEVICE,
+            device_map="auto" if torch.cuda.is_available() else None,  # ✅
             trust_remote_code=True,
             cache_dir=CACHE_DIR
         )

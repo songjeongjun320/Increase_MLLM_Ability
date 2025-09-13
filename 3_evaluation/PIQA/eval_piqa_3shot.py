@@ -248,7 +248,7 @@ def extract_final_answer(model_output):
         return None
     
     import re
-    
+
     # Clean the output first
     cleaned_output = model_output.strip()
     
@@ -339,9 +339,7 @@ def load_dataset(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            
-            # sample
-            data = data[:50]
+
         logger.info(f"Loaded {len(data)} items from {filepath}")
         return data
     except Exception as e:

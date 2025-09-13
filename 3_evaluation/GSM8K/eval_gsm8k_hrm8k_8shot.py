@@ -151,16 +151,16 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    ModelConfig(
-        name="llama-3.2-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",

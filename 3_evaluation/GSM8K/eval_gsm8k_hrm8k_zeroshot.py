@@ -213,7 +213,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
         try:
             inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
             
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=512,
@@ -393,7 +393,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                     # First attempt with regular processing
                     inputs = tokenizer(korean_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
                     
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         outputs = model.generate(
                             **inputs,
                             max_new_tokens=256,
@@ -455,7 +455,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                     # First attempt with regular processing
                     inputs = tokenizer(english_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
                     
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         outputs = model.generate(
                             **inputs,
                             max_new_tokens=512,

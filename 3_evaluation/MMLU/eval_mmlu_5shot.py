@@ -303,7 +303,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             max_length=1024
         ).to(DEVICE)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=20,
@@ -340,7 +340,7 @@ def process_single_with_retry(model, tokenizer, prompt, index=None, max_retries=
                 max_length=2048
             ).to(DEVICE)
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=20,

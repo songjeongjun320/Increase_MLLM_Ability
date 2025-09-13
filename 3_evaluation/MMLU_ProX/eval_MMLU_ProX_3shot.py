@@ -439,7 +439,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             max_length=2048  # Longer context for complex questions
         ).to(DEVICE)
         
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = model.generate(
                 **batch_inputs,
                 max_new_tokens=MAX_NEW_TOKENS,
@@ -479,7 +479,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         for prompt, idx in zip(batch_prompts, batch_indices):
             try:
                 inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=1500).to(DEVICE)
-                with torch.no_grad():
+                with torch.inference_mode():
                     outputs = model.generate(
                         **inputs,
                         max_new_tokens=MAX_NEW_TOKENS,

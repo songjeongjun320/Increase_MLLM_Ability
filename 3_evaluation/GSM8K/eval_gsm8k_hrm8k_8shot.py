@@ -40,7 +40,7 @@ DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
 BASE_OUTPUT_DIR = "../4_evaluation_results/GSM8K_8shot"  # Output directory
 
 # Batch Processing Configuration
-BATCH_SIZE = 8  # Number of samples to process in each batch (adjust based on GPU memory)
+BATCH_SIZE = 4  # Number of samples to process in each batch (adjust based on GPU memory)
 
 # Import performance analyzer
 try:
@@ -356,6 +356,7 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
                 prompts_batch, 
                 return_tensors="pt", 
                 padding=True, 
+                padding_side="left",
                 truncation=True, 
                 max_length=2048
             ).to(DEVICE)

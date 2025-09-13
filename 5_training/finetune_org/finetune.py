@@ -32,6 +32,7 @@ import math
 import os
 import random
 import subprocess
+import deepspeed  
 import time
 import json
 from dataclasses import dataclass, field
@@ -40,7 +41,6 @@ from functools import partial
 from typing import List, Optional, Union
 
 import datasets
-import deepspeed
 import torch
 import transformers
 from accelerate import Accelerator
@@ -1398,7 +1398,6 @@ def main(args: FlatArguments):
     
     # DeepSpeed 정리
     try:
-        import deepspeed
         deepspeed.init_distributed()
     except:
         pass
@@ -1416,9 +1415,8 @@ if __name__ == "__main__":
     args = parser.parse()
     try:
         main(args)
-    finally:
-        # 강제로 모든 프로세스 정리
-        import sys
-        import os
-        logger.info("Training completed. Forcing exit...")
-        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+        raise
+    else:
+        logger.info("Training completed successfully!")

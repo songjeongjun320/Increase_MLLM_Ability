@@ -423,9 +423,6 @@ def load_jsonl_dataset(filepath):
                     data.append(json.loads(line))
         logger.info(f"Loaded {len(data)} items from {filepath}")
 
-
-        # sampling
-        data = data[:50]
         return data
     except Exception as e:
         logger.error(f"Error loading data from {filepath}: {e}")

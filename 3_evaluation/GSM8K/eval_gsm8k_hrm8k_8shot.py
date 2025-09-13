@@ -360,7 +360,7 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
                 max_length=2048
             ).to(DEVICE)
             
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=384,
@@ -412,7 +412,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
         try:
             inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
             
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=384,
@@ -529,6 +529,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             trust_remote_code=True,
             cache_dir=CACHE_DIR
         )
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
 
         if config.adapter_path:
             # LoRA 어댑터가 있는 경우, 먼저 LoRA의 실제 vocab size를 확인

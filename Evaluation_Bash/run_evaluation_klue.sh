@@ -5,56 +5,37 @@
 export TRANSFORMERS_VERBOSITY=info
 
 MODEL_NAMES=(
-    "llama-3.2-3b-pt"
+    # "llama-3.2-3b-pt"
     # "gemma-3-4b-pt"
     # "qwem-2.5-3b-pt"
-    # "llama-3.2-3b-pt-tow-original-data"
-    # "llama-3.2-3b-pt-tow-nonmasking-09-05"
-    # "llama-3.2-3b-pt-tow-09-05-checkpoint4000"
-    # "llama-3.2-3b-pt-tow-refined_dataset_09_02"
-    # "gemma-3-4b-pt-tow-refined_dataset_09_02"
-    # "qwem-2.5-3b-pt-tow-refined_dataset_09_02"
-    # "DeepSeek-R1-Distill-Qwen-1.5B-ToW-completion"
-    # "gemma-3-4b-pt-ToW-completion"
-    # "llama-3.2-3b-pt-tow-09_05_allenai"
-    # "qwem-2.5-3b-pt-tow-09_05_allenai"
+    # "olmo-2-0425-1b"
+    "llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged"
+    "gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged"
+    "qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged"
+    "olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged"
 )
 
 MODEL_PATHS=(
-    "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt"
     # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/DeepSeek-R1-Distill-Qwen-1.5B-tow/best_model"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-tow-allenai-merged"
-    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt"
+    # "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged"
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged
+    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged"
 )
 
 ADAPTER_PATHS=(
-    # ""
-    # ""
-    # ""
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-original-data/final_model"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-09_05/final_model"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-09_05/checkpoint-4000"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02/checkpoint-3500"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-pt-tow-refined_dataset_09_02/checkpoint-2750"
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/final_model"
-    # ""
-    # ""
     ""
-    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai"
+    ""
+    ""
+    ""
 )
 
 # KLUE 전체 8개 태스크
 # TASKS=("tc" "sts" "nli" "mrc" "ner" "re" "dp" "dst")
-TASKS=("tc")
+TASKS=("tc" "nli" "re")
 
 RESULTS_DIR="./evaluation_results_klue"
 mkdir -p $RESULTS_DIR

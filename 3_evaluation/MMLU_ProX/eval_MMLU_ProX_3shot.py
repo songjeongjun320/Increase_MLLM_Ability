@@ -4,7 +4,6 @@ import logging
 import torch
 import warnings 
 import transformers
-from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, StoppingCriteria, StoppingCriteriaList
 from peft import PeftModel
 from tqdm import tqdm
@@ -104,6 +103,28 @@ MODEL_CONFIGS = [
     ModelConfig(
         name="olmo-2-0425-1b-tow-09_11_allenai-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
         use_quantization=False
     ),
 ]
@@ -328,7 +349,8 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
         for key, value in sorted(example["options"].items()):
             options.append(f"{key}. {value}")
         prompt_parts.extend(options)
-        
+        prompt_parts.append(cot_reasoning)
+
         if language == "ko":
             prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
             prompt_parts.append(f"#### 정답: {correct_answer}")
@@ -337,17 +359,6 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
             prompt_parts.append(f"#### Answer: {correct_answer}.")
         prompt_parts.append("")
     
-        # 3. [생각] 플레이스홀더 대신 실제 CoT 추론 내용(cot_reasoning)을 추가합니다.
-        prompt_parts.append(cot_reasoning)
-
-        if language == "ko":
-            prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
-            prompt_parts.append(f"#### 정답: {correct_answer}")
-        else:
-            prompt_parts.append(f"#### So the answer is {{{correct_answer}}}. #### {{{correct_answer}}}")
-            prompt_parts.append(f"#### Answer: {{{correct_answer}}}. #### {{{correct_answer}}}")
-        prompt_parts.append("")
-
     # Add the test question
     question = item.get("question", "")
     options = []
@@ -362,9 +373,9 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("응답: 단계별로 생각해봅시다. #### 따라서 정답은 ")
+        prompt_parts.append("응답: 단계별로 생각해봅시다.")
     else:
-        prompt_parts.append("Response: Let's think step by step. #### So the answer is  ")
+        prompt_parts.append("Response: Let's think step by step.")
     
     return "\n".join(prompt_parts)
 

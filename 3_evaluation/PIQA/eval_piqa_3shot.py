@@ -19,7 +19,6 @@ os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 transformers.logging.set_verbosity_error()
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,10 +30,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Global Configuration
+PIQA_DATASET_PATH = "../../2_datasets/PIQA/piqa.json"
+KO_PIQA_DATASET_PATH = "../../2_datasets/PIQA/ko-piqa.json"
+BASE_OUTPUT_DIR = "piqa_3shot"
+BATCH_SIZE = 16
+MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
-BASE_OUTPUT_DIR = "../4_evaluation_results/PIQA_3shot"  # Output directory
-BATCH_SIZE = 16
 
 # --- Model Configuration ---
 @dataclass
@@ -99,23 +101,35 @@ MODEL_CONFIGS = [
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
+
+
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
 ]
 
 
-# --- General Configuration ---
-PIQA_DATASET_PATH = "../../2_datasets/PIQA/piqa.json"
-KO_PIQA_DATASET_PATH = "../../2_datasets/PIQA/ko-piqa.json"
-BASE_OUTPUT_DIR = "piqa_3shot"
-BATCH_SIZE = 16
-MAX_NEW_TOKENS = 512
-
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger(__name__)
+if not os.path.exists(PIQA_DATASET_PATH):
+    logger.error(f"PIQA dataset not found: {PIQA_DATASET_PATH}")
+if not os.path.exists(KO_PIQA_DATASET_PATH):
+    logger.error(f"Ko-PIQA dataset not found: {KO_PIQA_DATASET_PATH}")
 
 # --- Few-Shot Examples ---
 ENGLISH_FEW_SHOT_EXAMPLES = [
@@ -131,7 +145,7 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
         "sol1": "Cut a piece of paper to size, fold it in half, and staple the open edges together.",
         "sol2": "Cut a piece of cardboard to size, decorate it, and punch a hole at the top to thread a ribbon through.",
         "label": 1,
-        "reasoning": "For a bookmark to be functional, it should be durable and have a way to easily locate it. Method A creates a sturdy cardboard bookmark with a ribbon that can hang out of the book, making it easy to find. Method B creates a paper pocket that would be less durable and doesn't provide a way to easily locate the bookmark in a closed book."
+        "reasoning": "For a bookmark to be functional, it should be durable and have a way to easily locate it. Method B creates a sturdy cardboard bookmark with a ribbon that can hang out of the book, making it easy to find. Method A creates a paper pocket that would be less durable and doesn't provide a way to easily locate the bookmark in a closed book."
     },
     {
         "goal": "How to remove a splinter from your finger?",
@@ -155,14 +169,14 @@ KOREAN_FEW_SHOT_EXAMPLES = [
         "sol1": "종이를 크기에 맞게 자르고 반으로 접은 다음 열린 가장자리를 함께 스테이플러로 고정한다.",
         "sol2": "판지를 크기에 맞게 자르고 장식한 다음 위쪽에 구멍을 뚫어 리본을 끼운다.",
         "label": 1,
-        "reasoning": "책갈피가 실용적이려면 내구성이 있고 쉽게 찾을 수 있어야 합니다. 방법 A는 튼튼한 판지로 만들고 리본이 책 밖으로 나와 쉽게 찾을 수 있습니다. 방법 B는 종이 주머니를 만드는 것으로 내구성이 떨어지고 닫힌 책에서 책갈피를 쉽게 찾을 수 있는 방법을 제공하지 않습니다."
+        "reasoning": "책갈피가 실용적이려면 내구성이 있고 쉽게 찾을 수 있어야 합니다. 방법 B는 튼튼한 판지로 만들고 리본이 책 밖으로 나와 쉽게 찾을 수 있습니다. 방법 A는 종이 주머니를 만드는 것으로 내구성이 떨어지고 닫힌 책에서 책갈피를 쉽게 찾을 수 있는 방법을 제공하지 않습니다."
     },
     {
         "goal": "손가락에서 가시를 어떻게 제거하나요?",
         "sol1": "멸균된 핀셋을 사용하여 가시가 피부에 들어간 같은 방향으로 부드럽게 뽑아낸다.",
         "sol2": "가시를 피부 깊숙이 밀어넣어서 반대편으로 나오게 한다.",
         "label": 0,
-        "reasoning": "가시를 제거하는 가장 적절한 방법은 가시가 피부에 들어간 방향과 같은 방향으로 부드럽게 뽑아내는 것입니다. 이 방법은 가시가 피부 내부에서 더 깊게 밀려 들어가지 않도록 하고, 피부를 상처내지 않으면서 가시를 효과적으로 제거할 수 있습니다. 반면, 가시를 피부 깊숙이 밀어넣어 반대편으로 나오게 하는 방법은 가시가 더 깊은 부위로 밀리거나 제거하기 더 어려워질 수 있기 때문에 위험할 수 있습니다. 또한, 이 방법은 추가적인 상처나 감염을 유발할 수 있습니다. 따라서 첫 번째 방법인 멸균된 핀셋을 사용하여 가시가 들어간 방향으로 부드럽게 뽑아내는 방법이 가장 안전하고 효과적입니다."
+        "reasoning": "가시를 안전하게 제거하려면 조직 손상과 감염 위험을 최소화해야 합니다. 방법 A는 멸균된 도구를 사용하고 가시가 들어간 경로를 따라 제거하여 조직 손상을 최소화합니다. 방법 B는 불필요한 부상을 유발하고 박테리아를 더 깊이 밀어넣으며 가시가 조직 내부에서 부러질 수 있어 위험합니다."
     }
 ]
 
@@ -208,37 +222,11 @@ def create_3shot_prompt(test_item, language="en"):
     prompt_parts.append(f"B. {sol2}")
     
     if language == "ko":
-        prompt_parts.append("응답: 단계적으로 생각해봅시다. #### 따라서 정답은 ")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다.")
     else:
-        prompt_parts.append("Response: Let's think step by step. #### So the answer is")
+        prompt_parts.append("Response: Let's think step by step.")
     
     return "\n".join(prompt_parts)
-
-# Remove the old function that used dev data
-# def create_3shot_prompt_from_dev(...): # This function is no longer needed
-
-def prepare_piqa_data_with_dev_split(piqa_data, ko_piqa_data, dev_shots_per_type=3):
-    """
-    Since we're using predefined few-shot examples, we don't need to split for dev.
-    Just return all data as test data.
-    """
-    logger.info(f"Using all PIQA data as test set: EN={len(piqa_data)}, KO={len(ko_piqa_data)}")
-    logger.info("Using predefined few-shot examples instead of dataset splits")
-    
-    return [], piqa_data, [], ko_piqa_data  # Empty dev sets, full test sets
-
-# 간단한 0-shot
-def create_simple_prompt(item, language="en"):
-    goal = item.get("goal", "")
-    sol1 = item.get("sol1", "")
-    sol2 = item.get("sol2", "")
-    
-    if language == "ko":
-        prompt = f"목표: {goal}\nA. {sol1}\nB. {sol2}\n\n 답: {{}}"
-    else:
-        prompt = f"Goal: {goal}\nA. {sol1}\nB. {sol2}\n\n Answer: {{}}"
-    
-    return prompt
 
 def extract_final_answer(model_output):
     """
@@ -263,7 +251,7 @@ def extract_final_answer(model_output):
     for pattern in structured_patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
+            return matches[-1]  # Return the first match (avoid repetitions/hallucinations)
     
     # Priority 2: Start of text patterns
     start_patterns = [
@@ -279,7 +267,7 @@ def extract_final_answer(model_output):
 
     return None
 
-def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
+def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     """
     Process a single prompt with retry logic for answer extraction failures
     Only retries when answer extraction fails (not on genuine model errors)
@@ -291,7 +279,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=1024
+                max_length=512
             ).to(DEVICE)
 
             with torch.inference_mode():
@@ -362,7 +350,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=1024
+            max_length=512
         ).to(DEVICE)
         
         with torch.inference_mode():
@@ -404,7 +392,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         individual_results = []
         for prompt, idx in zip(batch_prompts, batch_indices):
             try:
-                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=1024).to(DEVICE)
+                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=512).to(DEVICE)
                 with torch.inference_mode():
                     outputs = model.generate(
                         **inputs,
@@ -441,7 +429,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         return individual_results
 
 # --- Evaluation Function ---
-def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list, ko_piqa_test_data: list, piqa_dev_data: list, ko_piqa_dev_data: list, model_specific_output_dir: str):    
+def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list, ko_piqa_test_data: list, model_specific_output_dir: str):    
     """
     Performs 3-shot PIQA and Ko-PIQA evaluation for a single model using predefined examples.
     """
@@ -957,6 +945,17 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
             root_logger.removeHandler(file_handler)
             file_handler.close()
 
+def prepare_piqa_data_with_dev_split(piqa_data, ko_piqa_data):
+    """
+    전체 데이터를 반환하며, dev 데이터를 분리하지 않음.
+    """
+    logger.info(f"Using all PIQA data as test set: EN={len(piqa_data)}, KO={len(ko_piqa_data)}")
+    logger.info("Using predefined few-shot examples instead of dataset splits")
+    
+    # 반환하는 값은 dev 데이터가 없이 전체 test 데이터만
+    return piqa_data, ko_piqa_data
+
+
 def main():
     # Load datasets
     piqa_data = load_dataset(PIQA_DATASET_PATH)
@@ -966,10 +965,8 @@ def main():
         logger.error("Failed to load datasets.")
         return
 
-    # Since we're using predefined examples, we don't need dev splits
-    piqa_dev_data, piqa_test_data, ko_piqa_dev_data, ko_piqa_test_data = prepare_piqa_data_with_dev_split(
-        piqa_data, ko_piqa_data, dev_shots_per_type=3
-    )
+    # 데이터 나누지 않고 전체 데이터를 테스트에 사용
+    piqa_test_data, ko_piqa_test_data = prepare_piqa_data_with_dev_split(piqa_data, ko_piqa_data)
 
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
     
@@ -983,11 +980,10 @@ def main():
         os.makedirs(model_specific_output_dir, exist_ok=True)
         
         try:
-            # Pass dev and test data (though dev will be empty since we use predefined examples)
+            # Pass 전체 test 데이터로 평가
             model_result = evaluate_single_model_on_datasets(
                 config, 
                 piqa_test_data, ko_piqa_test_data,  # test data
-                piqa_dev_data, ko_piqa_dev_data,    # dev data (empty, but kept for compatibility)
                 model_specific_output_dir
             )
             all_model_results.append(model_result)

@@ -39,6 +39,9 @@ CACHE_DIR = "../cache"  # Cache directory for models
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
 BASE_OUTPUT_DIR = "../4_evaluation_results/GSM8K_8shot"  # Output directory
 
+# Batch Processing Configuration
+BATCH_SIZE = 8  # Number of samples to process in each batch (adjust based on GPU memory)
+
 # Import performance analyzer
 try:
     import sys
@@ -328,6 +331,74 @@ def check_numerical_match(predicted, ground_truth, tolerance=1e-6):
     except (ValueError, TypeError):
         return False
 
+def create_data_batches(data, batch_size):
+    """
+    Split data into batches for processing
+    """
+    batches = []
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        batches.append(batch)
+    return batches
+
+def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
+    """
+    Process a batch of prompts with optimized inference
+    Returns list of (generated_text, extracted_answer) tuples
+    """
+    batch_size = len(prompts_batch)
+    results = []
+    
+    for attempt in range(max_retries):
+        try:
+            # Tokenize all prompts in batch
+            inputs = tokenizer(
+                prompts_batch, 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True, 
+                max_length=2048
+            ).to(DEVICE)
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=1024,
+                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    do_sample=False,
+                    temperature=1.0,
+                )
+            
+            # Process each output in the batch
+            input_lengths = inputs['input_ids'].shape[1]
+            
+            for i in range(batch_size):
+                try:
+                    output_only_tokens = outputs[i, input_lengths:]
+                    generated_text = tokenizer.decode(output_only_tokens, skip_special_tokens=True).strip()
+                    extracted_answer = extract_numerical_answer(generated_text)
+                    results.append((generated_text, extracted_answer))
+                except Exception as e:
+                    logger.warning(f"Error processing batch item {i}: {e}")
+                    results.append((f"ERROR: {str(e)}", None))
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Batch inference attempt {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                # Clear results for retry
+                results = []
+                continue
+            else:
+                # Return error results for all items in batch
+                error_msg = f"BATCH_ERROR after {max_retries} attempts: {str(e)}"
+                return [(error_msg, None)] * batch_size
+    
+    return results
+
 def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
     """
     Process a single prompt with retry logic for answer extraction failures
@@ -545,132 +616,229 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         logger.info("Starting GSM8K inference loop...")
         logger.info(f"Dataset size: {len(gsm8k_data)}")
 
-        # Process each item for both Korean and English versions
-        for idx, item in enumerate(tqdm(gsm8k_data, desc=f"Evaluating {config.name} (GSM8K)")):
-            ground_truth = item.get("answer", None)
-            if ground_truth is None:
-                logger.warning(f"Item with no ground truth found at index {idx}. Skipping.")
-                errors_or_skipped_korean += 1
-                errors_or_skipped_english += 1
-                continue
+        # Create data batches for processing
+        data_batches = create_data_batches(gsm8k_data, BATCH_SIZE)
+        logger.info(f"Processing {len(gsm8k_data)} items in {len(data_batches)} batches of size {BATCH_SIZE}")
 
-            question = item.get("question", "")
-            original = item.get("original", "")
+        # Process each batch for both Korean and English versions
+        for batch_idx, batch_items in enumerate(tqdm(data_batches, desc=f"Evaluating {config.name} (GSM8K)")):
+            logger.info(f"Processing batch {batch_idx + 1}/{len(data_batches)} with {len(batch_items)} items")
             
-            # Check if we have both Korean and English versions
-            has_korean = question and original and question != original
+            # Prepare Korean and English prompts for the batch
+            korean_prompts = []
+            english_prompts = []
+            batch_indices = []
+            korean_questions = []
+            english_questions = []
+            ground_truths = []
             
-            # Process Korean version (translated question)
-            if has_korean:
-                korean_prompt = None
-                korean_gen_text = None
-                korean_answer = None
-                is_correct_korean = False
-                exception_info = None
-
-                try:
-                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True)
-
-                    korean_gen_text, korean_answer = process_single_with_retry(model, tokenizer, korean_prompt)
-
-                    if korean_answer is not None:
-                        total_predictions_korean += 1
-                        if check_numerical_match(korean_answer, ground_truth):
-                            correct_predictions_korean += 1
-                            is_correct_korean = True
-                    else:
-                        # 추출 실패도 에러로 집계(정책 유지)
-                        errors_or_skipped_korean += 1
-                        if korean_gen_text and not korean_gen_text.startswith("ERROR"):
-                            korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
-
-                except Exception as e:
+            # Prepare batch data
+            for local_idx, item in enumerate(batch_items):
+                global_idx = batch_idx * BATCH_SIZE + local_idx
+                ground_truth = item.get("answer", None)
+                if ground_truth is None:
+                    logger.warning(f"Item with no ground truth found at index {global_idx}. Skipping.")
                     errors_or_skipped_korean += 1
-                    exception_info = f"{e}\n{traceback.format_exc()}"
-                    # model 출력이 전혀 없었어도, RAW에 남길 수 있도록 메시지 구성
-                    if not korean_gen_text:
-                        korean_gen_text = f"ERROR: {exception_info}"
-
-                finally:
-                    # details는 항상 남긴다
-                    results_details_korean.append({
-                        "index": idx,
-                        "question": question,
-                        "ground_truth": ground_truth,
-                        "model_raw_output": korean_gen_text,
-                        "extracted_answer": korean_answer,
-                        "is_correct": is_correct_korean,
-                        "exception": exception_info,           # 추가: 예외 스택까지 기록
-                        "prompt_snapshot": korean_prompt       # 추가: 사용한 프롬프트 저장(디버깅 유용)
-                    })
-
-                    raw_generations_korean_list.append({
-                        "index": idx,
-                        "language": "Korean",
-                        "question": question,
-                        "original": original,
-                        "ground_truth": ground_truth,
-                        "prompt": korean_prompt,               # 추가
-                        "raw_output": korean_gen_text,
-                        "extracted_answer": korean_answer,
-                        "is_correct": is_correct_korean,       # 추가
-                        "exception": exception_info            # 추가
-                    })
-
-
-            # Process English version (original question)  
-            if original:
-                english_prompt = None
-                english_gen_text = None
-                english_answer = None
-                is_correct_english = False
-                exception_info_en = None
-
-                try:
-                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
-
-                    english_gen_text, english_answer = process_single_with_retry(model, tokenizer, english_prompt)
-
-                    if english_answer is not None:
-                        total_predictions_english += 1
-                        if check_numerical_match(english_answer, ground_truth):
-                            correct_predictions_english += 1
-                            is_correct_english = True
-                    else:
-                        errors_or_skipped_english += 1
-                        if english_gen_text and not english_gen_text.startswith("ERROR"):
-                            english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
-
-                except Exception as e:
                     errors_or_skipped_english += 1
-                    exception_info_en = f"{e}\n{traceback.format_exc()}"
-                    if not english_gen_text:
-                        english_gen_text = f"ERROR: {exception_info_en}"
+                    continue
 
-                finally:
-                    results_details_english.append({
-                        "index": idx,
-                        "question": original,
-                        "ground_truth": ground_truth,
-                        "model_raw_output": english_gen_text,
-                        "extracted_answer": english_answer,
-                        "is_correct": is_correct_english,
-                        "exception": exception_info_en,        # 추가
-                        "prompt_snapshot": english_prompt      # 추가
-                    })
+                question = item.get("question", "")
+                original = item.get("original", "")
+                
+                # Check if we have both Korean and English versions
+                has_korean = question and original and question != original
+                
+                batch_indices.append(global_idx)
+                ground_truths.append(ground_truth)
+                
+                # Prepare Korean prompts
+                if has_korean:
+                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True)
+                    korean_prompts.append(korean_prompt)
+                    korean_questions.append(question)
+                else:
+                    korean_prompts.append(None)
+                    korean_questions.append(None)
+                
+                # Prepare English prompts
+                if original:
+                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
+                    english_prompts.append(english_prompt)
+                    english_questions.append(original)
+                else:
+                    english_prompts.append(None)
+                    english_questions.append(None)
+            
+            # Process Korean batch
+            korean_batch_prompts = [p for p in korean_prompts if p is not None]
+            if korean_batch_prompts:
+                try:
+                    korean_batch_results = process_batch_inference(model, tokenizer, korean_batch_prompts)
+                    korean_result_idx = 0
+                    
+                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
+                        if korean_prompts[i] is not None:
+                            korean_gen_text, korean_answer = korean_batch_results[korean_result_idx]
+                            korean_result_idx += 1
+                            
+                            is_correct_korean = False
+                            exception_info = None
+                            
+                            if korean_answer is not None:
+                                total_predictions_korean += 1
+                                if check_numerical_match(korean_answer, gt):
+                                    correct_predictions_korean += 1
+                                    is_correct_korean = True
+                            else:
+                                errors_or_skipped_korean += 1
+                                if korean_gen_text and not korean_gen_text.startswith("ERROR"):
+                                    korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
+                            
+                            # Store Korean results
+                            results_details_korean.append({
+                                "index": idx,
+                                "question": question,
+                                "ground_truth": gt,
+                                "model_raw_output": korean_gen_text,
+                                "extracted_answer": korean_answer,
+                                "is_correct": is_correct_korean,
+                                "exception": exception_info,
+                                "prompt_snapshot": korean_prompts[i]
+                            })
 
-                    raw_generations_english_list.append({
-                        "index": idx,
-                        "language": "English",
-                        "question": question,
-                        "original": original,
-                        "ground_truth": ground_truth,
-                        "prompt": english_prompt,              # 추가
-                        "raw_output": english_gen_text,
-                        "extracted_answer": english_answer,
-                        "is_correct": is_correct_english,      # 추가
-                        "exception": exception_info_en         # 추가
-                    })
+                            raw_generations_korean_list.append({
+                                "index": idx,
+                                "language": "Korean",
+                                "question": question,
+                                "original": original,
+                                "ground_truth": gt,
+                                "prompt": korean_prompts[i],
+                                "raw_output": korean_gen_text,
+                                "extracted_answer": korean_answer,
+                                "is_correct": is_correct_korean,
+                                "exception": exception_info
+                            })
+                            
+                except Exception as e:
+                    logger.error(f"Korean batch processing error: {e}")
+                    # Handle batch error for Korean
+                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
+                        if korean_prompts[i] is not None:
+                            errors_or_skipped_korean += 1
+                            exception_info = f"BATCH_ERROR: {e}\n{traceback.format_exc()}"
+                            
+                            results_details_korean.append({
+                                "index": idx,
+                                "question": question,
+                                "ground_truth": gt,
+                                "model_raw_output": f"BATCH_ERROR: {exception_info}",
+                                "extracted_answer": None,
+                                "is_correct": False,
+                                "exception": exception_info,
+                                "prompt_snapshot": korean_prompts[i]
+                            })
+
+                            raw_generations_korean_list.append({
+                                "index": idx,
+                                "language": "Korean",
+                                "question": question,
+                                "original": original,
+                                "ground_truth": gt,
+                                "prompt": korean_prompts[i],
+                                "raw_output": f"BATCH_ERROR: {exception_info}",
+                                "extracted_answer": None,
+                                "is_correct": False,
+                                "exception": exception_info
+                            })
+
+            # Process English batch
+            english_batch_prompts = [p for p in english_prompts if p is not None]
+            if english_batch_prompts:
+                try:
+                    english_batch_results = process_batch_inference(model, tokenizer, english_batch_prompts)
+                    english_result_idx = 0
+                    
+                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
+                        if english_prompts[i] is not None:
+                            english_gen_text, english_answer = english_batch_results[english_result_idx]
+                            english_result_idx += 1
+                            
+                            is_correct_english = False
+                            exception_info_en = None
+                            
+                            if english_answer is not None:
+                                total_predictions_english += 1
+                                if check_numerical_match(english_answer, gt):
+                                    correct_predictions_english += 1
+                                    is_correct_english = True
+                            else:
+                                errors_or_skipped_english += 1
+                                if english_gen_text and not english_gen_text.startswith("ERROR"):
+                                    english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
+                            
+                            # Store English results
+                            results_details_english.append({
+                                "index": idx,
+                                "question": original,
+                                "ground_truth": gt,
+                                "model_raw_output": english_gen_text,
+                                "extracted_answer": english_answer,
+                                "is_correct": is_correct_english,
+                                "exception": exception_info_en,
+                                "prompt_snapshot": english_prompts[i]
+                            })
+
+                            raw_generations_english_list.append({
+                                "index": idx,
+                                "language": "English",
+                                "question": question,
+                                "original": original,
+                                "ground_truth": gt,
+                                "prompt": english_prompts[i],
+                                "raw_output": english_gen_text,
+                                "extracted_answer": english_answer,
+                                "is_correct": is_correct_english,
+                                "exception": exception_info_en
+                            })
+                            
+                except Exception as e:
+                    logger.error(f"English batch processing error: {e}")
+                    # Handle batch error for English
+                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
+                        if english_prompts[i] is not None:
+                            errors_or_skipped_english += 1
+                            exception_info_en = f"BATCH_ERROR: {e}\n{traceback.format_exc()}"
+                            
+                            results_details_english.append({
+                                "index": idx,
+                                "question": original,
+                                "ground_truth": gt,
+                                "model_raw_output": f"BATCH_ERROR: {exception_info_en}",
+                                "extracted_answer": None,
+                                "is_correct": False,
+                                "exception": exception_info_en,
+                                "prompt_snapshot": english_prompts[i]
+                            })
+
+                            raw_generations_english_list.append({
+                                "index": idx,
+                                "language": "English",
+                                "question": question,
+                                "original": original,
+                                "ground_truth": gt,
+                                "prompt": english_prompts[i],
+                                "raw_output": f"BATCH_ERROR: {exception_info_en}",
+                                "extracted_answer": None,
+                                "is_correct": False,
+                                "exception": exception_info_en
+                            })
+            
+            # Periodic memory cleanup during batch processing
+            if (batch_idx + 1) % 5 == 0:  # Every 5 batches
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                logger.info(f"Memory cleanup performed after batch {batch_idx + 1}")
 
 
         # Final Results

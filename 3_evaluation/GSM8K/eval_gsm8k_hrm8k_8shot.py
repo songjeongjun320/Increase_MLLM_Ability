@@ -21,6 +21,7 @@ from pathlib import Path
 from datetime import datetime
 import time
 import random
+import traceback
 
 # Configure logging
 logging.basicConfig(
@@ -49,26 +50,92 @@ except ImportError:
 
 # GSM8K 8-shot examples (placeholder - these should be defined with actual examples)
 GSM8K_8SHOT_KOR_COT_EXAMPLES = [
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"},
-    {"question": "샘플 문제", "cot_content": "샘플 추론", "answer": "0"}
+    {
+        "question": "연필 3자루를 각각 2달러, 공책 2권을 각각 5달러에 산다면 총 얼마를 쓰게 되나요?",
+        "cot_content": "연필 값은 3 × 2달러 = 6달러. 공책 값은 2 × 5달러 = 10달러. 합하면 6 + 10 = 16달러.",
+        "answer": "16"
+    },
+    {
+        "question": "기차가 시속 60마일로 달린다면, 3시간 동안 몇 마일을 갈까요?",
+        "cot_content": "기차는 1시간에 60마일을 간다. 3시간 동안은 60 × 3 = 180마일.",
+        "answer": "180"
+    },
+    {
+        "question": "사라는 사과 24개를 가지고 있다. 6명의 친구에게 똑같이 나누어 준다면, 친구 한 명당 몇 개를 받게 될까요?",
+        "cot_content": "24 ÷ 6 = 4개씩 받는다.",
+        "answer": "4"
+    },
+    {
+        "question": "톰은 50달러를 가지고 있었다. 점심에 18달러, 책에 12달러를 썼다면, 남은 돈은 얼마인가요?",
+        "cot_content": "쓴 돈은 18 + 12 = 30달러. 남은 돈은 50 - 30 = 20달러.",
+        "answer": "20"
+    },
+    {
+        "question": "상자 하나에 초콜릿이 8개 들어 있다. 7상자에는 총 몇 개의 초콜릿이 있을까요?",
+        "cot_content": "상자당 8개이므로 7 × 8 = 56개.",
+        "answer": "56"
+    },
+    {
+        "question": "농부가 소 36마리를 가지고 있다. 이 중 9마리를 팔았다면, 몇 마리가 남을까요?",
+        "cot_content": "36 - 9 = 27마리.",
+        "answer": "27"
+    },
+    {
+        "question": "리사는 하루에 책 12쪽을 읽는다. 5일 동안 총 몇 쪽을 읽게 될까요?",
+        "cot_content": "12 × 5 = 60쪽.",
+        "answer": "60"
+    },
+    {
+        "question": "피자 한 판은 8조각이다. 피자를 3판 주문하면 총 몇 조각이 될까요?",
+        "cot_content": "피자 한 판에 8조각이므로 3 × 8 = 24조각.",
+        "answer": "24"
+    }
 ]
 
+
 GSM8K_8SHOT_COT_EXAMPLES = [
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"},
-    {"question": "Sample problem", "cot_content": "Sample reasoning", "answer": "0"}
+    {
+        "question": "If you buy 3 pencils for $2 each and 2 notebooks for $5 each, how much do you spend in total?",
+        "cot_content": "The pencils cost 3 × $2 = $6. The notebooks cost 2 × $5 = $10. Adding them gives $6 + $10 = $16.",
+        "answer": "16"
+    },
+    {
+        "question": "A train travels 60 miles per hour. How far will it go in 3 hours?",
+        "cot_content": "The train travels 60 miles each hour. In 3 hours, it will go 60 × 3 = 180 miles.",
+        "answer": "180"
+    },
+    {
+        "question": "Sarah has 24 apples. She shares them equally among 6 friends. How many apples does each friend get?",
+        "cot_content": "24 apples ÷ 6 friends = 4 apples each.",
+        "answer": "4"
+    },
+    {
+        "question": "Tom had $50. He spent $18 on lunch and $12 on a book. How much money does he have left?",
+        "cot_content": "He spent $18 + $12 = $30. Subtracting gives $50 - $30 = $20 left.",
+        "answer": "20"
+    },
+    {
+        "question": "A box holds 8 chocolates. How many chocolates are there in 7 boxes?",
+        "cot_content": "Each box has 8 chocolates. 7 × 8 = 56 chocolates in total.",
+        "answer": "56"
+    },
+    {
+        "question": "A farmer has 36 cows. If he sells 9 of them, how many are left?",
+        "cot_content": "36 - 9 = 27 cows left.",
+        "answer": "27"
+    },
+    {
+        "question": "Lisa reads 12 pages of a book each day. How many pages does she read in 5 days?",
+        "cot_content": "12 pages/day × 5 days = 60 pages.",
+        "answer": "60"
+    },
+    {
+        "question": "A pizza has 8 slices. If 3 pizzas are ordered, how many slices are there in total?",
+        "cot_content": "Each pizza has 8 slices. 3 × 8 = 24 slices in total.",
+        "answer": "24"
+    }
 ]
+
 
 # --- Model Configuration ---
 @dataclass
@@ -80,7 +147,7 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # # Base Models (commented out for now)
+    # Base Models (commented out for now)
     ModelConfig(
         name="qwem-2.5-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
@@ -155,10 +222,10 @@ def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
         answer = example["answer"]
         
         if is_korean:
-            full_answer_block = f"Response: {cot_content} #### 따라서 정답은 {answer}. #### {answer}"
+            full_answer_block = f"응답: {cot_content} #### 따라서 정답은 {{{answer}}}. #### {{{answer}}}"
             example_block = f"문제: {question}\n {full_answer_block}"
         else:
-            full_answer_block = f"응답: {cot_content} #### So the answer is {answer}. #### {answer}"
+            full_answer_block = f"Response: {cot_content} #### So the answer is {{{answer}}}. #### {{{answer}}}"
             example_block = f"Question: {question}\n {full_answer_block}"
 
         # 최종 예제 블록을 조립합니다.
@@ -183,54 +250,54 @@ Response: Let's think step by step."""
 
 def extract_numerical_answer(model_output):
     """
-    Extract numerical answer from model output
-    Prioritizes standard GSM8K CoT format "The answer is [number]"
-    Also handles Korean patterns like "답: 18", "정답: 18.0", etc.
+    Extract numerical answer from model output with strict priority:
+    1) #### <number>
+    2) { <number> }  # boxed answer
+    3) Other English/Korean phrasings
     """
-    # Clean the output
     cleaned_output = model_output.strip()
-    
-    # Patterns to match numerical answers - prioritize #### format first
+
     patterns = [
-        r'####\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # New #### format: "#### 18" (highest priority)
-        r'답[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Korean format: "답: 18"
-        r'The answer is\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Standard English GSM8K format: "The answer is 18"
-        r'(?:정답|Answer)[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 정답: 18, Answer: 18
-        r'(?:답|정답|Answer)\s*(?:은|는|is)?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 답은 18, 정답은 18
-        r'(?:따라서|그러므로|그래서|결론적으로|최종적으로|Hence|Therefore)\s*(?:답|정답|answer)?[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 따라서 답: 18
-        r'([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?)(?:\s*(?:입니다|이다|\.|\s*$))',  # 18 달러입니다
-        r'(?:총|합계|전체|Total)\s*[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 총: 18
-        r'=\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)(?:\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?))?(?:\s*$)',  # = 18
+        # 1) #### 18  (최우선)
+        r'####\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+
+        # 2) { 18 }   (둘째 우선)
+        r'\{\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)\s*\}',
+
+        # 3) 그 외 일반 패턴
+        r'답[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+        r'The answer is\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+        r'(?:정답|Answer)[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+        r'(?:답|정답|Answer)\s*(?:은|는|is)?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+        r'(?:따라서|그러므로|그래서|결론적으로|최종적으로|Hence|Therefore)\s*(?:답|정답|answer)?[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+        r'([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?)(?:\s*(?:입니다|이다|\.|\s*$))',
+        r'(?:총|합계|전체|Total)\s*[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',
+        r'=\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)(?:\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?))?(?:\s*$)',
     ]
-    
+
     for pattern in patterns:
         matches = re.findall(pattern, cleaned_output, re.IGNORECASE | re.MULTILINE)
         if matches:
-            # Take the last match (usually the final answer)
             answer_str = matches[-1].replace(',', '').strip()
             try:
-                # Try to convert to float
-                answer = float(answer_str)
-                return answer
+                return float(answer_str)
             except ValueError:
                 continue
-    
-    # Last resort: find any number in the last line or paragraph
-    lines = cleaned_output.split('\n')
-    for line in reversed(lines):
+
+    # Fallback: 마지막 줄에서 숫자 스캔
+    for line in reversed(cleaned_output.split('\n')):
         line = line.strip()
         if not line:
             continue
         numbers = re.findall(r'([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)', line)
         if numbers:
             try:
-                # Take the last number in the line
-                answer_str = numbers[-1].replace(',', '')
-                return float(answer_str)
+                return float(numbers[-1].replace(',', ''))
             except ValueError:
                 continue
-    
+
     return None
+
 
 def check_numerical_match(predicted, ground_truth, tolerance=1e-6):
     """
@@ -480,12 +547,16 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             
             # Process Korean version (translated question)
             if has_korean:
+                korean_prompt = None
+                korean_gen_text = None
+                korean_answer = None
+                is_correct_korean = False
+                exception_info = None
+
                 try:
                     korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True)
-                    
-                    # Use retry logic for Korean processing
+
                     korean_gen_text, korean_answer = process_single_with_retry(model, tokenizer, korean_prompt)
-                    is_correct_korean = False
 
                     if korean_answer is not None:
                         total_predictions_korean += 1
@@ -493,23 +564,29 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                             correct_predictions_korean += 1
                             is_correct_korean = True
                     else:
-                        # Check if it was a genuine extraction failure vs error
-                        if not korean_gen_text.startswith("ERROR"):
-                            logger.warning(f"Korean - Item {idx}: Failed to extract answer after retries from: '{korean_gen_text[:100]}...'")
-                            errors_or_skipped_korean += 1
+                        # 추출 실패도 에러로 집계(정책 유지)
+                        errors_or_skipped_korean += 1
+                        if korean_gen_text and not korean_gen_text.startswith("ERROR"):
                             korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
-                        else:
-                            # This was a model error, not extraction failure
-                            logger.error(f"Korean - Item {idx}: Model error: {korean_gen_text}")
-                            errors_or_skipped_korean += 1
 
+                except Exception as e:
+                    errors_or_skipped_korean += 1
+                    exception_info = f"{e}\n{traceback.format_exc()}"
+                    # model 출력이 전혀 없었어도, RAW에 남길 수 있도록 메시지 구성
+                    if not korean_gen_text:
+                        korean_gen_text = f"ERROR: {exception_info}"
+
+                finally:
+                    # details는 항상 남긴다
                     results_details_korean.append({
                         "index": idx,
                         "question": question,
                         "ground_truth": ground_truth,
                         "model_raw_output": korean_gen_text,
                         "extracted_answer": korean_answer,
-                        "is_correct": is_correct_korean
+                        "is_correct": is_correct_korean,
+                        "exception": exception_info,           # 추가: 예외 스택까지 기록
+                        "prompt_snapshot": korean_prompt       # 추가: 사용한 프롬프트 저장(디버깅 유용)
                     })
 
                     raw_generations_korean_list.append({
@@ -518,22 +595,26 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                         "question": question,
                         "original": original,
                         "ground_truth": ground_truth,
+                        "prompt": korean_prompt,               # 추가
                         "raw_output": korean_gen_text,
-                        "extracted_answer": korean_answer
+                        "extracted_answer": korean_answer,
+                        "is_correct": is_correct_korean,       # 추가
+                        "exception": exception_info            # 추가
                     })
 
-                except Exception as e:
-                    logger.error(f"Korean - Item {idx}: Inference error: {e}")
-                    errors_or_skipped_korean += 1
 
             # Process English version (original question)  
             if original:
+                english_prompt = None
+                english_gen_text = None
+                english_answer = None
+                is_correct_english = False
+                exception_info_en = None
+
                 try:
                     english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
-                    
-                    # Use retry logic for English processing
+
                     english_gen_text, english_answer = process_single_with_retry(model, tokenizer, english_prompt)
-                    is_correct_english = False
 
                     if english_answer is not None:
                         total_predictions_english += 1
@@ -541,23 +622,26 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                             correct_predictions_english += 1
                             is_correct_english = True
                     else:
-                        # Check if it was a genuine extraction failure vs error
-                        if not english_gen_text.startswith("ERROR"):
-                            logger.warning(f"English - Item {idx}: Failed to extract answer after retries from: '{english_gen_text[:100]}...'")
-                            errors_or_skipped_english += 1
+                        errors_or_skipped_english += 1
+                        if english_gen_text and not english_gen_text.startswith("ERROR"):
                             english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
-                        else:
-                            # This was a model error, not extraction failure
-                            logger.error(f"English - Item {idx}: Model error: {english_gen_text}")
-                            errors_or_skipped_english += 1
 
+                except Exception as e:
+                    errors_or_skipped_english += 1
+                    exception_info_en = f"{e}\n{traceback.format_exc()}"
+                    if not english_gen_text:
+                        english_gen_text = f"ERROR: {exception_info_en}"
+
+                finally:
                     results_details_english.append({
                         "index": idx,
                         "question": original,
                         "ground_truth": ground_truth,
                         "model_raw_output": english_gen_text,
                         "extracted_answer": english_answer,
-                        "is_correct": is_correct_english
+                        "is_correct": is_correct_english,
+                        "exception": exception_info_en,        # 추가
+                        "prompt_snapshot": english_prompt      # 추가
                     })
 
                     raw_generations_english_list.append({
@@ -566,13 +650,13 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                         "question": question,
                         "original": original,
                         "ground_truth": ground_truth,
+                        "prompt": english_prompt,              # 추가
                         "raw_output": english_gen_text,
-                        "extracted_answer": english_answer
+                        "extracted_answer": english_answer,
+                        "is_correct": is_correct_english,      # 추가
+                        "exception": exception_info_en         # 추가
                     })
 
-                except Exception as e:
-                    logger.error(f"English - Item {idx}: Inference error: {e}")
-                    errors_or_skipped_english += 1
 
         # Final Results
         logger.info(f"Inference loop finished for {config.name}.")

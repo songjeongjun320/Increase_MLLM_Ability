@@ -18,13 +18,13 @@
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 llama
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai --exp_name "llama-3.2-3b-pt-tow_2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai --exp_name "llama-3.2-3b-pt-tow_2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 qwen 
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_11_allenai --exp_name "qwem-2.5-3b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai --exp_name "qwem-2.5-3b-pt-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_11_allenai --exp_name "gemma-3-4b-pt-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai --exp_name "gemma-3-4b-pt-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 olmo
-deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_allenai --exp_name "olmo-2-0425-1b-tow-sft" --num_train_epochs 10 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking True --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=2 finetune.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai --exp_name "olmo-2-0425-1b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 100 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 """
 import re
 import logging
@@ -1242,162 +1242,6 @@ def main(args: FlatArguments):
             args.use_lora,
         )
         
-        # LoRA 훈련이 끝난 후 기본 모델과 LoRA adapter를 합치기
-        if args.use_lora and accelerator.is_main_process:
-            logger.info("Merging LoRA adapter with base model...")
-            
-            try:
-                # Wait for all processes to complete model saving
-                accelerator.wait_for_everyone()
-                
-                # LoRA adapter가 저장된 경로
-                lora_adapter_path = os.path.join(args.output_dir, "final_model")
-                merged_model_path = os.path.join(args.output_dir, "merged_model")
-                
-                # Ensure adapter path exists
-                if not os.path.exists(lora_adapter_path):
-                    raise FileNotFoundError(f"LoRA adapter path does not exist: {lora_adapter_path}")
-                
-                # Clear GPU memory and gradients before merge
-                if hasattr(model, 'zero_grad'):
-                    model.zero_grad()
-                torch.cuda.empty_cache()
-                
-                # Move training model to CPU and clear CUDA cache
-                try:
-                    if hasattr(model, 'cpu'):
-                        model = model.cpu()
-                except Exception as move_error:
-                    logger.warning(f"Could not move training model to CPU: {move_error}")
-                
-                # Clear all CUDA cached memory
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
-                
-                # Import required modules
-                import gc
-                from peft import PeftModel, PeftConfig
-                
-                # Force garbage collection
-                gc.collect()
-                
-                # 기본 모델 다시 로드 (quantization 없이)
-                logger.info(f"Loading base model from: {args.model_name_or_path}")
-                
-                # Load PEFT config first to understand the setup
-                peft_config = PeftConfig.from_pretrained(lora_adapter_path)
-                
-                # Load base model with minimal memory usage
-                base_model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path,
-                    torch_dtype=torch.bfloat16,
-                    device_map="auto",  # Use auto device mapping
-                    trust_remote_code=args.trust_remote_code,
-                    low_cpu_mem_usage=True,
-                )
-                
-                # vocab size 확인 및 조정 (merge_lora.py 로직 추가)
-                def get_adapter_vocab_size(adapter_path):
-                    """어댑터에서 실제 vocab size 추출"""
-                    import glob
-                    from safetensors import safe_open
-                    try:
-                        # safetensors 파일 우선 검색
-                        safetensor_files = glob.glob(os.path.join(adapter_path, "final_model", "*.safetensors"))
-                        if not safetensor_files:
-                            safetensor_files = glob.glob(os.path.join(adapter_path, "*.safetensors"))
-                        pytorch_files = glob.glob(os.path.join(adapter_path, "final_model", "*.bin"))
-                        if not pytorch_files:
-                            pytorch_files = glob.glob(os.path.join(adapter_path, "*.bin"))
-                        
-                        if safetensor_files:
-                            with safe_open(safetensor_files[0], framework="pt") as f:
-                                for key in f.keys():
-                                    if any(target in key for target in ['embed_tokens.weight', 'lm_head.weight']):
-                                        return f.get_tensor(key).shape[0]
-                        
-                        elif pytorch_files:
-                            checkpoint = torch.load(pytorch_files[0], map_location='cpu')
-                            state_dict = checkpoint.get('state_dict', checkpoint)
-                            for key, tensor in state_dict.items():
-                                if any(target in key for target in ['embed_tokens.weight', 'lm_head.weight']):
-                                    return tensor.shape[0]
-                            del checkpoint
-                                
-                    except Exception as e:
-                        logger.warning(f"Error extracting vocab size: {e}")
-                    return None
-
-                # 현재 모델과 어댑터의 vocab size 확인
-                base_vocab_size = base_model.get_input_embeddings().weight.shape[0]
-                adapter_vocab_size = get_adapter_vocab_size(lora_adapter_path)
-                
-                logger.info(f"Base model vocab size: {base_vocab_size}")
-                logger.info(f"Adapter vocab size: {adapter_vocab_size}")
-                
-                # vocab size가 다르면 베이스 모델을 어댑터에 맞춰 조정
-                if adapter_vocab_size and adapter_vocab_size != base_vocab_size:
-                    logger.info(f"Vocab size mismatch resolved: {base_vocab_size} -> {adapter_vocab_size}")
-                    base_model.resize_token_embeddings(adapter_vocab_size)
-                    logger.info("Base model embedding size adjusted successfully")
-                else:
-                    logger.info("Vocab size match - no adjustment needed")
-                
-                # Force garbage collection after base model load
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                
-                # LoRA adapter 로드
-                logger.info(f"Loading LoRA adapter from: {lora_adapter_path}")
-                peft_model = PeftModel.from_pretrained(
-                    base_model, 
-                    lora_adapter_path,
-                    torch_dtype=torch.bfloat16,
-                    is_trainable=False  # Ensure it's not trainable during merge
-                )
-                
-                # LoRA와 기본 모델 합치기
-                logger.info("Merging LoRA adapter with base model...")
-                # Set recursion limit higher temporarily
-                import sys
-                old_recursion_limit = sys.getrecursionlimit()
-                sys.setrecursionlimit(10000)
-                
-                try:
-                    merged_model = peft_model.merge_and_unload()
-                finally:
-                    # Restore original recursion limit
-                    sys.setrecursionlimit(old_recursion_limit)
-                
-                # 합쳐진 모델 저장
-                logger.info(f"Saving merged model to: {merged_model_path}")
-                os.makedirs(merged_model_path, exist_ok=True)
-                merged_model.save_pretrained(
-                    merged_model_path, 
-                    safe_serialization=True,
-                    max_shard_size="5GB"  # Prevent huge single files
-                )
-                tokenizer.save_pretrained(merged_model_path)
-                
-                logger.info("✅ Successfully merged LoRA adapter with base model!")
-                logger.info(f"Merged model saved at: {merged_model_path}")
-                
-                # 메모리 정리
-                del base_model
-                del peft_model
-                del merged_model
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to merge LoRA adapter with base model: {e}")
-                logger.error("The LoRA adapter is still saved separately and can be merged later.")
-                logger.error("You can merge it manually using the separate merge script.")
-                # Don't re-raise the exception to allow training completion
-
     # Conditional checkpoint cleanup - preserve steps for restart capability
     if accelerator.is_local_main_process:
         try:

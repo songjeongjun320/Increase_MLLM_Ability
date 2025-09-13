@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+module load cuda-12.6.1-gcc-12.1.0
+
 GSM8K (HRM8K) Evaluation Script
 - Evaluates mathematical reasoning capability on Korean translated GSM8K dataset
 - Extracts numerical answers from model outputs

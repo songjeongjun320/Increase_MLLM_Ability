@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "../4_evaluation_results/GSM8K_8shot"  # Output directory
+BASE_OUTPUT_DIR = "./GSM8K_8shot"  # Output directory
 
 # Batch Processing Configuration
 BATCH_SIZE = 16  # A100 optimized batch size (4->16 = 4x speedup)
@@ -151,16 +151,6 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     use_quantization=False
-    # ),
     ModelConfig(
         name="llama-3.2-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
@@ -182,24 +172,39 @@ MODEL_CONFIGS = [
         use_quantization=False
     ),
 
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/Qwen2.5-3B-Instruct-tow",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-it-tow",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-tow/checkpoint-5750",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="gemma-3-4b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="olmo-2-0425-1b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
 ]
 
 
@@ -296,7 +301,7 @@ def extract_numerical_answer(model_output):
     for pattern in patterns:
         matches = re.findall(pattern, cleaned_output, re.IGNORECASE | re.MULTILINE)
         if matches:
-            answer_str = matches[-1].replace(',', '').strip()
+            answer_str = matches[0].replace(',', '').strip()
             try:
                 return float(answer_str)
             except ValueError:

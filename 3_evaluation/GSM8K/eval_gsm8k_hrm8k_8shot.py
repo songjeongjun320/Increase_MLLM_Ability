@@ -167,16 +167,16 @@ MODEL_CONFIGS = [
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
     #     use_quantization=False
     # ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-org-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-org-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+    #     use_quantization=False
+    # ),
 
     ModelConfig(
         name="qwem-2.5-3b-pt",

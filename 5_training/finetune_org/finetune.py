@@ -1333,7 +1333,7 @@ def main(args: FlatArguments):
         print(f"Metadata saved to {args.output_dir}/metadata.json")
 
         # upload metadata to the dataset if set
-        if args.hf_metadata_dataset:
+        if args.hf_metadata_dataset and args.hf_repo_revision:
             upload_metadata_to_hf(
                 metadata_blob,
                 "metadata.json",

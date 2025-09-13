@@ -40,7 +40,7 @@ DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
 BASE_OUTPUT_DIR = "../4_evaluation_results/GSM8K_8shot"  # Output directory
 
 # Batch Processing Configuration
-BATCH_SIZE = 4  # Number of samples to process in each batch (adjust based on GPU memory)
+BATCH_SIZE = 16  # A100 optimized batch size (4->16 = 4x speedup)
 
 # Import performance analyzer
 try:
@@ -355,8 +355,7 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
             inputs = tokenizer(
                 prompts_batch, 
                 return_tensors="pt", 
-                padding=True, 
-                padding_side="left",
+                padding=True,
                 truncation=True, 
                 max_length=2048
             ).to(DEVICE)
@@ -364,7 +363,7 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=1024,
+                    max_new_tokens=384,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -412,7 +411,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=1024,
+                    max_new_tokens=384,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -497,7 +496,8 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR)
-        
+        tokenizer.padding_side = "left"
+
         if tokenizer.pad_token is None:
             if tokenizer.eos_token:
                 tokenizer.pad_token = tokenizer.eos_token

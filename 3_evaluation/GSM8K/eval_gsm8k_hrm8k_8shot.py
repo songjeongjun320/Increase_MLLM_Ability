@@ -371,17 +371,21 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
                 )
             
             # Process each output in the batch
-            input_lengths = inputs['input_ids'].shape[1]
-            
-            for i in range(batch_size):
+            L_in = inputs["input_ids"].shape[1]
+            gen_only = outputs[:, L_in:]  # [B, L_gen] 생성 토큰만
+
+            # 한 번에 디코딩
+            texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
+
+            for i, generated_text in enumerate(texts):
                 try:
-                    output_only_tokens = outputs[i, input_lengths:]
-                    generated_text = tokenizer.decode(output_only_tokens, skip_special_tokens=True).strip()
+                    generated_text = generated_text.strip()
                     extracted_answer = extract_numerical_answer(generated_text)
                     results.append((generated_text, extracted_answer))
                 except Exception as e:
                     logger.warning(f"Error processing batch item {i}: {e}")
                     results.append((f"ERROR: {str(e)}", None))
+
             
             return results
             

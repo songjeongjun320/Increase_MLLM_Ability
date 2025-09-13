@@ -46,55 +46,61 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # # Base Models (commented out for now)
+    ModelConfig(
+        name="llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-org-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+        use_quantization=False
+    ),
+
     ModelConfig(
         name="qwem-2.5-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
         use_quantization=False
     ),
     ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
         name="gemma-3-4b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
         use_quantization=False
     ),
     ModelConfig(
-        name="llama-3.2-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
 
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/best_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-pt-tow-refined_dataset_09_02/best_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02/best_model",
-    #     use_quantization=False
-    # ),
-
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-original-data",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-original-data/final_model",
+        name="olmo-2-0425-1b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
         use_quantization=False
     ),
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-nonmasking-09-05",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-09_05/final_model",
+        name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
 ]
+
 
 # --- General Configuration ---
 PIQA_DATASET_PATH = "../../2_datasets/PIQA/piqa.json"
@@ -255,6 +261,7 @@ def extract_final_answer(model_output):
         matches = re.findall(pattern, cleaned_output)
         if matches:
             return matches[0]  # Return the first match (avoid repetitions/hallucinations)
+    
     # Priority 2: Start of text patterns
     start_patterns = [
         r'^\s*([A-B])[\.\)\]\s]',  # A. or A) or A] at start

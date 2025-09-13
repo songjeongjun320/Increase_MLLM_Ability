@@ -48,39 +48,57 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # # Base Models (commented out for now)
+    ModelConfig(
+        name="llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-org-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+        use_quantization=False
+    ),
+
     ModelConfig(
         name="qwem-2.5-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
         use_quantization=False
     ),
     ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
         name="gemma-3-4b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
         use_quantization=False
     ),
     ModelConfig(
-        name="llama-3.2-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        name="gemma-3-4b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
         use_quantization=False
     ),
 
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-original-data",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-original-data/final_model",
-    #     use_quantization=False
-    # ),
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_05_allenai",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai",
+        name="olmo-2-0425-1b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_05_allenai",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai",
+        name="olmo-2-0425-1b-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
         use_quantization=False
     ),
 ]
@@ -321,8 +339,8 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
             prompt_parts.append(f"#### 따라서 정답은 {correct_answer} 입니다.")
             prompt_parts.append(f"#### 정답: {correct_answer}")
         else:
-            prompt_parts.append(f"#### So the answer is {correct_answer}.")
-            prompt_parts.append(f"#### Answer: {correct_answer}.")
+            prompt_parts.append(f"#### So the answer is {{{correct_answer}}}. #### {{{correct_answer}}}")
+            prompt_parts.append(f"#### Answer: {{{correct_answer}}}. #### {{{correct_answer}}}")
         prompt_parts.append("")
 
     # Add the test question
@@ -339,7 +357,7 @@ def create_3shot_prompt(item, few_shot_examples, language="en"):
     prompt_parts.append("")
     
     if language == "ko":
-        prompt_parts.append("응답: 단계별로 생각해봅시다. #### 따라서 답은 ")
+        prompt_parts.append("응답: 단계별로 생각해봅시다. #### 따라서 정답은 ")
     else:
         prompt_parts.append("Response: Let's think step by step. #### So the answer is  ")
     
@@ -359,8 +377,6 @@ def extract_answer_first_token(model_output):
     if not model_output:
         return None
 
-    # 모델이 프롬프트를 반복하는 경우가 많으므로, 첫 "Question:" 이나 "질문:" 이전의 내용만 분석합니다.
-    # 이것이 문제의 핵심 해결책입니다.
     if "Question:" in model_output:
         model_output = model_output.split("Question:")[0]
     if "질문:" in model_output:
@@ -369,29 +385,29 @@ def extract_answer_first_token(model_output):
     # 분석할 텍스트를 정리합니다.
     cleaned_output = model_output.strip().upper()
 
-    # --- 우선순위 1: 생성된 답변이 정답 선택지(A-J)로 시작하는 경우 ---
-    # 예: "D. Business ethics management" 또는 그냥 "D"
-    # ^\s* : 문자열 시작 부분의 공백은 무시
-    # ([A-J]) : A부터 J까지의 한 글자를 찾아서 그룹으로 저장 (이것이 우리가 원하는 정답)
-    # (?![A-Z]) : 찾은 글자 바로 뒤에 다른 알파벳이 오는 것을 방지 (예: 'APPLE'에서 'A'를 찾는 것을 방지)
-    match = re.search(r'^\s*([A-J])(?![A-Z])', cleaned_output)
-    if match:
-        return match.group(1) # 첫 번째 우선순위에서 답을 찾으면 즉시 반환
-
-    # --- 우선순위 2: '#### Answer:' 와 같은 명확한 패턴이 있는 경우 ---
-    # re.search는 가장 먼저 발견되는 패턴을 찾으므로, 마지막 값을 찾는 오류를 방지합니다.
     structured_patterns = [
-        r'####\s*(?:SO\s+THE\s+)?ANSWER\s+IS\s*:?\s*([A-J])', # "#### So the answer is A", "#### Answer: A" 등
-        r'####\s*따라서\s*(?:정)?답은\s*([A-J])',            # "#### 따라서 정답은 A", "#### 따라서 답은 A"
-        r'ANSWER\s*:\s*([A-J])',                             # "Answer: A"
-        r'정답\s*:\s*([A-J])'                                 # "정답: A"
+        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-J])\}?',  # #### Answer: A or #### 정답: A or {A}
+        r'\{([A-J])\}',  # {A} box format matching prompt style
+        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-J])\}?',        # Answer: A or 정답: A or {A}
+        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-J])\}?',  # So the answer is A or {A}
     ]
 
     for pattern in structured_patterns:
-        match = re.search(pattern, cleaned_output)
+        matches = re.findall(pattern, cleaned_output)
+        if matches:
+            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
+    
+    # Priority 2: Start of text patterns
+    start_patterns = [
+        r'^\s*([A-J])[\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([A-J])\)?\s*[\.:;]',  # (A): or A. or A:
+        r'^\s*([A-J])\s*$',          # Just A at start of line
+    ]
+    
+    for pattern in start_patterns:
+        match = re.search(pattern, cleaned_output, re.MULTILINE)
         if match:
-            return match.group(1) # 두 번째 우선순위에서 답을 찾으면 즉시 반환
-
+            return match.group(1)
     # 위 두 조건으로도 찾지 못하면 추출 실패로 간주
     return None
 

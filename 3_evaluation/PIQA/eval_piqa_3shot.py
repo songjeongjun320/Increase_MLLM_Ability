@@ -187,9 +187,9 @@ def create_3shot_prompt(test_item, language="en"):
         prompt_parts.append(f"B. {sol2}")
         
         if language == "ko":
-            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. {reasoning} 따라서 정답은 {correct_answer}입니다. 답: {{{correct_answer}}}")
+            prompt_parts.append(f"응답: 단계적으로 생각해봅시다. {reasoning} #### 따라서 정답은 {{{correct_answer}}}. #### {{{correct_answer}}}.")
         else:
-            prompt_parts.append(f"Response: Let's think step by step. {reasoning} Therefore the answer is {correct_answer}. Answer: {{{correct_answer}}}")
+            prompt_parts.append(f"Response: Let's think step by step. {reasoning} #### Therefore the answer is {{{correct_answer}}}. #### {{{correct_answer}}}.")
         prompt_parts.append("")
     
     # Add the test question
@@ -202,9 +202,9 @@ def create_3shot_prompt(test_item, language="en"):
     prompt_parts.append(f"B. {sol2}")
     
     if language == "ko":
-        prompt_parts.append("응답: 단계적으로 생각해봅시다. 따라서 정답은 ")
+        prompt_parts.append("응답: 단계적으로 생각해봅시다. #### 따라서 정답은 ")
     else:
-        prompt_parts.append("Response: Let's think step by step. Therefore the answer is")
+        prompt_parts.append("Response: Let's think step by step. #### So the answer is")
     
     return "\n".join(prompt_parts)
 
@@ -243,36 +243,30 @@ def extract_final_answer(model_output):
     
     import re
     
-    # Priority 1: {} 안의 답변 추출
-    brace_patterns = [
-        r'\{([AB])\}',  # {A} or {B}
-        r'\{\s*([AB])\s*\}',  # { A } or { B }
+    # Priority 1: Structured answer patterns (most reliable)
+    structured_patterns = [
+        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-B])\}?',  # #### Answer: A or #### 정답: A or {A}
+        r'\{([A-B])\}',  # {A} box format matching prompt style
+        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-B])\}?',        # Answer: A or 정답: A or {A}
+        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-B])\}?',  # So the answer is A or {A}
     ]
     
-    for pattern in brace_patterns:
-        matches = re.findall(pattern, model_output.upper())
-        if matches:
-            return matches[-1]  # 마지막 매치 반환
-    
-    # Priority 2: 기존 패턴들 (fallback)
-    cleaned_output = model_output.strip().upper()
-    
-    # Answer: 패턴
-    answer_patterns = [
-        r'(?:답|ANSWER)\s*:?\s*([AB])',
-        r'^\s*([AB])[\.\)\]\s]',  # 시작 부분의 A. 또는 B)
-    ]
-    
-    for pattern in answer_patterns:
+    for pattern in structured_patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[-1]
+            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
+    # Priority 2: Start of text patterns
+    start_patterns = [
+        r'^\s*([A-B])[\.\)\]\s]',  # A. or A) or A] at start
+        r'^\s*\(?([A-B])\)?\s*[\.:;]',  # (A): or A. or A:
+        r'^\s*([A-B])\s*$',          # Just A at start of line
+    ]
     
-    # Priority 3: 첫 번째 A 또는 B 찾기
-    for char in cleaned_output:
-        if char in ['A', 'B']:
-            return char
-    
+    for pattern in start_patterns:
+        match = re.search(pattern, cleaned_output, re.MULTILINE)
+        if match:
+            return match.group(1)
+
     return None
 
 def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
@@ -287,7 +281,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=2048
+                max_length=1024
             ).to(DEVICE)
 
             with torch.inference_mode():
@@ -402,7 +396,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         individual_results = []
         for prompt, idx in zip(batch_prompts, batch_indices):
             try:
-                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=2048).to(DEVICE)
+                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=1024).to(DEVICE)
                 with torch.inference_mode():
                     outputs = model.generate(
                         **inputs,

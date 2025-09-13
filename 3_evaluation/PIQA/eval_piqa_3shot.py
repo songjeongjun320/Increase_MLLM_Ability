@@ -249,6 +249,9 @@ def extract_final_answer(model_output):
     
     import re
     
+    # Clean the output first
+    cleaned_output = model_output.strip()
+    
     # Priority 1: Structured answer patterns (most reliable)
     structured_patterns = [
         r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-B])\}?',  # #### Answer: A or #### 정답: A or {A}

@@ -37,72 +37,59 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # # Base Models (commented out for now)
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     use_quantization=False
-    # ),
-
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/qwem-2.5-3b-pt-tow-refined_dataset_09_02/best_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/gemma-3-4b-pt-tow-refined_dataset_09_02/best_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-refined_dataset_09_02/best_model",
-    #     use_quantization=False
-    # ),
-
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-original-data",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-original-data/final_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-nonmasking-09-05",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-nonmasking-09_05/final_model",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09-05-checkpoint-4500",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/tow_trained_models/llama-3.2-3b-pt-tow-09_05/checkpoint-4500",
-    #     use_quantization=False
-    # ),
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_05_allenai",
+        name="llama-3.2-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/llama-3.2-3b-pt-tow-09_05_allenai",
         use_quantization=False
     ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow-09_05_allenai",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     adapter_path="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/tow_trained_models/qwem-2.5-3b-pt-tow-09_05_allenai",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-org-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="qwem-2.5-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="gemma-3-4b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="olmo-2-0425-1b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
 ]
 
 # --- General Configuration (Updated for 5-shot evaluation) ---
@@ -224,7 +211,7 @@ def create_generic_5shot_korean_prompt(test_item):
         prompt_parts.append(f"B. {example['choices']['B']}")
         prompt_parts.append(f"C. {example['choices']['C']}")
         prompt_parts.append(f"D. {example['choices']['D']}")
-        prompt_parts.append(f"정답: 따라서 정답은 {example['answer']}입니다.")
+        prompt_parts.append(f"정답: #### 따라서 정답은 {{{example['answer']}}}. #### {{{example['answer']}}}")
         prompt_parts.append("")  # Empty line between examples
     
     # Add test question
@@ -293,7 +280,7 @@ def extract_korean_answer_first_token(model_output, tokenizer):
     for pattern in patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[-1]  # Return the last match (most likely the final answer)
+            return matches[0]  # Return the last match (most likely the final answer)
     
     # More strict approach: Only look for isolated letters at word boundaries
     # and exclude common English/Korean contexts

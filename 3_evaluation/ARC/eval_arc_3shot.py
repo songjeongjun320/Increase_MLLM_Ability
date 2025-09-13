@@ -23,7 +23,9 @@ import random
 os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 transformers.logging.set_verbosity_error()
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
-
+torch.backends.cuda.matmul.allow_tf32 = True
+if torch.cuda.is_available():
+    torch.set_float32_matmul_precision("high") 
 
 # --- Model Configuration ---
 @dataclass
@@ -235,7 +237,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
         try:
             inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
             
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=1024,
@@ -574,7 +576,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                     try:
                         inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
                         
-                        with torch.no_grad():
+                        with torch.inference_mode():
                             outputs = model.generate(
                                 **inputs,
                                 max_new_tokens=1024,

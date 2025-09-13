@@ -25,6 +25,10 @@ import time
 import random
 import traceback
 
+torch.backends.cuda.matmul.allow_tf32 = True
+if torch.cuda.is_available():
+    torch.set_float32_matmul_precision("high") 
+    
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,

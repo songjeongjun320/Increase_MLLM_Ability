@@ -4,7 +4,8 @@ import logging
 import torch
 import warnings 
 import transformers
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from vllm import LLM, SamplingParams
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, StoppingCriteria, StoppingCriteriaList
 from peft import PeftModel
 from tqdm import tqdm
 import re
@@ -14,6 +15,10 @@ import sys
 from datetime import datetime
 import time
 import random
+
+torch.backends.cuda.matmul.allow_tf32 = True
+if torch.cuda.is_available():
+    torch.set_float32_matmul_precision("high")  # "medium"도 OK
 
 os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 transformers.logging.set_verbosity_error()
@@ -108,8 +113,8 @@ MODEL_CONFIGS = [
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.jsonl"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.jsonl"
 BASE_OUTPUT_DIR = "mmlu_prox_3shot"
-BATCH_SIZE = 8
-MAX_NEW_TOKENS = 1024
+BATCH_SIZE = 16
+MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -460,26 +465,29 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
                 temperature=0.0,
-                top_p=1.0,
-                output_scores=True,
-                return_dict_in_generate=True
+                use_cache=True,
+                return_dict_in_generate=False,  # 그대로 False (속도 유리)
+                output_scores=False,
+                num_beams=1,
             )
         
         batch_results = []
-        for i, (sequence, input_length) in enumerate(zip(outputs.sequences, batch_inputs['input_ids'].shape[1:])):
-            # Decode only the generated part
-            output_tokens = sequence[input_length:]
-            generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
-            
-            # Decode the full sequence (prompt + generation)
-            full_text = tokenizer.decode(sequence, skip_special_tokens=True).strip()
-            
+        input_len = batch_inputs['input_ids'].shape[1]
+
+        gen_only = outputs[:, input_len:]
+        decoded_texts = tokenizer.batch_decode(gen_only, skip_special_tokens=True)
+        
+        for i, generated_text in enumerate(decoded_texts):
+            generated_text = generated_text.strip()
             extracted_answer = extract_answer_first_token(generated_text)
-            
+
+            # (선택) full_generation 저장이 꼭 필요 없다면 None으로 두어 I/O 줄이기
+            # full_text = full_decoded[i].strip() if save_full else None
+
             batch_results.append({
                 'index': batch_indices[i],
                 'raw_output': generated_text,
-                'full_generation': full_text,
+                'full_generation': generated_text,  # 필요 없으면 None로 바꾸세요
                 'extracted_answer': extracted_answer
             })
         
@@ -502,8 +510,9 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                         temperature=0.0,
                     )
                 # Decode only the generated part
-                output_tokens = outputs[0][inputs['input_ids'].shape[1]:]
-                generated_text = tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
+                input_len = inputs['input_ids'].shape[1]
+                gen_only = outputs[:, input_len:]          # outputs가 Tensor이므로 이렇게 자름
+                generated_text = tokenizer.batch_decode(gen_only, skip_special_tokens=True)[0].strip()                
                 
                 # Decode the full sequence (prompt + generation)
                 full_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
@@ -582,7 +591,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
             config.model_id,
             torch_dtype=config.torch_dtype,
             quantization_config=quantization_config_bnb,
-            device_map=DEVICE,
+            device_map="auto",
             trust_remote_code=True,
             cache_dir=CACHE_DIR
         )

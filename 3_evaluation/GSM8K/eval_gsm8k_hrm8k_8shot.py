@@ -148,19 +148,34 @@ class ModelConfig:
 
 MODEL_CONFIGS = [
     # Base Models (commented out for now)
-    ModelConfig(
-        name="qwem-2.5-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="gemma-3-4b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="llama-3.2-3b-pt",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-org-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
         use_quantization=False
     ),
 
@@ -325,7 +340,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=512,
+                    max_new_tokens=1024,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,

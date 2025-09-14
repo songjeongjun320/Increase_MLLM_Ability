@@ -792,88 +792,88 @@ def main(args: FlatArguments):
     # tow_init_embeddings = torch.unsqueeze(model.model.embed_tokens.weight.data[tokenizer.encode('---', add_special_tokens=False)[0], :], dim=0)
     # model.model.embed_tokens.weight.data[-2:, :] = torch.concat([tow_init_embeddings, tow_init_embeddings], dim=0)
 
-# ===== ToW 토큰 마스킹 설정 =====
-# ToW 토큰 ID 저장 (전역 변수로 저장하여 나중에 사용)
-tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
-tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
+    # ===== ToW 토큰 마스킹 설정 =====
+    # ToW 토큰 ID 저장 (전역 변수로 저장하여 나중에 사용)
+    tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
+    tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
 
-# 초기 임베딩 값을 저장 (검증용)
-tow_initial_embeddings = {}
-with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
-    tow_initial_embeddings['start'] = embeddings.weight.data[tow_start_id].clone().cpu()
-    tow_initial_embeddings['end'] = embeddings.weight.data[tow_end_id].clone().cpu()
+    # 초기 임베딩 값을 저장 (검증용)
+    tow_initial_embeddings = {}
+    with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
+        tow_initial_embeddings['start'] = embeddings.weight.data[tow_start_id].clone().cpu()
+        tow_initial_embeddings['end'] = embeddings.weight.data[tow_end_id].clone().cpu()
 
-if accelerator.is_main_process:
-    logger.info("=" * 50)
-    logger.info("ToW Token Masking Setup")
-    logger.info("=" * 50)
-    logger.info(f"ToW token IDs - <ToW>: {tow_start_id}, </ToW>: {tow_end_id}")
-    logger.info("Initial embeddings saved for validation")
+    if accelerator.is_main_process:
+        logger.info("=" * 50)
+        logger.info("ToW Token Masking Setup")
+        logger.info("=" * 50)
+        logger.info(f"ToW token IDs - <ToW>: {tow_start_id}, </ToW>: {tow_end_id}")
+        logger.info("Initial embeddings saved for validation")
 
-def setup_tow_masking_hook(model, tokenizer, logger=None):
-    """
-    ToW 토큰 임베딩이 훈련 중 업데이트되지 않도록 gradient hook을 설정
-    DeepSpeed ZeRO와 호환되는 방식으로 구현
-    """
-    def gradient_mask_hook(grad):
-        """ToW 토큰들의 그래디언트를 0으로 마스킹하는 훅 함수"""
-        if grad is not None:
-            # DeepSpeed에서 안전하게 동작하도록 clone 후 수정
-            grad = grad.clone()
-            grad[tow_start_id] = 0.0  # <ToW> 토큰 그래디언트 차단
-            grad[tow_end_id] = 0.0    # </ToW> 토큰 그래디언트 차단
+    def setup_tow_masking_hook(model, tokenizer, logger=None):
+        """
+        ToW 토큰 임베딩이 훈련 중 업데이트되지 않도록 gradient hook을 설정
+        DeepSpeed ZeRO와 호환되는 방식으로 구현
+        """
+        def gradient_mask_hook(grad):
+            """ToW 토큰들의 그래디언트를 0으로 마스킹하는 훅 함수"""
+            if grad is not None:
+                # DeepSpeed에서 안전하게 동작하도록 clone 후 수정
+                grad = grad.clone()
+                grad[tow_start_id] = 0.0  # <ToW> 토큰 그래디언트 차단
+                grad[tow_end_id] = 0.0    # </ToW> 토큰 그래디언트 차단
+                return grad
             return grad
-        return grad
 
-    # 임베딩 레이어에 훅 등록
-    embeddings = model.get_input_embeddings()
-    hook_handle = embeddings.weight.register_hook(gradient_mask_hook)
-
-    if logger and accelerator.is_main_process:
-        logger.info("🔒 ToW token gradient masking hook registered successfully")
-        logger.info("ToW tokens will NOT be updated during training")
-
-    return hook_handle
-
-# ToW 마스킹 훅 등록
-tow_masking_hook = setup_tow_masking_hook(model, tokenizer, logger)
-
-def validate_tow_embeddings(model, step, logger=None):
-    """
-    ToW 토큰 임베딩이 초기값을 유지하는지 검증
-    훈련 중 주기적으로 호출하여 마스킹 효과 확인
-    """
-    if step % 50 == 0:  # 50스텝마다 검증
+        # 임베딩 레이어에 훅 등록
         embeddings = model.get_input_embeddings()
+        hook_handle = embeddings.weight.register_hook(gradient_mask_hook)
 
-        # DeepSpeed ZeRO 호환 방식으로 임베딩 값 가져오기
-        with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
-            current_start = embeddings.weight.data[tow_start_id].cpu()
-            current_end = embeddings.weight.data[tow_end_id].cpu()
+        if logger and accelerator.is_main_process:
+            logger.info("🔒 ToW token gradient masking hook registered successfully")
+            logger.info("ToW tokens will NOT be updated during training")
 
-            # 코사인 유사도 계산 (1.0에 가까울수록 초기값 유지)
-            start_similarity = torch.cosine_similarity(
-                current_start.unsqueeze(0),
-                tow_initial_embeddings['start'].unsqueeze(0)
-            ).item()
+        return hook_handle
 
-            end_similarity = torch.cosine_similarity(
-                current_end.unsqueeze(0),
-                tow_initial_embeddings['end'].unsqueeze(0)
-            ).item()
+    # ToW 마스킹 훅 등록
+    tow_masking_hook = setup_tow_masking_hook(model, tokenizer, logger)
 
-            if logger and accelerator.is_main_process:
-                logger.info(f"📊 Step {step} ToW Token Status - "
-                          f"<ToW> similarity: {start_similarity:.4f}, "
-                          f"</ToW> similarity: {end_similarity:.4f}")
+    def validate_tow_embeddings(model, step, logger=None):
+        """
+        ToW 토큰 임베딩이 초기값을 유지하는지 검증
+        훈련 중 주기적으로 호출하여 마스킹 효과 확인
+        """
+        if step % 50 == 0:  # 50스텝마다 검증
+            embeddings = model.get_input_embeddings()
 
-                # 경고: 유사도가 0.95 미만이면 마스킹이 제대로 작동하지 않는 것
-                if start_similarity < 0.95 or end_similarity < 0.95:
-                    logger.warning("⚠️ ToW token embeddings may be changing! Check masking implementation.")
+            # DeepSpeed ZeRO 호환 방식으로 임베딩 값 가져오기
+            with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
+                current_start = embeddings.weight.data[tow_start_id].cpu()
+                current_end = embeddings.weight.data[tow_end_id].cpu()
 
-if accelerator.is_main_process:
-    logger.info("ToW token masking setup completed")
-    logger.info("=" * 50)
+                # 코사인 유사도 계산 (1.0에 가까울수록 초기값 유지)
+                start_similarity = torch.cosine_similarity(
+                    current_start.unsqueeze(0),
+                    tow_initial_embeddings['start'].unsqueeze(0)
+                ).item()
+
+                end_similarity = torch.cosine_similarity(
+                    current_end.unsqueeze(0),
+                    tow_initial_embeddings['end'].unsqueeze(0)
+                ).item()
+
+                if logger and accelerator.is_main_process:
+                    logger.info(f"📊 Step {step} ToW Token Status - "
+                              f"<ToW> similarity: {start_similarity:.4f}, "
+                              f"</ToW> similarity: {end_similarity:.4f}")
+
+                    # 경고: 유사도가 0.95 미만이면 마스킹이 제대로 작동하지 않는 것
+                    if start_similarity < 0.95 or end_similarity < 0.95:
+                        logger.warning("⚠️ ToW token embeddings may be changing! Check masking implementation.")
+
+    if accelerator.is_main_process:
+        logger.info("ToW token masking setup completed")
+        logger.info("=" * 50)
 
 # update embedding size after resizing for sum loss
 embeddings = model.get_input_embeddings()

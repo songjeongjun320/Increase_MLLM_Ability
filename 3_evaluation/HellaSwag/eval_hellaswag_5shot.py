@@ -117,8 +117,8 @@ MODEL_CONFIGS = [
     ),
 ]
 # --- General Configuration ---
-HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/hellaswag.json"
-KO_HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/ko_hellaswag.json"
+HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/hellaswag_validation.json"
+KO_HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/ko_hellaswag_validation.json"
 BASE_OUTPUT_DIR = "hellaswag_5shot_results"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -417,8 +417,18 @@ def get_ground_truth(item):
     """Returns the ground truth answer index."""
     # HellaSwag uses 'label' field for the correct answer index
     answer = item.get("label", -1)
+
+    # Handle string labels (convert to int)
+    if isinstance(answer, str):
+        if answer in ["0", "1", "2", "3"]:
+            return int(answer)
+        elif answer == "":
+            return -1  # Test dataset with empty labels
+
+    # Handle integer labels
     if answer in [0, 1, 2, 3]:
         return answer
+
     return None
 
 def save_failure_cases(failure_cases, model_name, output_dir):
@@ -571,6 +581,7 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
             errors_or_skipped = 0
             results_details = []
             failure_cases = []
+            all_ground_truths = []  # Track all ground truths for the dataset
 
             # Batch processing loop
             num_batches = (len(dataset) + BATCH_SIZE - 1) // BATCH_SIZE
@@ -603,6 +614,7 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                         prompt = create_5shot_prompt(item, examples_to_use, dataset_type)
                         prompts.append(prompt)
                         ground_truths.append(ground_truth)
+                        all_ground_truths.append(ground_truth)  # Track all ground truths
                         valid_items_in_batch.append(item)
 
                     if not prompts:
@@ -631,12 +643,14 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
 
                             if model_answer_log is not None:
                                 total_predictions += 1
-                                if model_answer_log == ground_truth:
-                                    correct_predictions += 1
-                                    is_correct_log = True
-                                else:
-                                    # Wrong answer - add to failure cases
-                                    failure_cases.append({
+                                # Only evaluate correctness if we have valid ground truth
+                                if ground_truth != -1:
+                                    if model_answer_log == ground_truth:
+                                        correct_predictions += 1
+                                        is_correct_log = True
+                                    else:
+                                        # Wrong answer - add to failure cases
+                                        failure_cases.append({
                                         "index": batch_start + j,
                                         "id": item.get("ind", ""),
                                         "dataset": dataset_name,
@@ -646,7 +660,10 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                                         "predicted_answer": model_answer_log,
                                         "raw_output": generated_text_log,
                                         "failure_type": "incorrect_answer"
-                                    })
+                                        })
+                                # For test datasets with no ground truth, just log the prediction without failure
+                                else:
+                                    pass  # No ground truth available, cannot determine correctness
                             else:
                                 # Batch extraction failed, try individual retry
                                 logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
@@ -657,11 +674,13 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                                     generated_text_log = retry_text
                                     model_answer_log = retry_answer
                                     total_predictions += 1
-                                    if model_answer_log == ground_truth:
-                                        correct_predictions += 1
-                                        is_correct_log = True
-                                    else:
-                                        failure_cases.append({
+                                    # Only evaluate correctness if we have valid ground truth
+                                    if ground_truth != -1:
+                                        if model_answer_log == ground_truth:
+                                            correct_predictions += 1
+                                            is_correct_log = True
+                                        else:
+                                            failure_cases.append({
                                             "index": batch_start + j,
                                             "id": item.get("ind", ""),
                                             "dataset": dataset_name,
@@ -671,7 +690,7 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                                             "predicted_answer": model_answer_log,
                                             "raw_output": generated_text_log,
                                             "failure_type": "incorrect_answer_after_retry"
-                                        })
+                                            })
                                     logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
                                 else:
                                     # Even retry failed
@@ -745,17 +764,30 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                     # Update progress bar
                     pbar.set_description(f"Evaluating {config.name} on {dataset_name} (5-shot, errors: {errors_or_skipped})")
 
-            # Calculate accuracy
-            accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
-            accuracy_strict = (correct_predictions / len(dataset) * 100) if len(dataset) > 0 else 0
+            # Calculate accuracy (only for datasets with ground truth)
+            has_ground_truth = any(gt != -1 for gt in all_ground_truths if len(all_ground_truths) > 0)
+            valid_ground_truth_count = sum(1 for gt in all_ground_truths if gt != -1) if len(all_ground_truths) > 0 else 0
+
+            if has_ground_truth:
+                accuracy_standard = (correct_predictions / total_predictions * 100) if total_predictions > 0 else 0
+                accuracy_strict = (correct_predictions / valid_ground_truth_count * 100) if valid_ground_truth_count > 0 else 0
+            else:
+                accuracy_standard = None  # No ground truth available
+                accuracy_strict = None
 
             logger.info(f"--- 5-shot {dataset_name} Results for {config.name} ---")
             logger.info(f"Test Items: {len(dataset)}")
             logger.info(f"Valid Predictions: {total_predictions}")
-            logger.info(f"Correct Predictions: {correct_predictions}")
-            logger.info(f"Failure Cases: {len(failure_cases)}")
-            logger.info(f"Accuracy Standard: {accuracy_standard:.2f}%")
-            logger.info(f"Accuracy Strict: {accuracy_strict:.2f}%")
+
+            if has_ground_truth:
+                logger.info(f"Correct Predictions: {correct_predictions}")
+                logger.info(f"Failure Cases: {len(failure_cases)}")
+                logger.info(f"Accuracy Standard: {accuracy_standard:.2f}%")
+                logger.info(f"Accuracy Strict: {accuracy_strict:.2f}%")
+            else:
+                logger.info(f"Ground Truth: Not available (test dataset)")
+                logger.info(f"Inference Success Rate: {(total_predictions / len(dataset) * 100):.2f}%")
+                logger.info(f"Note: Accuracy cannot be calculated without ground truth labels")
 
             all_results[dataset_name] = {
                 "test_items": len(dataset),
@@ -764,6 +796,8 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                 "failure_cases_count": len(failure_cases),
                 "accuracy_standard": accuracy_standard,
                 "accuracy_strict": accuracy_strict,
+                "has_ground_truth": has_ground_truth,
+                "inference_success_rate": (total_predictions / len(dataset) * 100) if len(dataset) > 0 else 0,
                 "details": results_details
             }
 
@@ -829,9 +863,11 @@ def main():
                 "HellaSwag_accuracy_standard": results["HellaSwag"]["accuracy_standard"],
                 "HellaSwag_accuracy_strict": results["HellaSwag"]["accuracy_strict"],
                 "HellaSwag_failure_cases": results["HellaSwag"]["failure_cases_count"],
+                "HellaSwag_inference_success_rate": results["HellaSwag"]["inference_success_rate"],
                 "Ko-HellaSwag_accuracy_standard": results["Ko-HellaSwag"]["accuracy_standard"],
                 "Ko-HellaSwag_accuracy_strict": results["Ko-HellaSwag"]["accuracy_strict"],
-                "Ko-HellaSwag_failure_cases": results["Ko-HellaSwag"]["failure_cases_count"]
+                "Ko-HellaSwag_failure_cases": results["Ko-HellaSwag"]["failure_cases_count"],
+                "Ko-HellaSwag_inference_success_rate": results["Ko-HellaSwag"]["inference_success_rate"]
             }
 
     # Save summary results
@@ -842,20 +878,27 @@ def main():
     logger.info(f"Summary results saved to: {summary_filepath}")
 
     # Print summary table
-    print("\n" + "="*110)
+    print("\n" + "="*130)
     print("HELLASWAG 5-SHOT EVALUATION SUMMARY")
-    print("="*110)
-    print(f"{'Model Name':<35} {'HSwag Acc (%)':<15} {'HSwag Fails':<12} {'Ko-HSwag Acc (%)':<17} {'Ko-HSwag Fails':<15}")
-    print("-"*110)
+    print("="*130)
+    print(f"{'Model Name':<35} {'HSwag Success (%)':<17} {'HSwag Acc (%)':<15} {'Ko-HSwag Success (%)':<19} {'Ko-HSwag Acc (%)':<17}")
+    print("-"*130)
 
     for model_name, results in summary_results.items():
+        hswag_success = results["HellaSwag_inference_success_rate"]
         hswag_acc = results["HellaSwag_accuracy_standard"]
+        ko_hswag_success = results["Ko-HellaSwag_inference_success_rate"]
         ko_hswag_acc = results["Ko-HellaSwag_accuracy_standard"]
-        hswag_fails = results["HellaSwag_failure_cases"]
-        ko_hswag_fails = results["Ko-HellaSwag_failure_cases"]
-        print(f"{model_name:<35} {hswag_acc:<15.2f} {hswag_fails:<12} {ko_hswag_acc:<17.2f} {ko_hswag_fails:<15}")
 
-    print("="*110)
+        hswag_acc_str = f"{hswag_acc:.2f}" if hswag_acc is not None else "N/A"
+        ko_hswag_acc_str = f"{ko_hswag_acc:.2f}" if ko_hswag_acc is not None else "N/A"
+
+        print(f"{model_name:<35} {hswag_success:<17.2f} {hswag_acc_str:<15} {ko_hswag_success:<19.2f} {ko_hswag_acc_str:<17}")
+
+    print("-"*130)
+    print("Note: Accuracy shows 'N/A' for test datasets without ground truth labels")
+    print("Success rate shows percentage of successful model inferences")
+    print("="*130)
 
 if __name__ == "__main__":
     main()

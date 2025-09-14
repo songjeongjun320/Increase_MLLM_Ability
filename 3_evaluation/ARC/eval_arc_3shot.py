@@ -90,23 +90,23 @@ MODEL_CONFIGS = [
     # ),
 
     ModelConfig(
-        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        name="gemma-3-4b-pt-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        name="olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
 ]
@@ -117,7 +117,7 @@ KO_ARC_DATASET_PATH = "../../2_datasets/ARC/Ko-ARC.json"
 BASE_OUTPUT_DIR = "arc_3shot_09_11"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
-BATCH_SIZE = 10
+BATCH_SIZE = 16
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -263,7 +263,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
             with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=1024,
+                    max_new_tokens=512,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -602,7 +602,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         with torch.inference_mode():
                             outputs = model.generate(
                                 **inputs,
-                                max_new_tokens=1024,
+                                max_new_tokens=512,
                                 pad_token_id=tokenizer.pad_token_id,
                                 eos_token_id=tokenizer.eos_token_id,
                                 do_sample=False,

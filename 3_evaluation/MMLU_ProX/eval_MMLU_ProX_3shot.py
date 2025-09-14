@@ -58,74 +58,73 @@ MODEL_CONFIGS = [
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
     #     use_quantization=False
     # ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-        use_quantization=False
-    ),
     # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
     #     use_quantization=False
     # ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-org-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
-        use_quantization=False
-    ),
+    # # ModelConfig(
+    # #     name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    # #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    # #     use_quantization=False
+    # # ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-org-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+    #     use_quantization=False
+    # ),
 
-    ModelConfig(
-        name="qwem-2.5-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
 
-    ModelConfig(
-        name="gemma-3-4b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt-tow-09_11_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
 
+    # ModelConfig(
+    #     name="olmo-2-0425-1b",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="olmo-2-0425-1b-tow-09_11_allenai-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    
     ModelConfig(
-        name="olmo-2-0425-1b",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+        name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-
-
-    ModelConfig(
-        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        name="gemma-3-4b-pt-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        name="olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
 ]
@@ -498,7 +497,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
 
             batch_results.append({
                 'index': batch_indices[i],
-                'raw_output': generated_text[:200],
+                'raw_output': generated_text,
                 'full_generation': generated_text,  # 필요 없으면 None로 바꾸세요
                 'extracted_answer': extracted_answer
             })

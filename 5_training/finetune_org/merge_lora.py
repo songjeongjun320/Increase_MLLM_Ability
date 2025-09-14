@@ -8,8 +8,8 @@ from safetensors import safe_open
 
 # --- 설정 (본인 환경에 맞게 수정하세요) ---
 base_model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt"
-adapter_path = "./tow_trained_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize"
-output_merged_model_path = "./merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged"
+adapter_path = "./tow_trained_models/gemma-3-4b-tow-09_11_2epoch_fix_tow"
+output_merged_model_path = "./merged_models/gemma-3-4b-tow-09_11_2epoch_fix_tow-merged"
 # -----------------------------------------
 
 def get_adapter_vocab_size(adapter_path):

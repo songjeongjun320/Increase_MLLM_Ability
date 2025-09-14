@@ -959,8 +959,16 @@ def main(args: FlatArguments):
         with deepspeed.zero.GatheredParameters(embedding_layer.weight, modifier_rank=None):
             # Restore ToW token embeddings to their initial values
             for token_id, initial_embedding in tow_initial_embeddings.items():
-                embedding_layer.weight.data[token_id, :] = initial_embedding.to(embedding_layer.weight.device)
+                # token_id가 정수인지 확인하고, str 타입이면 숫자로 변환
+                if isinstance(token_id, str):
+                    token_id = tokenizer.convert_tokens_to_ids(token_id)  # token_id를 숫자 인덱스로 변환
 
+                # 'initial_embedding'이 텐서인지 확인하고, 텐서가 아니면 변환
+                if not isinstance(initial_embedding, torch.Tensor):
+                    initial_embedding = torch.tensor(initial_embedding, dtype=torch.float32)  # 텐서로 변환
+
+                # 초기 임베딩 값 할당
+                embedding_layer.weight.data[token_id, :] = initial_embedding.to(embedding_layer.weight.device)
         return output
 
     # Register the hook on the embedding layer

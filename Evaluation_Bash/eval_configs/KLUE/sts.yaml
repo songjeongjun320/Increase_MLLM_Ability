@@ -29,10 +29,8 @@ doc_to_choice: ["A", "B", "C", "D", "E"]
 fewshot_config:
   sampler: first_n
 
-# 점수를 A-E로 매핑 (0-1:A, 1.5-2.5:B, 2.5-3.5:C, 3.5-4.5:D, 4.5-5:E)
-doc_to_target: |
-  {% set score = labels.label|round %}
-  {% if score <= 1 %}A{% elif score == 2 %}B{% elif score == 3 %}C{% elif score == 4 %}D{% else %}E{% endif %}
+# 테스트: 의도적으로 항상 A를 반환 (accuracy가 변하는지 확인)
+doc_to_target: "A"
 
 num_fewshot: 3
 should_decontaminate: true

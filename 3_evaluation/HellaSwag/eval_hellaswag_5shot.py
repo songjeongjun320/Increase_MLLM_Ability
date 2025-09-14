@@ -303,7 +303,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     """Process a single prompt with retry logic for answer extraction failures"""
     for attempt in range(max_retries):
         try:
-            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=1500).to(DEVICE)
+            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
 
             with torch.inference_mode():
                 outputs = model.generate(
@@ -407,6 +407,8 @@ def load_hellaswag_data(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        # Sampling 10000 -> 1000
+        data = data[:1000]
         logger.info(f"Loaded {len(data)} items from {filepath}")
         return data
     except Exception as e:
@@ -621,7 +623,7 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                         continue
 
                     try:
-                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=1500).to(DEVICE)
+                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(DEVICE)
 
                         with torch.inference_mode():
                             outputs = model.generate(

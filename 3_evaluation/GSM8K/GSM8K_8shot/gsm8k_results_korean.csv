@@ -1,2 +1,4 @@
 Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total
-llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged,17.30,17.29,228,1318,1319
+qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged,53.26,53.22,702,1318,1319
+gemma-3-4b-tow-09_11_2epoch_fix_tow-merged,35.63,35.63,470,1319,1319
+olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged,0.00,0.00,0,0,1319

@@ -96,7 +96,8 @@ for i in "${!MODEL_NAMES[@]}"; do
             --tasks $TASK \
             --include_path ./eval_configs \
             --num_fewshot $NUM_FEWSHOT \
-            --batch_size auto \
+            --batch_size 4 \
+            --limit 1000 \
             --output_path $OUTPUT_FILE \
             --log_samples \
             --verbosity INFO

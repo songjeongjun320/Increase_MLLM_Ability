@@ -18,13 +18,13 @@
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 llama
-deepspeed --num_gpus=2 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow --exp_name "llama-3.2-3b-tow_2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow --exp_name "llama-3.2-3b-tow_2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 qwen 
-deepspeed --num_gpus=2 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow --exp_name "qwem-2.5-3b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow --exp_name "qwem-2.5-3b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
-deepspeed --num_gpus=2 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-tow-09_11_2epoch_fix_tow --exp_name "gemma-3-4b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-tow-09_11_2epoch_fix_tow --exp_name "gemma-3-4b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 olmo
-deepspeed --num_gpus=2 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow --exp_name "olmo-2-0425-1b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow --exp_name "olmo-2-0425-1b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 """
 import re
 import logging
@@ -875,10 +875,10 @@ def main(args: FlatArguments):
         logger.info("ToW token masking setup completed")
         logger.info("=" * 50)
 
-# update embedding size after resizing for sum loss
-embeddings = model.get_input_embeddings()
-with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
-    embedding_size = embeddings.weight.shape[0]
+    # update embedding size after resizing for sum loss
+    embeddings = model.get_input_embeddings()
+    with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
+        embedding_size = embeddings.weight.shape[0]
 
     # # set the tokenizer chat template to the tulu format
     # # this makes evaluation/etc easier down the line.

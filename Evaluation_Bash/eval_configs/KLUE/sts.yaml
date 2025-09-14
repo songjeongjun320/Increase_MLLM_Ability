@@ -17,10 +17,10 @@ doc_to_text: |
 
   위 두 문장의 의미적 유사성은?
   A. 매우 낮음 (0-1점)
-  B. 낮음 (2점)
-  C. 보통 (3점)
-  D. 높음 (4점)
-  E. 매우 높음 (5점)
+  B. 낮음 (1.5-2.5점)
+  C. 보통 (2.5-3.5점)
+  D. 높음 (3.5-4.5점)
+  E. 매우 높음 (4.5-5점)
 
   답:
 
@@ -29,8 +29,10 @@ doc_to_choice: ["A", "B", "C", "D", "E"]
 fewshot_config:
   sampler: first_n
 
-# 테스트: 의도적으로 항상 A를 반환 (accuracy가 변하는지 확인)
-doc_to_target: "A"
+# 점수를 A-E로 매핑: 0-1→A, 1.5-2.5→B, 2.5-3.5→C, 3.5-4.5→D, 4.5-5→E
+doc_to_target: |
+  {% set score = labels.label %}
+  {% if score <= 1.25 %}A{% elif score <= 2.25 %}B{% elif score <= 3.25 %}C{% elif score <= 4.25 %}D{% else %}E{% endif %}
 
 num_fewshot: 3
 should_decontaminate: true

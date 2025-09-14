@@ -135,8 +135,8 @@ MODEL_CONFIGS = [
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.jsonl"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.jsonl"
 BASE_OUTPUT_DIR = "mmlu_prox_3shot"
-BATCH_SIZE = 32
-MAX_NEW_TOKENS = 512
+BATCH_SIZE = 64
+MAX_NEW_TOKENS = 256
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
@@ -460,13 +460,14 @@ def get_ground_truth(item):
 def process_batch(model, tokenizer, batch_prompts, batch_indices):
     """Process a batch of prompts efficiently."""
     try:
-        # Tokenize batch
+        # 기존의 max_length=1024를 768로 줄이고 padding_side 최적화
         batch_inputs = tokenizer(
             batch_prompts, 
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=1024  # Longer context for complex questions
+            max_length=768,  # 1024에서 768로 변경
+            padding_side='right'  # 'left'에서 'right'로 변경 (generation에 더 효율적)
         ).to(DEVICE)
         
         with torch.inference_mode():
@@ -476,11 +477,10 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 do_sample=False,
-                temperature=0.0,
                 use_cache=True,
-                return_dict_in_generate=False,  # 그대로 False (속도 유리)
-                output_scores=False,
                 num_beams=1,
+                early_stopping=True, 
+                repetition_penalty=None,
             )
         
         batch_results = []
@@ -498,7 +498,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
 
             batch_results.append({
                 'index': batch_indices[i],
-                'raw_output': generated_text,
+                'raw_output': generated_text[:200],
                 'full_generation': generated_text,  # 필요 없으면 None로 바꾸세요
                 'extracted_answer': extracted_answer
             })
@@ -585,7 +585,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         tokenizer = AutoTokenizer.from_pretrained(
                     tokenizer_load_path, 
                     cache_dir=CACHE_DIR,
-                    padding_side='left',
+                    padding_side='right',
                     trust_remote_code=True
                 )
         
@@ -608,7 +608,8 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
             quantization_config=quantization_config_bnb,
             device_map="auto",
             trust_remote_code=True,
-            cache_dir=CACHE_DIR
+            cache_dir=CACHE_DIR,
+            low_cpu_mem_usage=True,  # 추가
         )
 
         if config.adapter_path:
@@ -677,7 +678,15 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         if "gemma" in config.name.lower():
             torch._dynamo.config.disable = True
             logger.info("Disabled torch compilation for Gemma model")
-            
+        else:
+            # 새로 추가: 모델 컴파일로 속도 향상
+            if hasattr(torch, 'compile'):
+                try:
+                    model = torch.compile(model, mode="reduce-overhead")
+                    logger.info("Model compiled for faster inference")
+                except Exception as e:
+                    logger.warning(f"Model compilation failed: {e}")
+
         all_results = {
             "mmlu_prox_en": {
                 "correct": 0, 

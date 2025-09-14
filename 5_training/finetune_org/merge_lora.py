@@ -1,3 +1,7 @@
+"""
+module load cuda-12.6.1-gcc-12.1.0
+"""
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel

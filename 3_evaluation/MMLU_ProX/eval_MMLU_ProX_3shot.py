@@ -16,6 +16,7 @@ import time
 import random
 
 torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 if torch.cuda.is_available():
     torch.set_float32_matmul_precision("high")  # "medium"도 OK
 
@@ -134,7 +135,7 @@ MODEL_CONFIGS = [
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.jsonl"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.jsonl"
 BASE_OUTPUT_DIR = "mmlu_prox_3shot"
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
@@ -465,7 +466,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=2048  # Longer context for complex questions
+            max_length=1024  # Longer context for complex questions
         ).to(DEVICE)
         
         with torch.inference_mode():
@@ -510,7 +511,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         individual_results = []
         for prompt, idx in zip(batch_prompts, batch_indices):
             try:
-                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=1500).to(DEVICE)
+                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=1024).to(DEVICE)
                 with torch.inference_mode():
                     outputs = model.generate(
                         **inputs,
@@ -519,6 +520,9 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
                         eos_token_id=tokenizer.eos_token_id,
                         do_sample=False,
                         temperature=0.0,
+                        num_beams=1,
+                        return_dict_in_generate=False,
+                        output_scores=False
                     )
                 # Decode only the generated part
                 input_len = inputs['input_ids'].shape[1]

@@ -2,42 +2,35 @@ task: sts
 dataset_path: klue
 dataset_name: sts
 test_split: validation
-output_type: generate_until
-
-generation_kwargs:
-  until: ["\n\n", "\n"]
-  max_gen_toks: 10
-  temperature: 0.0
-  do_sample: false
+output_type: multiple_choice
 
 metric_list:
-  - metric: pearsonr
+  - metric: acc
     aggregation: mean
     higher_is_better: true
 
-description: "두 문장의 의미적 유사성을 0-5 점수로 평가하세요."
+description: "두 문장의 의미적 유사성을 평가하세요."
 
 doc_to_text: |
   문장1: {{sentence1}}
   문장2: {{sentence2}}
 
-  위 두 문장의 의미적 유사성을 0점(전혀 유사하지 않음)부터 5점(완전히 동일함)까지의 점수로 평가하세요.
-  숫자만 답하세요.
+  위 두 문장의 의미적 유사성은?
+  A. 매우 낮음 (0-1점)
+  B. 낮음 (2점)
+  C. 보통 (3점)
+  D. 높음 (4점)
+  E. 매우 높음 (5점)
 
-  점수:
+  답:
 
-filter_list:
-  - name: "extract-number"
-    filter:
-      - function: "regex"
-        regex_pattern: r"(\d+(?:\.\d+)?)"
-      - function: "take_first"
+doc_to_choice: ["A", "B", "C", "D", "E"]
 
 fewshot_config:
   sampler: first_n
 
-# 실제 유사성 점수 (0-5 실수값)
-doc_to_target: "{{label}}"
+# 일단 고정값으로 테스트
+doc_to_target: "C"
 
 num_fewshot: 3
 should_decontaminate: true

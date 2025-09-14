@@ -19,9 +19,11 @@ description: "주어진 지문을 읽고 질문에 답하세요. 답할 수 없�
 
 doc_to_text: |
   지문: {{context}}
-  
+
   질문: {{question}}
-  
+
+  위 지문을 읽고 질문에 정확히 답하세요. 답을 찾을 수 없으면 '답할 수 없음'이라고 하세요.
+
   답변:
 
 # MRC answers 필드에서 첫 번째 답변 텍스트 추출
@@ -35,7 +37,7 @@ filter_list:
 fewshot_config:
   sampler: first_n
 
-num_fewshot: 2
+num_fewshot: 5
 should_decontaminate: true
 metadata:
   version: 1.0

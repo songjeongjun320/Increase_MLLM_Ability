@@ -14,10 +14,10 @@ MODEL_NAMES=(
     # "qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged"
     "olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged"
 
-    "llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged"
-    "qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged"
-    "gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged"
-    "olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged"
+    # "llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged"
+    # "qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged"
+    # "gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged"
+    # "olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged"
 )
 
 MODEL_PATHS=(
@@ -30,10 +30,10 @@ MODEL_PATHS=(
     # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged"
     "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged"
 
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged"
-    "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged"
+    # "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged"
 )
 
 ADAPTER_PATHS=(

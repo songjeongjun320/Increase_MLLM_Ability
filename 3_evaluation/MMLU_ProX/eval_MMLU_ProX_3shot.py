@@ -52,11 +52,11 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="llama-3.2-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",

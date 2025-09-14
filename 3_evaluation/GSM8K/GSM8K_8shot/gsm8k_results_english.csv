@@ -1,6 +1,5 @@
 Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total
-qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged,72.78,72.78,960,1319,1319
-gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged,50.49,50.49,666,1319,1319
-gemma-3-4b-pt,47.99,47.99,633,1319,1319
-olmo-2-0425-1b,0.00,0.00,0,57,1319
-olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged,0.00,0.00,0,32,1319
+qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged,69.22,69.22,913,1319,1319
+gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged,48.90,48.90,645,1319,1319
+llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged,31.99,31.99,422,1319,1319
+olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged,0.00,0.00,0,0,1319

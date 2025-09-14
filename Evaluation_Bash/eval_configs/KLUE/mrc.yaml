@@ -14,9 +14,6 @@ metric_list:
   - metric: exact_match
     aggregation: mean
     higher_is_better: true
-  - metric: quasi_exact_match
-    aggregation: mean
-    higher_is_better: true
 
 description: "주어진 지문을 읽고 질문에 답하세요. 답할 수 없으면 '답할 수 없음'이라고 하세요."
 
@@ -27,8 +24,8 @@ doc_to_text: |
   
   답변:
 
-# 첫 번째 답변의 텍스트 추출 (단순화)
-doc_to_target: "{{answers[0].text if answers else ''}}"
+# MRC answers 필드에서 첫 번째 답변 텍스트 추출
+doc_to_target: "{{answers.text[0]}}"
 
 filter_list:
   - name: "whitespace"

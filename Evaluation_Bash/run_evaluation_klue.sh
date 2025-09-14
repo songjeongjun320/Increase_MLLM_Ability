@@ -47,7 +47,7 @@ ADAPTER_PATHS=(
 
 # KLUE 전체 8개 태스크
 # TASKS=("tc" "nli" "re" "mrc" "ner" "sts" "dp" "dst")
-TASKS=("mrc" "ner" "sts" "dp" "dst")
+TASKS=("sts") #  "ner" "mrc" "dp" "dst"
 
 RESULTS_DIR="./evaluation_results_klue"
 mkdir -p $RESULTS_DIR

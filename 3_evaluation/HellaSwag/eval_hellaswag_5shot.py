@@ -40,8 +40,61 @@ class ModelConfig:
     adapter_path: str = None
     use_quantization: bool = True
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
-
 MODEL_CONFIGS = [
+    ModelConfig(
+        name="llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-org-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="qwem-2.5-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="gemma-3-4b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="olmo-2-0425-1b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+        use_quantization=False
+    ),
+    
     ModelConfig(
         name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
@@ -63,7 +116,6 @@ MODEL_CONFIGS = [
         use_quantization=False
     ),
 ]
-
 # --- General Configuration ---
 HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/hellaswag.json"
 KO_HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/ko_hellaswag.json"
@@ -203,15 +255,15 @@ def create_5shot_prompt(item, examples, dataset_type="hellaswag"):
     """Create 5-shot prompt for HellaSwag evaluation"""
     if dataset_type == "hellaswag":
         prompt_parts = ["The following are reading comprehension questions. Choose the most logical continuation from the given options.\n"]
-        response_header = "Answer:"
+        response_header = "#### Answer:"
         cot_trigger = "Let's think step by step."
-        final_answer_prefix = "Therefore, the answer is:"
+        final_answer_prefix = "#### Therefore, the answer is:"
 
     else:  # ko-hellaswag
         prompt_parts = ["다음은 독해 문제들입니다. 주어진 선택지 중 가장 논리적인 연속을 선택하세요.\n"]
-        response_header = "답변:"
+        response_header = "#### 정답:"
         cot_trigger = "단계별로 생각해봅시다."
-        final_answer_prefix = "따라서 정답은:"
+        final_answer_prefix = "#### 따라서 정답은:"
 
     # Add 5 examples
     for i, example in enumerate(examples):
@@ -223,10 +275,12 @@ def create_5shot_prompt(item, examples, dataset_type="hellaswag"):
         # Question and options
         prompt_parts.append(f"Context: {ctx}")
         for j, ending in enumerate(endings):
-            prompt_parts.append(f"{j}. {ending}")
+            option_letter = chr(65 + j)  # A, B, C, D
+            prompt_parts.append(f"{option_letter}. {ending}")
 
         # Complete response with reasoning and answer
-        full_response = f"{response_header} {cot_content} {final_answer_prefix} {answer}."
+        answer_letter = chr(65 + answer)  # Convert 0,1,2,3 to A,B,C,D
+        full_response = f"{response_header} {cot_content} {final_answer_prefix} {{{answer_letter}}}. #### {{{answer_letter}}}."
         prompt_parts.append(full_response)
         prompt_parts.append("") # Empty line between examples
 
@@ -236,7 +290,8 @@ def create_5shot_prompt(item, examples, dataset_type="hellaswag"):
 
     prompt_parts.append(f"Context: {test_ctx}")
     for j, ending in enumerate(test_endings):
-        prompt_parts.append(f"{j}. {ending}")
+        option_letter = chr(65 + j)  # A, B, C, D
+        prompt_parts.append(f"{option_letter}. {ending}")
     prompt_parts.append("")
 
     # Start reasoning
@@ -248,7 +303,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     """Process a single prompt with retry logic for answer extraction failures"""
     for attempt in range(max_retries):
         try:
-            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=1500).to(DEVICE)
 
             with torch.inference_mode():
                 outputs = model.generate(
@@ -287,59 +342,63 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     return f"EXTRACTION_FAILED after {max_retries} attempts", None
 
 def extract_answer_robust(model_output: str) -> int:
-    """Extract the final answer (0, 1, 2, 3) from model output for HellaSwag"""
+    """Extract the final answer (A, B, C, D) from model output for HellaSwag and convert to 0,1,2,3"""
     if not model_output:
         return None
 
     cleaned_output = model_output.strip().upper()
-    valid_answers = ['0', '1', '2', '3']
 
     import re
 
-    # Priority 1: Structured answer patterns
+    # Find all #### triggers and {} patterns in order
+    answer_candidates = []
+
+    # Priority 1: Look for #### {letter} patterns
+    bracket_patterns = re.findall(r'####\s*\{([A-D])\}', cleaned_output)
+    answer_candidates.extend(bracket_patterns)
+
+    # Priority 2: Look for structured answer patterns with #### trigger
     structured_patterns = [
-        r'(?:THEREFORE|따라서|그러므로)\s*,?\s*(?:THE\s+)?(?:ANSWER|정답|답)\s*(?:IS)?\s*:?\s*([0-3])',
-        r'(?:정답|답|ANSWER)\s*:?\s*([0-3])',
-        r'(?:선택지|OPTION)\s*([0-3])',
+        r'####\s*(?:THEREFORE|따라서|그러므로)\s*,?\s*(?:THE\s+)?(?:ANSWER|정답|답)\s*(?:IS)?\s*:?\s*([A-D])',
+        r'####\s*(?:정답|답|ANSWER)\s*:?\s*([A-D])',
+        r'####\s*([A-D])',
     ]
 
     for pattern in structured_patterns:
         matches = re.findall(pattern, cleaned_output)
-        if matches:
-            try:
-                return int(matches[0])
-            except ValueError:
-                continue
+        answer_candidates.extend(matches)
 
-    # Priority 2: Look for numbers at the end of the text
-    last_part = cleaned_output[-50:] if len(cleaned_output) > 50 else cleaned_output
+    # Priority 3: Look for {letter} patterns anywhere
+    bracket_only = re.findall(r'\{([A-D])\}', cleaned_output)
+    answer_candidates.extend(bracket_only)
 
-    end_patterns = [
-        r'([0-3])(?:\s*[\.:;]?\s*$)',  # Number at end with optional punctuation
-        r'(?:\s|^)([0-3])(?:\s|$)',    # Number surrounded by whitespace
+    # Priority 4: Look for general answer patterns
+    general_patterns = [
+        r'(?:THEREFORE|따라서|그러므로)\s*,?\s*(?:THE\s+)?(?:ANSWER|정답|답)\s*(?:IS)?\s*:?\s*([A-D])',
+        r'(?:정답|답|ANSWER)\s*:?\s*([A-D])',
+        r'(?:선택지|OPTION)\s*([A-D])',
     ]
 
-    for pattern in end_patterns:
-        matches = re.findall(pattern, last_part)
-        if matches:
-            try:
-                return int(matches[0])
-            except ValueError:
-                continue
+    for pattern in general_patterns:
+        matches = re.findall(pattern, cleaned_output)
+        answer_candidates.extend(matches)
 
-    # Priority 3: Scan from end backwards for valid numbers
+    # Use the first valid answer found
+    for candidate in answer_candidates:
+        if candidate in ['A', 'B', 'C', 'D']:
+            # Convert A,B,C,D to 0,1,2,3
+            return ord(candidate) - ord('A')
+
+    # Fallback: scan from end backwards for A,B,C,D
     for i in range(len(cleaned_output) - 1, -1, -1):
-        if cleaned_output[i] in valid_answers:
-            # Check if this number appears to be part of an answer pattern
-            if i > 0 and cleaned_output[i-1].isdigit():
-                continue  # Skip if part of a larger number
-            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isdigit():
-                continue  # Skip if part of a larger number
+        if cleaned_output[i] in ['A', 'B', 'C', 'D']:
+            # Check if this letter appears to be part of an answer pattern
+            if i > 0 and cleaned_output[i-1].isalpha():
+                continue  # Skip if part of a larger word
+            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalpha():
+                continue  # Skip if part of a larger word
 
-            try:
-                return int(cleaned_output[i])
-            except ValueError:
-                continue
+            return ord(cleaned_output[i]) - ord('A')
 
     return None
 
@@ -550,7 +609,7 @@ def evaluate_single_model(config: ModelConfig, hellaswag_data: list, ko_hellaswa
                         continue
 
                     try:
-                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=1500).to(DEVICE)
 
                         with torch.inference_mode():
                             outputs = model.generate(

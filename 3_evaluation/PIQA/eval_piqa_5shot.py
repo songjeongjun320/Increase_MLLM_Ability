@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Global Configuration
 PIQA_DATASET_PATH = "../../2_datasets/PIQA/piqa.json"
 KO_PIQA_DATASET_PATH = "../../2_datasets/PIQA/ko-piqa.json"
-BASE_OUTPUT_DIR = "piqa_3shot"
+BASE_OUTPUT_DIR = "piqa_5shots"
 BATCH_SIZE = 16
 MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -48,59 +48,59 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-tow-09_11_2epoch_org_initialize",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-org-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-org-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+        use_quantization=False
+    ),
 
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
 
-    # ModelConfig(
-    #     name="gemma-3-4b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="gemma-3-4b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
 
-    # ModelConfig(
-    #     name="olmo-2-0425-1b",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="olmo-2-0425-1b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
 
     ModelConfig(
         name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
@@ -108,13 +108,13 @@ MODEL_CONFIGS = [
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_2epoch_fix_tow-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_fix_tow-merged",
+        name="qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_2epoch_fix_tow-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_fix_tow-merged",
+        name="gemma-3-4b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-tow-09_11_2epoch_fix_tow-merged",
         use_quantization=False
     ),
     ModelConfig(
@@ -130,7 +130,7 @@ if not os.path.exists(PIQA_DATASET_PATH):
 if not os.path.exists(KO_PIQA_DATASET_PATH):
     logger.error(f"Ko-PIQA dataset not found: {KO_PIQA_DATASET_PATH}")
 
-# --- Few-Shot Examples ---
+# --- Few-Shot Examples --- (5-shot version)
 ENGLISH_FEW_SHOT_EXAMPLES = [
     {
         "goal": "How to separate egg whites from egg yolks?",
@@ -152,6 +152,20 @@ ENGLISH_FEW_SHOT_EXAMPLES = [
         "sol2": "Push the splinter deeper into the skin until it comes out the other side.",
         "label": 0,
         "reasoning": "Safe splinter removal requires minimizing tissue damage and infection risk. Method A follows proper first aid by using sterile tools and removing the splinter along its entry path, which minimizes tissue tearing. Method B is dangerous as it would cause unnecessary injury, push bacteria deeper, and potentially break the splinter inside the tissue."
+    },
+    {
+        "goal": "How to boil pasta?",
+        "sol1": "Bring a pot of salted water to a boil, add the pasta, and cook for 8-10 minutes or until al dente. Drain and serve.",
+        "sol2": "Bring a pot of water to a boil, add the pasta, and cook for 12 minutes or until fully cooked. Drain and serve.",
+        "label": 0,
+        "reasoning": "Method A is ideal because it cooks pasta to an 'al dente' texture, which is firm yet tender. Method B overcooks the pasta, making it soft and mushy, which is less desirable."
+    },
+    {
+        "goal": "How to clean a kitchen sink?",
+        "sol1": "Use a mixture of vinegar and baking soda to scrub the sink, then rinse with warm water.",
+        "sol2": "Use a commercial cleaning product designed for kitchen surfaces, apply it to the sink, and wipe it clean.",
+        "label": 1,
+        "reasoning": "Method B is more convenient and effective in removing tough stains. However, Method A is eco-friendly and works well for regular cleaning without using harsh chemicals."
     }
 ]
 
@@ -176,10 +190,25 @@ KOREAN_FEW_SHOT_EXAMPLES = [
         "sol2": "가시를 피부 깊숙이 밀어넣어서 반대편으로 나오게 한다.",
         "label": 0,
         "reasoning": "가시를 안전하게 제거하려면 조직 손상과 감염 위험을 최소화해야 합니다. 방법 A는 멸균된 도구를 사용하고 가시가 들어간 경로를 따라 제거하여 조직 손상을 최소화합니다. 방법 B는 불필요한 부상을 유발하고 박테리아를 더 깊이 밀어넣으며 가시가 조직 내부에서 부러질 수 있어 위험합니다."
+    },
+    {
+        "goal": "파스타를 어떻게 삶나요?",
+        "sol1": "소금물을 끓여 파스타를 넣고 8-10분 동안 삶은 후 체에 밭쳐 건져낸다.",
+        "sol2": "물이 끓으면 파스타를 넣고 12분 동안 삶은 후 체에 밭쳐 건져낸다.",
+        "label": 0,
+        "reasoning": "방법 A는 알덴테 상태의 파스타를 만들기 위한 이상적인 방법입니다. 방법 B는 파스타가 지나치게 삶아져 부드럽고 질긴 질감을 낳을 수 있습니다."
+    },
+    {
+        "goal": "주방 싱크대를 어떻게 청소하나요?",
+        "sol1": "식초와 베이킹소다 혼합물로 싱크대를 문질러 청소한 후 따뜻한 물로 헹군다.",
+        "sol2": "주방용 세제를 사용해 싱크대에 뿌린 후 닦아낸다.",
+        "label": 1,
+        "reasoning": "방법 B는 주방에서 발생하는 기름때와 얼룩을 제거하는 데 효과적이고 간편하지만, 방법 A는 친환경적이고 화학 세제를 사용하지 않아 일상적인 청소에 적합합니다."
     }
 ]
 
-def create_3shot_prompt(test_item, language="en"):
+
+def create_5shots_prompt(test_item, language="en"):
     """
     Creates a 3-shot PIQA prompt using predefined few-shot examples with reasoning.
     """
@@ -278,7 +307,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=512
+                max_length=1024
             ).to(DEVICE)
 
             with torch.inference_mode():
@@ -349,7 +378,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=512
+            max_length=1024
         ).to(DEVICE)
         
         with torch.inference_mode():
@@ -391,7 +420,7 @@ def process_batch(model, tokenizer, batch_prompts, batch_indices):
         individual_results = []
         for prompt, idx in zip(batch_prompts, batch_indices):
             try:
-                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=512).to(DEVICE)
+                inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True, max_length=1024).to(DEVICE)
                 with torch.inference_mode():
                     outputs = model.generate(
                         **inputs,
@@ -432,10 +461,10 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
     """
     Performs 3-shot PIQA and Ko-PIQA evaluation for a single model using predefined examples.
     """
-    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_3shot.json")
-    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_3shot.log")
-    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_3shot.json")
-    failure_cases_filepath = os.path.join(model_specific_output_dir, f"raw_failure_{config.name}_3shot.json") 
+    results_filepath = os.path.join(model_specific_output_dir, f"results_{config.name}_5shots.json")
+    log_filepath = os.path.join(model_specific_output_dir, f"eval_{config.name}_5shots.log")
+    raw_gen_filepath = os.path.join(model_specific_output_dir, f"raw_generations_{config.name}_5shots.json")
+    failure_cases_filepath = os.path.join(model_specific_output_dir, f"raw_failure_{config.name}_5shots.json") 
 
     # Setup Logging
     file_handler = logging.FileHandler(log_filepath, mode='w', encoding='utf-8')
@@ -570,7 +599,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
                     continue
                     
                 # Use predefined few-shot examples instead of dev data
-                prompt = create_3shot_prompt(item, "en")
+                prompt = create_5shots_prompt(item, "en")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)
@@ -674,7 +703,7 @@ def evaluate_single_model_on_datasets(config: ModelConfig, piqa_test_data: list,
                     continue
                     
                 # Use predefined few-shot examples instead of dev data
-                prompt = create_3shot_prompt(item, "ko")
+                prompt = create_5shots_prompt(item, "ko")
                 batch_prompts.append(prompt)
                 batch_indices.append(i + j)
                 batch_ground_truths.append(ground_truth)

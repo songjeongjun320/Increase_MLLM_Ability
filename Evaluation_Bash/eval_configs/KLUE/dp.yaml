@@ -6,7 +6,7 @@ test_split: validation
 output_type: generate_until
 
 generation_kwargs:
-  until: ["\n\n", "\n문장:", "<|im_end|>"]
+  until: ["\n\n", "\n"]
   max_gen_toks: 200
   temperature: 0.0
 

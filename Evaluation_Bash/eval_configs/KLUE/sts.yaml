@@ -40,8 +40,8 @@ filter_list:
 fewshot_config:
   sampler: first_n
 
-# 실제 점수 값 (0-5 범위의 실수) - 하이픈 포함 필드명
-doc_to_target: "{{labels['real-label']}}"
+# 실제 점수 값 (0-5 범위의 실수) - 하이픈 포함 필드명 수정
+doc_to_target: "{{labels.get('real-label', labels.label)}}"
 
 num_fewshot: 3
 should_decontaminate: true

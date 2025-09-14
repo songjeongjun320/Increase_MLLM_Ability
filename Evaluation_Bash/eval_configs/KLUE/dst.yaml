@@ -6,7 +6,7 @@ test_split: validation
 output_type: generate_until
 
 generation_kwargs:
-  until: ["\n\n", "\n대화:", "<|im_end|>"]
+  until: ["\n\n", "\n"]
   max_gen_toks: 200
   temperature: 0.0
 
@@ -17,27 +17,14 @@ metric_list:
 
 description: "대화에서 현재 상태의 슬롯-값 쌍을 예측하세요."
 
-# WoS 데이터는 복잡한 구조이므로 전체 대화를 제공하고 마지막 사용자 발언의 상태를 예측하도록 설계
+# WoS 데이터 단순화된 대화 처리
 doc_to_text: |
-  다음 대화에서 마지막 사용자 발언 후의 대화 상태를 예측하세요.
-  
-  {% for turn in dialogue %}
-  {% if turn.role == 'user' %}사용자: {{ turn.text }}
-  {% else %}시스템: {{ turn.text }}
-  {% endif %}
-  {% endfor %}
-  
-  현재 대화 상태 (형식: 도메인-슬롯-값):
+  대화: {{dialogue[-1].text if dialogue else ''}}
 
-# 마지막 사용자 턴의 state를 target으로 사용
-doc_to_target: |
-  {% set last_user_state = [] %}
-  {% for turn in dialogue %}
-    {% if turn.role == 'user' and turn.state %}
-      {% set last_user_state = turn.state %}
-    {% endif %}
-  {% endfor %}
-  {{ last_user_state|join(', ') if last_user_state else 'none' }}
+  현재 대화 상태를 예측하세요:
+
+# 단순화된 state 추출
+doc_to_target: "{{state|join(', ') if state else 'none'}}"
 
 filter_list:
   - name: "whitespace"

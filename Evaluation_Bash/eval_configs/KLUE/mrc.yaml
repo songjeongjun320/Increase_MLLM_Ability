@@ -6,7 +6,7 @@ test_split: validation
 output_type: generate_until
 
 generation_kwargs:
-  until: ["\n\n", "\n질문:", "\n지문:", "<|im_end|>"]
+  until: ["\n\n", "\n"]
   max_gen_toks: 100
   temperature: 0.0
 
@@ -27,13 +27,8 @@ doc_to_text: |
   
   답변:
 
-# 첫 번째 답변의 텍스트 추출 (더 안전한 접근 방식)
-doc_to_target: |
-  {% if answers and answers|length > 0 and answers[0].text %}
-  {{ answers[0].text }}
-  {% else %}
-  
-  {% endif %}
+# 첫 번째 답변의 텍스트 추출 (단순화)
+doc_to_target: "{{answers[0].text if answers else ''}}"
 
 filter_list:
   - name: "whitespace"

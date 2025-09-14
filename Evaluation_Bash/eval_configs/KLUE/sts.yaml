@@ -11,9 +11,6 @@ generation_kwargs:
   do_sample: false
 
 metric_list:
-  - metric: spearmanr
-    aggregation: mean
-    higher_is_better: true
   - metric: acc
     aggregation: mean
     higher_is_better: true
@@ -29,19 +26,19 @@ doc_to_text: |
   
   점수:
 
-# 더 포괄적인 숫자 추출 패턴
+# 숫자 추출 패턴
 filter_list:
   - name: "get-score"
     filter:
       - function: "regex"
-        regex_pattern: r"([0-5](?:\.[0-9]+)?)"
+        regex_pattern: r"(\d+(?:\.\d+)?)"
       - function: "take_first"
 
 fewshot_config:
   sampler: first_n
 
-# 실제 점수 값 (0-5 범위의 실수) - 하이픈 포함 필드명 수정
-doc_to_target: "{{labels.get('real-label', labels.label)}}"
+# 실제 점수 값 (0-5 범위의 실수) - 안전한 접근
+doc_to_target: "label"
 
 num_fewshot: 3
 should_decontaminate: true

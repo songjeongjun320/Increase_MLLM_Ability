@@ -23,7 +23,10 @@ doc_to_text: |
   답:
 
 doc_to_choice: ["A", "B", "C"]
-doc_to_target: "label"
+# label을 A-C로 매핑 (0:A(entailment), 1:B(neutral), 2:C(contradiction))
+doc_to_target: |
+  {% set choices = ["A", "B", "C"] %}
+  {{ choices[label] }}
 
 fewshot_config:
   sampler: first_n

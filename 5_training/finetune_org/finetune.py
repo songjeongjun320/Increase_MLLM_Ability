@@ -694,7 +694,35 @@ def main(args: FlatArguments):
             num_added_tokens = tokenizer.add_special_tokens({"pad_token": "<pad>"})
             assert num_added_tokens == 1, "We detected no padding token but add_special_tokens did not add one."
 
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
+    # ToW 토큰 중복 확인 및 안전한 추가
+    def ensure_unique_tow_tokens(tokenizer):
+        """ToW 토큰이 이미 존재하는지 확인하고 필요한 경우에만 추가"""
+        vocab = tokenizer.get_vocab()
+        existing_special_tokens = tokenizer.additional_special_tokens or []
+        
+        # 중복 토큰 검사
+        tow_start_exists = '<ToW>' in vocab or '<ToW>' in existing_special_tokens
+        tow_end_exists = '</ToW>' in vocab or '</ToW>' in existing_special_tokens
+        
+        tokens_to_add = []
+        if not tow_start_exists:
+            tokens_to_add.append('<ToW>')
+        if not tow_end_exists:
+            tokens_to_add.append('</ToW>')
+        
+        if tokens_to_add:
+            # 기존 토큰과 새 토큰을 합쳐서 추가
+            all_special_tokens = existing_special_tokens + tokens_to_add
+            tokenizer.add_special_tokens({'additional_special_tokens': all_special_tokens})
+            logger.info(f"Added new ToW tokens: {tokens_to_add}")
+        else:
+            logger.info("ToW tokens already exist in tokenizer - skipping addition")
+        
+        return tokenizer.convert_tokens_to_ids('<ToW>'), tokenizer.convert_tokens_to_ids('</ToW>')
+
+    # 기존 한 줄을 이것으로 교체
+    tow_start_id_from_add, tow_end_id_from_add = ensure_unique_tow_tokens(tokenizer)
+
 
     # ===== ToW Token Debugging =====
     if accelerator.is_main_process:
@@ -707,8 +735,8 @@ def main(args: FlatArguments):
         logger.info(f"Additional special tokens: {tokenizer.additional_special_tokens}")
         
         # 2. ToW 토큰 ID 확인
-        tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
-        tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
+        tow_start_id = tow_start_id_from_add
+        tow_end_id = tow_end_id_from_add
         logger.info(f"<ToW> token ID: {tow_start_id}")
         logger.info(f"</ToW> token ID: {tow_end_id}")
         

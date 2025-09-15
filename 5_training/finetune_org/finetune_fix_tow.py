@@ -18,11 +18,11 @@
 module load cuda-12.6.1-gcc-12.1.0
 echo $CUDA_HOME
 llama
-deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow --exp_name "llama-3.2-3b-tow_2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/llama-3.2-3b-tow-09_11_4epoch_fix_tow --exp_name "llama-3.2-3b-tow_4epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 qwen 
-deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow --exp_name "qwem-2.5-3b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/qwem-2.5-3b-tow-09_11_4epoch_fix_tow --exp_name "qwem-2.5-3b-tow-4epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 gemma
-deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-tow-09_11_2epoch_fix_tow --exp_name "gemma-3-4b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
+deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-tow-09_11_2epoch_fix_tow-merged --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/gemma-3-4b-tow-09_11_4epoch_fix_tow --exp_name "gemma-3-4b-tow-4epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 olmo
 deepspeed --num_gpus=1 finetune_fix_tow.py --model_name_or_path /scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b --train_file /scratch/jsong132/Increase_MLLM_Ability/4_tow_generation/tow_data/tow_09_11.jsonl --output_dir ./tow_trained_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow --exp_name "olmo-2-0425-1b-tow-2epoch-sft" --num_train_epochs 2 --per_device_train_batch_size 2 --gradient_accumulation_steps 16 --learning_rate 2e-5 --max_seq_length 2048 --use_flash_attn False --gradient_checkpointing True --logging_steps 10 --checkpointing_steps 500 --with_tracking False --report_to "wandb" --seed 42 --use_qlora False --keep_last_n_checkpoints 3
 """
@@ -694,7 +694,34 @@ def main(args: FlatArguments):
             num_added_tokens = tokenizer.add_special_tokens({"pad_token": "<pad>"})
             assert num_added_tokens == 1, "We detected no padding token but add_special_tokens did not add one."
 
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<ToW>', '</ToW>']})
+    # ToW 토큰 중복 확인 및 안전한 추가
+    def ensure_unique_tow_tokens(tokenizer):
+        """ToW 토큰이 이미 존재하는지 확인하고 필요한 경우에만 추가"""
+        vocab = tokenizer.get_vocab()
+        existing_special_tokens = tokenizer.additional_special_tokens or []
+        
+        # 중복 토큰 검사
+        tow_start_exists = '<ToW>' in vocab or '<ToW>' in existing_special_tokens
+        tow_end_exists = '</ToW>' in vocab or '</ToW>' in existing_special_tokens
+        
+        tokens_to_add = []
+        if not tow_start_exists:
+            tokens_to_add.append('<ToW>')
+        if not tow_end_exists:
+            tokens_to_add.append('</ToW>')
+        
+        if tokens_to_add:
+            # 기존 토큰과 새 토큰을 합쳐서 추가
+            all_special_tokens = existing_special_tokens + tokens_to_add
+            tokenizer.add_special_tokens({'additional_special_tokens': all_special_tokens})
+            logger.info(f"Added new ToW tokens: {tokens_to_add}")
+        else:
+            logger.info("ToW tokens already exist in tokenizer - skipping addition")
+        
+        return tokenizer.convert_tokens_to_ids('<ToW>'), tokenizer.convert_tokens_to_ids('</ToW>')
+
+    # 기존 한 줄을 이것으로 교체
+    tow_start_id_from_add, tow_end_id_from_add = ensure_unique_tow_tokens(tokenizer)
 
     # ===== ToW Token Debugging =====
     if accelerator.is_main_process:
@@ -706,9 +733,10 @@ def main(args: FlatArguments):
         logger.info(f"Tokenizer vocab size: {len(tokenizer)}")
         logger.info(f"Additional special tokens: {tokenizer.additional_special_tokens}")
         
-        # 2. ToW 토큰 ID 확인
-        tow_start_id = tokenizer.convert_tokens_to_ids('<ToW>')
-        tow_end_id = tokenizer.convert_tokens_to_ids('</ToW>')
+        # ===== ToW 토큰 마스킹 설정 =====
+        # ToW 토큰 ID 저장 (이미 위에서 가져온 값 사용)
+        tow_start_id = tow_start_id_from_add
+        tow_end_id = tow_end_id_from_add
         logger.info(f"<ToW> token ID: {tow_start_id}")
         logger.info(f"</ToW> token ID: {tow_end_id}")
         
@@ -958,17 +986,8 @@ def main(args: FlatArguments):
         # Use DeepSpeed ZeRO context to handle distributed parameters
         with deepspeed.zero.GatheredParameters(embedding_layer.weight, modifier_rank=None):
             # Restore ToW token embeddings to their initial values
-            for token_id, initial_embedding in tow_initial_embeddings.items():
-                # token_id가 정수인지 확인하고, str 타입이면 숫자로 변환
-                if isinstance(token_id, str):
-                    token_id = tokenizer.convert_tokens_to_ids(token_id)  # token_id를 숫자 인덱스로 변환
-
-                # 'initial_embedding'이 텐서인지 확인하고, 텐서가 아니면 변환
-                if not isinstance(initial_embedding, torch.Tensor):
-                    initial_embedding = torch.tensor(initial_embedding, dtype=torch.float32)  # 텐서로 변환
-
-                # 초기 임베딩 값 할당
-                embedding_layer.weight.data[token_id, :] = initial_embedding.to(embedding_layer.weight.device)
+            embedding_layer.weight.data[tow_start_id, :] = tow_initial_embeddings['start'].to(embedding_layer.weight.device)
+            embedding_layer.weight.data[tow_end_id, :] = tow_initial_embeddings['end'].to(embedding_layer.weight.device)
         return output
 
     # Register the hook on the embedding layer
@@ -1360,6 +1379,24 @@ def main(args: FlatArguments):
             args.output_dir,
             args.use_lora,
         )
+        
+        # 토크나이저 명시적 저장 추가
+        if accelerator.is_main_process:
+            logger.info(f"Explicitly saving tokenizer to {args.output_dir}")
+            tokenizer.save_pretrained(args.output_dir)
+            logger.info("Tokenizer saved successfully")
+            
+            # 저장된 토크나이저 검증
+            try:
+                test_tokenizer = AutoTokenizer.from_pretrained(args.output_dir)
+                tow_start_id = test_tokenizer.convert_tokens_to_ids('<ToW>')
+                tow_end_id = test_tokenizer.convert_tokens_to_ids('</ToW>')
+                if tow_start_id != tokenizer.unk_token_id and tow_end_id != tokenizer.unk_token_id:
+                    logger.info(f"Tokenizer validation successful - ToW tokens saved with IDs: {tow_start_id}, {tow_end_id}")
+                else:
+                    logger.warning("Tokenizer validation failed - ToW tokens not properly saved")
+            except Exception as e:
+                logger.error(f"Tokenizer validation error: {e}")
         
     # Conditional checkpoint cleanup - preserve steps for restart capability
     if accelerator.is_local_main_process:

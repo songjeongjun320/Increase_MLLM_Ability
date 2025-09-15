@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Global Configuration
 PIQA_DATASET_PATH = "../../2_datasets/PIQA/piqa.json"
 KO_PIQA_DATASET_PATH = "../../2_datasets/PIQA/ko-piqa.json"
-BASE_OUTPUT_DIR = "piqa_5shots"
+BASE_OUTPUT_DIR = "piqa_5shots_tokenizer_added"
 BATCH_SIZE = 16
 MAX_NEW_TOKENS = 512
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -48,30 +48,30 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="llama-3.2-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="olmo-2-0425-1b",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
+    #     use_quantization=False
+    # ),
+
     ModelConfig(
         name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-org-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
-        use_quantization=False
-    ),
-
-    ModelConfig(
-        name="qwem-2.5-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
         use_quantization=False
     ),
     ModelConfig(
@@ -79,26 +79,35 @@ MODEL_CONFIGS = [
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
-
-    ModelConfig(
-        name="gemma-3-4b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-        use_quantization=False
-    ),
     ModelConfig(
         name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
-
-    ModelConfig(
-        name="olmo-2-0425-1b",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
-        use_quantization=False
-    ),
     ModelConfig(
         name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
         use_quantization=False
     ),
 
@@ -123,7 +132,6 @@ MODEL_CONFIGS = [
         use_quantization=False
     ),
 ]
-
 
 if not os.path.exists(PIQA_DATASET_PATH):
     logger.error(f"PIQA dataset not found: {PIQA_DATASET_PATH}")

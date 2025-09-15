@@ -59,49 +59,63 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+    #     name="qwem-2.5-3b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
     #     use_quantization=False
     # ),
     # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-org-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-org-merged",
+    #     name="gemma-3-4b-pt",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="olmo-2-0425-1b",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
     #     use_quantization=False
     # ),
 
     ModelConfig(
-        name="qwem-2.5-3b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
         use_quantization=False
     ),
 
     ModelConfig(
-        name="gemma-3-4b-pt",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
         use_quantization=False
     ),
     ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
         use_quantization=False
     ),
 
-    ModelConfig(
-        name="olmo-2-0425-1b",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_allenai-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    
     ModelConfig(
         name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
@@ -128,7 +142,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.jsonl"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.jsonl"
-BASE_OUTPUT_DIR = "mmlu_prox_3shot"
+BASE_OUTPUT_DIR = "mmlu_prox_3shot_tokenizer_added"
 BATCH_SIZE = 64
 MAX_NEW_TOKENS = 256
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

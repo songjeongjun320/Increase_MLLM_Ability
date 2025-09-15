@@ -49,9 +49,9 @@ ADAPTER_PATHS=(
 # TASKS=("tc" "nli" "re" "mrc" "ner" "sts" "dp" "dst")
 # tc, re, nli
 # sts, mrc, ner
-TASKS=("dst")
+TASKS=("tc" "nli" "re")
 
-RESULTS_DIR="./evaluation_results_klue"
+RESULTS_DIR="./evaluation_results_klue_tokenizer_added"
 mkdir -p $RESULTS_DIR
 
 NUM_MODELS=${#MODEL_NAMES[@]}

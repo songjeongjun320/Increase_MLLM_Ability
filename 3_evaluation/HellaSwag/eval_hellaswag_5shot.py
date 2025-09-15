@@ -40,6 +40,8 @@ class ModelConfig:
     adapter_path: str = None
     use_quantization: bool = True
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
+
+
 MODEL_CONFIGS = [
     # ModelConfig(
     #     name="llama-3.2-3b-pt",
@@ -62,26 +64,26 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
 
     ModelConfig(
         name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
@@ -131,7 +133,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/hellaswag_validation.json"
 KO_HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/ko_hellaswag_validation.json"
-BASE_OUTPUT_DIR = "hellaswag_5shot_results"
+BASE_OUTPUT_DIR = "hellaswag_5shot_results_tokenizer_added"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BATCH_SIZE = 16

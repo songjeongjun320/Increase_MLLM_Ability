@@ -1,0 +1,35 @@
+# 이 태스크의 고유 이름
+task: piqa_en_custom
+
+dataset_path: json
+dataset_kwargs:
+  data_files: "2_datasets/PIQA/piqa.json"
+
+test_split: train  # 또는 validation
+
+
+# 평가 방식: 객관식
+output_type: multiple_choice
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+
+# 프롬프트 생성 규칙
+doc_to_text: "{{goal}}\n\nWhich of the following is the more likely solution?\nA. {{sol1}}\nB. {{sol2}}\n\nAnswer:"
+
+# 퓨샷 설정 (PIQA는 보통 Zero-shot)
+fewshot_config:
+  sampler: first_n
+
+# 데이터 필드 매핑 - PIQA는 2개 선택지 (A, B)
+doc_to_choice: ["A", "B"]
+
+# 데이터의 'label' 필드 (0 또는 1)를 정답 인덱스로 사용
+doc_to_target: "label"
+
+# 추가 설정
+num_fewshot: 0  # PIQA 표준 Zero-shot
+should_decontaminate: true
+metadata:
+  version: 1.0

@@ -16,6 +16,10 @@ from datetime import datetime
 import time
 import random
 
+# Import ToW token checker
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from check_tokenizer import check_tow_tokens_for_eval
+
 os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 transformers.logging.set_verbosity_error()
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
@@ -465,6 +469,20 @@ def evaluate_single_model(config: ModelConfig, mmlu_data: list, model_specific_o
             else:
                 logger.warning("Tokenizer lacks both pad and eos tokens. Adding a new pad token '[PAD]'.")
                 tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
+        # === TOKENIZER VERIFICATION ===
+        tokenizer_status = check_tow_tokens_for_eval(
+            tokenizer=tokenizer,
+            model_path=tokenizer_load_path,
+            model_name=config.name,
+            logger=logger
+        )
+
+        if not tokenizer_status.is_valid:
+            logger.warning(f"⚠️ ToW tokens not properly configured for {config.name}")
+            for issue in tokenizer_status.issues:
+                logger.warning(f"   - {issue}")
+        # ===============================
 
         logger.info(f"Loading model {config.model_id}...")
         quantization_config_bnb = None

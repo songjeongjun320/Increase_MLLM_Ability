@@ -25,6 +25,10 @@ import time
 import random
 import traceback
 
+# Import ToW token checker
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from check_tokenizer import check_tow_tokens_for_eval
+
 torch.backends.cuda.matmul.allow_tf32 = True
 if torch.cuda.is_available():
     torch.set_float32_matmul_precision("high") 
@@ -548,6 +552,20 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             else:
                 logger.warning("Tokenizer lacks both pad and eos tokens. Adding new pad token '[PAD]'.")
                 tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
+        # === TOKENIZER VERIFICATION ===
+        tokenizer_status = check_tow_tokens_for_eval(
+            tokenizer=tokenizer,
+            model_path=tokenizer_load_path,
+            model_name=config.name,
+            logger=logger
+        )
+
+        if not tokenizer_status.is_valid:
+            logger.warning(f"⚠️ ToW tokens not properly configured for {config.name}")
+            for issue in tokenizer_status.issues:
+                logger.warning(f"   - {issue}")
+        # ===============================
 
         logger.info(f"Loading model {config.model_id}...")
         quantization_config_bnb = None

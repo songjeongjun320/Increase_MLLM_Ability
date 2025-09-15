@@ -1,8 +1,14 @@
 """
-Re-extract Answers from JSON Results
+Re-extract Answers from JSON Results (STRICT MODE)
 
-This script re-extracts answers from raw_output in JSON files and evaluates accuracy.
-It's useful for re-evaluating model results with improved extraction logic.
+This script re-extracts answers from raw_output in JSON files using STRICT validation.
+Only accepts {} format or #### format matching few-shot examples.
+
+STRICT MODE CHANGES:
+- Only accepts {A}, {B}, {C}, {D} box format
+- Only accepts #### Answer: A or #### A format
+- Rejects all other formats (e.g., "The answer is A", "A.", "(A)", etc.)
+- Forces models to follow exact few-shot example formats
 
 Usage:
     python re_extract_answers.py results.json
@@ -12,7 +18,7 @@ Usage:
 The script expects a JSON file with a list of items, each containing:
 - raw_output: The model's raw text output
 - ground_truth: The correct answer (A, B, C, or D)
-- extracted_answer: Previously extracted answer (optional)
+- extracted_answer: Previously extracted answer (optional, -1 means extraction failed)
 """
 
 import json
@@ -23,72 +29,37 @@ from typing import Optional
 
 def extract_answer_robust(model_output: str) -> Optional[str]:
     """
-    Extract the final answer (A, B, C, D) from model output using structured patterns first.
-    Supports A-D for 4 options (ARC format).
+    Extract the final answer (A, B, C, D) from model output using STRICT validation.
+    Returns None if no clear structured answer is found.
+    STRICT MODE: Only accepts {} format or #### format like in few-shot examples.
     """
     if not model_output:
         return None
-        
+
     cleaned_output = model_output.strip().upper()
     valid_answers = ['A', 'B', 'C', 'D']
-    
-    # Priority 1: Structured answer patterns (most reliable)
+
+    # STRICT: Only accept the exact formats shown in few-shot examples
+    # Priority 1: Box format {A} - exact match to few-shot examples
+    box_pattern = r'\{([A-D])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        return box_matches[-1]  # Return the last match (final answer)
+
+    # Priority 2: #### format - exact match to few-shot examples
     structured_patterns = [
-        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-D])\}?',  # #### Answer: A or #### 정답: A or {A}
-        r'\{([A-D])\}',  # {A} box format matching prompt style
-        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-D])\}?',        # Answer: A or 정답: A or {A}
-        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-D])\}?',  # So the answer is A or {A}
+        r'####\s*(?:ANSWER)\s*:?\s*([A-D])',  # #### Answer: A
+        r'####\s*([A-D])',  # #### A
     ]
-    
+
     for pattern in structured_patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
-    
-    # Priority 2: Start of text patterns
-    start_patterns = [
-        r'^\s*([A-D])[\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([A-D])\)?\s*[\.:;]',  # (A): or A. or A:
-        r'^\s*([A-D])\s*$',          # Just A at start of line
-    ]
-    
-    for pattern in start_patterns:
-        match = re.search(pattern, cleaned_output, re.MULTILINE)
-        if match:
-            return match.group(1)
-    
-    # Priority 3: Last resort - find A-D near end of text (avoid random letters in middle)
-    # Only look in last 100 characters to avoid picking up random letters
-    last_part = cleaned_output[-100:] if len(cleaned_output) > 100 else cleaned_output
-    
-    # Look for isolated A-D characters near the end
-    end_patterns = [
-        r'([A-D])(?:\s*[\.:;]?\s*$)',  # A at end with optional punctuation
-        r'(?:\s|^)([A-D])(?:\s|$)',    # A surrounded by whitespace
-    ]
-    
-    for pattern in end_patterns:
-        matches = re.findall(pattern, last_part)
-        if matches:
-            return matches[0]  # Return the first match (avoid repetitions)
-    
-    # Priority 4: Absolute fallback - scan from end backwards
-    # This avoids picking random letters from the beginning/middle of text
-    for i in range(len(cleaned_output) - 1, -1, -1):
-        if cleaned_output[i] in valid_answers:
-            # Check if this letter appears to be part of an answer pattern
-            context_start = max(0, i - 20)
-            context_end = min(len(cleaned_output), i + 20)
-            context = cleaned_output[context_start:context_end]
-            
-            # Avoid letters that are clearly part of words
-            if i > 0 and cleaned_output[i-1].isalnum():
-                continue
-            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalnum():
-                continue
-                
-            return cleaned_output[i]
-    
+            return matches[-1]  # Return the last match (final answer)
+
+    # STRICT: No fallback patterns - if it doesn't match few-shot format, return None
+    # This forces the model to follow the exact format shown in examples
+
     return None
 
 def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, show_examples: int = 5, dataset_name: str = None):
@@ -198,10 +169,10 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         
         # Re-extract answer
         new_extracted = extract_answer_robust(raw_output)
-        
+
         # Check correctness
         is_correct = new_extracted == ground_truth if new_extracted else False
-        old_correct = old_extracted == ground_truth if old_extracted else False
+        old_correct = old_extracted == ground_truth if (old_extracted and old_extracted != -1) else False
         
         # Store results
         result_item = {
@@ -235,7 +206,7 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
                 "accuracy_strict": 0.0
             }
         
-        valid_predictions = sum(1 for item in dataset_items if item['new_extracted_answer'] is not None)
+        valid_predictions = sum(1 for item in dataset_items if item['new_extracted_answer'] is not None and item['new_extracted_answer'] != -1)
         correct_predictions = sum(1 for item in dataset_items if item['new_correct'])
         extraction_failed = total_items - valid_predictions
         

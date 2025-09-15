@@ -15,6 +15,10 @@ from datetime import datetime
 import time
 import random
 
+# Import ToW token checker
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from check_tokenizer import check_tow_tokens_for_eval
+
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 if torch.cuda.is_available():
@@ -599,6 +603,20 @@ def evaluate_single_model_on_datasets(config: ModelConfig, mmlu_prox_en_data: li
         
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
+
+        # === TOKENIZER VERIFICATION ===
+        tokenizer_status = check_tow_tokens_for_eval(
+            tokenizer=tokenizer,
+            model_path=tokenizer_load_path,
+            model_name=config.name,
+            logger=logger
+        )
+
+        if not tokenizer_status.is_valid:
+            logger.warning(f"⚠️ ToW tokens not properly configured for {config.name}")
+            for issue in tokenizer_status.issues:
+                logger.warning(f"   - {issue}")
+        # ===============================
 
         logger.info(f"Loading model {config.model_id}...")
         quantization_config_bnb = None

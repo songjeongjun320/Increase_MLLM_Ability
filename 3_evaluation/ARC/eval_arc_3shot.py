@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import torch
-import warnings 
+import warnings
 import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
@@ -19,6 +19,10 @@ import gc
 import sys
 import time
 import random
+
+# Import ToW token checker
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from check_tokenizer import check_tow_tokens_for_eval
 
 os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 transformers.logging.set_verbosity_error()
@@ -312,74 +316,39 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
 
 def extract_answer_robust(model_output: str) -> str:
     """
-    Extract the final answer (A, B, C, D) from model output using structured patterns first.
-    Supports A-D for 4 options (ARC format).
+    Extract the final answer (A, B, C, D) from model output using STRICT validation.
+    Returns None if no clear structured answer is found.
+    STRICT MODE: Only accepts {} format or #### format like in few-shot examples.
     """
     if not model_output:
         return None
-        
+
     cleaned_output = model_output.strip().upper()
     valid_answers = ['A', 'B', 'C', 'D']
-    
+
     import re
-    
-    # Priority 1: Structured answer patterns (most reliable)
+
+    # STRICT: Only accept the exact formats shown in few-shot examples
+    # Priority 1: Box format {A} - exact match to few-shot examples
+    box_pattern = r'\{([A-D])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        return box_matches[-1]  # Return the last match (final answer)
+
+    # Priority 2: #### format - exact match to few-shot examples
     structured_patterns = [
-        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-D])\}?',  # #### Answer: A or #### 정답: A or {A}
-        r'\{([A-D])\}',  # {A} box format matching prompt style
-        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-D])\}?',        # Answer: A or 정답: A or {A}
-        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-D])\}?',  # So the answer is A or {A}
+        r'####\s*(?:ANSWER)\s*:?\s*([A-D])',  # #### Answer: A
+        r'####\s*([A-D])',  # #### A
     ]
-    
+
     for pattern in structured_patterns:
         matches = re.findall(pattern, cleaned_output)
         if matches:
-            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
-    
-    # Priority 2: Start of text patterns
-    start_patterns = [
-        r'^\s*([A-D])[\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([A-D])\)?\s*[\.:;]',  # (A): or A. or A:
-        r'^\s*([A-D])\s*$',          # Just A at start of line
-    ]
-    
-    for pattern in start_patterns:
-        match = re.search(pattern, cleaned_output, re.MULTILINE)
-        if match:
-            return match.group(1)
-    
-    # Priority 3: Last resort - find A-D near end of text (avoid random letters in middle)
-    # Only look in last 100 characters to avoid picking up random letters
-    last_part = cleaned_output[-100:] if len(cleaned_output) > 100 else cleaned_output
-    
-    # Look for isolated A-D characters near the end
-    end_patterns = [
-        r'([A-D])(?:\s*[\.:;]?\s*$)',  # A at end with optional punctuation
-        r'(?:\s|^)([A-D])(?:\s|$)',    # A surrounded by whitespace
-    ]
-    
-    for pattern in end_patterns:
-        matches = re.findall(pattern, last_part)
-        if matches:
-            return matches[0]  # Return the first match (avoid repetitions)
-    
-    # Priority 4: Absolute fallback - scan from end backwards
-    # This avoids picking random letters from the beginning/middle of text
-    for i in range(len(cleaned_output) - 1, -1, -1):
-        if cleaned_output[i] in valid_answers:
-            # Check if this letter appears to be part of an answer pattern
-            context_start = max(0, i - 20)
-            context_end = min(len(cleaned_output), i + 20)
-            context = cleaned_output[context_start:context_end]
-            
-            # Avoid letters that are clearly part of words
-            if i > 0 and cleaned_output[i-1].isalnum():
-                continue
-            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalnum():
-                continue
-                
-            return cleaned_output[i]
-    
+            return matches[-1]  # Return the last match (final answer)
+
+    # STRICT: No fallback patterns - if it doesn't match few-shot format, return None
+    # This forces the model to follow the exact format shown in examples
+
     return None
 
 def load_arc_data(filepath):
@@ -457,9 +426,23 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         tokenizer_load_path = config.adapter_path if config.adapter_path else config.model_id
         logger.info(f"Loading tokenizer from: {os.path.abspath(tokenizer_load_path)}")
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_load_path, cache_dir=CACHE_DIR, padding_side='left')
-        
+
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
+
+        # === TOKENIZER VERIFICATION ===
+        tokenizer_status = check_tow_tokens_for_eval(
+            tokenizer=tokenizer,
+            model_path=tokenizer_load_path,
+            model_name=config.name,
+            logger=logger
+        )
+
+        if not tokenizer_status.is_valid:
+            logger.warning(f"⚠️ ToW tokens not properly configured for {config.name}")
+            for issue in tokenizer_status.issues:
+                logger.warning(f"   - {issue}")
+        # ===============================
 
         logger.info(f"Loading model {config.model_id}...")
         quantization_config_bnb = None
@@ -692,7 +675,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                             "question": item.get("question", ""),
                                             "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
                                             "ground_truth": ground_truth,
-                                            "predicted_answer": None,
+                                            "predicted_answer": -1,
                                             "raw_output": generated_text_log,
                                             "failure_type": "extraction_failed"
                                         })
@@ -708,7 +691,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                             "question": item.get("question", ""),
                                             "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
                                             "ground_truth": ground_truth,
-                                            "predicted_answer": None,
+                                            "predicted_answer": -1,
                                             "raw_output": generated_text_log,
                                             "failure_type": "model_error"
                                         })
@@ -743,7 +726,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                 "question": item.get("question", ""),
                                 "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
                                 "ground_truth": ground_truth,
-                                "predicted_answer": None,
+                                "predicted_answer": -1,
                                 "raw_output": f"BATCH_ERROR: {str(e)}",
                                 "failure_type": "batch_inference_error"
                             })

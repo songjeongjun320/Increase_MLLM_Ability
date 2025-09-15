@@ -11,7 +11,7 @@ STRICT MODE CHANGES:
 - Forces models to follow exact few-shot example formats
 
 Usage:
-    python re_extract_answers.py results.json
+    python re_extract_answers.py results_qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged_3shot.json
     python re_extract_answers.py results.json -o re_evaluated.json
     python re_extract_answers.py results.json -e 10  # Show 10 examples
 
@@ -44,18 +44,7 @@ def extract_answer_robust(model_output: str) -> Optional[str]:
     box_pattern = r'\{([A-D])\}'
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
-        return box_matches[-1]  # Return the last match (final answer)
-
-    # Priority 2: #### format - exact match to few-shot examples
-    structured_patterns = [
-        r'####\s*(?:ANSWER)\s*:?\s*([A-D])',  # #### Answer: A
-        r'####\s*([A-D])',  # #### A
-    ]
-
-    for pattern in structured_patterns:
-        matches = re.findall(pattern, cleaned_output)
-        if matches:
-            return matches[-1]  # Return the last match (final answer)
+        return box_matches[0]  # Return the last match (final answer)
 
     # STRICT: No fallback patterns - if it doesn't match few-shot format, return None
     # This forces the model to follow the exact format shown in examples
@@ -174,7 +163,7 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         is_correct = new_extracted == ground_truth if new_extracted else False
         old_correct = old_extracted == ground_truth if (old_extracted and old_extracted != -1) else False
         
-        # Store results
+        # Store results (convert boolean to string for Python compatibility)
         result_item = {
             "dataset": item.get('dataset', ''),
             "index": item.get('index', ''),
@@ -182,10 +171,10 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
             "ground_truth": ground_truth,
             "old_extracted_answer": old_extracted,
             "new_extracted_answer": new_extracted,
-            "old_correct": old_correct,
-            "new_correct": is_correct,
-            "extraction_changed": old_extracted != new_extracted,
-            "accuracy_changed": old_correct != is_correct,
+            "old_correct": str(old_correct),
+            "new_correct": str(is_correct),
+            "extraction_changed": str(old_extracted != new_extracted),
+            "accuracy_changed": str(old_correct != is_correct),
             "source_dataset": item.get('dataset', 'Unknown')
         }
         
@@ -207,7 +196,7 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
             }
         
         valid_predictions = sum(1 for item in dataset_items if item['new_extracted_answer'] is not None and item['new_extracted_answer'] != -1)
-        correct_predictions = sum(1 for item in dataset_items if item['new_correct'])
+        correct_predictions = sum(1 for item in dataset_items if item['new_correct'] == 'True')
         extraction_failed = total_items - valid_predictions
         
         accuracy_standard = (correct_predictions / valid_predictions * 100) if valid_predictions > 0 else 0
@@ -235,9 +224,9 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
     overall_accuracy_strict = (total_correct_predictions / total_items * 100) if total_items > 0 else 0
     
     # Count changes
-    extraction_changes = sum(1 for item in re_extracted_results if item['extraction_changed'])
-    accuracy_improvements = sum(1 for item in re_extracted_results if item['accuracy_changed'] and item['new_correct'])
-    accuracy_degradations = sum(1 for item in re_extracted_results if item['accuracy_changed'] and not item['new_correct'])
+    extraction_changes = sum(1 for item in re_extracted_results if item['extraction_changed'] == 'True')
+    accuracy_improvements = sum(1 for item in re_extracted_results if item['accuracy_changed'] == 'True' and item['new_correct'] == 'True')
+    accuracy_degradations = sum(1 for item in re_extracted_results if item['accuracy_changed'] == 'True' and item['new_correct'] == 'False')
     
     # Print summary
     print("\n" + "="*80)
@@ -313,8 +302,8 @@ def re_evaluate_json_results(json_filepath: str, output_filepath: str = None, sh
         print(f"\nFirst {show_examples} extraction changes:")
         changes_shown = 0
         for item in re_extracted_results:
-            if item['extraction_changed'] and changes_shown < show_examples:
-                status = "✓" if item['new_correct'] and not item['old_correct'] else "✗" if not item['new_correct'] and item['old_correct'] else "="
+            if item['extraction_changed'] == 'True' and changes_shown < show_examples:
+                status = "✓" if item['new_correct'] == 'True' and item['old_correct'] == 'False' else "✗" if item['new_correct'] == 'False' and item['old_correct'] == 'True' else "="
                 print(f"  {status} Index {item['index']}: '{item['old_extracted_answer']}' -> '{item['new_extracted_answer']}' (GT: {item['ground_truth']})")
                 changes_shown += 1
 

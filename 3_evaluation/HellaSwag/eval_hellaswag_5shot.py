@@ -360,7 +360,9 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     return f"EXTRACTION_FAILED after {max_retries} attempts", None
 
 def extract_answer_robust(model_output: str) -> int:
-    """Extract the final answer (A, B, C, D) from model output for HellaSwag and convert to 0,1,2,3"""
+    """Extract the final answer (A, B, C, D) from model output for HellaSwag and convert to 0,1,2,3
+    STRICT MODE: Only accepts {} format - unified across all evaluation scripts.
+    """
     if not model_output:
         return None
 
@@ -368,56 +370,14 @@ def extract_answer_robust(model_output: str) -> int:
 
     import re
 
-    # Find all #### triggers and {} patterns in order
-    answer_candidates = []
+    # STRICT: Only accept {} format for consistency across all evaluation scripts
+    box_pattern = r'\{([A-D])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        # Convert A,B,C,D to 0,1,2,3 for HellaSwag
+        return ord(box_matches[-1]) - ord('A')  # Use last match (final answer)
 
-    # Priority 1: Look for #### {letter} patterns
-    bracket_patterns = re.findall(r'####\s*\{([A-D])\}', cleaned_output)
-    answer_candidates.extend(bracket_patterns)
-
-    # Priority 2: Look for structured answer patterns with #### trigger
-    structured_patterns = [
-        r'####\s*(?:THEREFORE|따라서|그러므로)\s*,?\s*(?:THE\s+)?(?:ANSWER|정답|답)\s*(?:IS)?\s*:?\s*([A-D])',
-        r'####\s*(?:정답|답|ANSWER)\s*:?\s*([A-D])',
-        r'####\s*([A-D])',
-    ]
-
-    for pattern in structured_patterns:
-        matches = re.findall(pattern, cleaned_output)
-        answer_candidates.extend(matches)
-
-    # Priority 3: Look for {letter} patterns anywhere
-    bracket_only = re.findall(r'\{([A-D])\}', cleaned_output)
-    answer_candidates.extend(bracket_only)
-
-    # Priority 4: Look for general answer patterns
-    general_patterns = [
-        r'(?:THEREFORE|따라서|그러므로)\s*,?\s*(?:THE\s+)?(?:ANSWER|정답|답)\s*(?:IS)?\s*:?\s*([A-D])',
-        r'(?:정답|답|ANSWER)\s*:?\s*([A-D])',
-        r'(?:선택지|OPTION)\s*([A-D])',
-    ]
-
-    for pattern in general_patterns:
-        matches = re.findall(pattern, cleaned_output)
-        answer_candidates.extend(matches)
-
-    # Use the first valid answer found
-    for candidate in answer_candidates:
-        if candidate in ['A', 'B', 'C', 'D']:
-            # Convert A,B,C,D to 0,1,2,3
-            return ord(candidate) - ord('A')
-
-    # Fallback: scan from end backwards for A,B,C,D
-    for i in range(len(cleaned_output) - 1, -1, -1):
-        if cleaned_output[i] in ['A', 'B', 'C', 'D']:
-            # Check if this letter appears to be part of an answer pattern
-            if i > 0 and cleaned_output[i-1].isalpha():
-                continue  # Skip if part of a larger word
-            if i < len(cleaned_output) - 1 and cleaned_output[i+1].isalpha():
-                continue  # Skip if part of a larger word
-
-            return ord(cleaned_output[i]) - ord('A')
-
+    # No fallback patterns - forces models to use {} format only
     return None
 
 def load_hellaswag_data(filepath):

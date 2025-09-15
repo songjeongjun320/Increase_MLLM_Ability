@@ -115,12 +115,23 @@ def create_0shot_prompt(item):
 
 def extract_answer_first_token(model_output):
     """
-    Extract answer from model output using first token approach.
+    Extract answer from model output using STRICT validation.
+    STRICT MODE: Only accepts {} format - unified across all evaluation scripts.
     """
+    if not model_output:
+        return None
+
     cleaned_output = model_output.strip().upper()
-    for char in cleaned_output:
-        if char in ['A', 'B', 'C', 'D']:
-            return char
+
+    import re
+
+    # STRICT: Only accept {} format for consistency across all evaluation scripts
+    box_pattern = r'\{([A-D])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        return box_matches[-1]  # Use last match (final answer)
+
+    # No fallback patterns - forces models to use {} format only
     return None
 
 def load_mmlu_data(filepath):

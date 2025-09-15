@@ -146,16 +146,18 @@ def create_gsm8k_0shot_prompt(text, is_korean=False):
 
 def extract_numerical_answer(model_output):
     """
-    Extract numerical answer from model output
-    Prioritizes standard GSM8K CoT format "The answer is [number]"
-    Also handles Korean patterns like "답: 18", "정답: 18.0", etc.
+    Extract numerical answer from model output using STRICT validation.
+    STRICT MODE: Prioritizes {} format for consistency across all evaluation scripts.
     """
+    import re
+
     # Clean the output
     cleaned_output = model_output.strip()
-    
-    # Patterns to match numerical answers - prioritize #### format first
+
+    # Patterns to match numerical answers - prioritize {} format first
     patterns = [
-        r'####\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # New #### format: "#### 18" (highest priority)
+        r'\{([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)\}',  # {} format: "{18}" (HIGHEST PRIORITY for consistency)
+        r'####\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # #### format: "#### 18"
         r'답[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Korean format: "답: 18"
         r'The answer is\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # Standard English GSM8K format: "The answer is 18"
         r'(?:정답|Answer)[:：]\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 정답: 18, Answer: 18
@@ -165,7 +167,7 @@ def extract_numerical_answer(model_output):
         r'(?:총|합계|전체|Total)\s*[:：]?\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)',  # 총: 18
         r'=\s*([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)(?:\s*(?:달러|원|개|명|미터|센티미터|킬로미터|시간|일|dollars?|won|pieces?|meters?|hours?|days?))?(?:\s*$)',  # = 18
     ]
-    
+
     for pattern in patterns:
         matches = re.findall(pattern, cleaned_output, re.IGNORECASE | re.MULTILINE)
         if matches:

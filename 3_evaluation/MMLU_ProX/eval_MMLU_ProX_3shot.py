@@ -397,11 +397,9 @@ import re
 
 def extract_answer_first_token(model_output):
     """
-    요청사항에 따라 단순화되고 개선된 답변 추출 함수입니다.
-    두 가지 우선순위에 따라 답변을 찾습니다.
-
-    1. (최우선) 모델의 출력이 'A.', 'B)', 'C' 등 정답 선택지로 시작하는지 확인합니다.
-    2. 위 조건에 맞지 않을 경우, '#### Answer:' 와 같은 명확한 구조적 패턴을 찾습니다.
+    Extract answer from model output using STRICT validation.
+    STRICT MODE: Only accepts {} format - unified across all evaluation scripts.
+    Supports A-J for 10 options.
     """
     if not model_output:
         return None
@@ -411,33 +409,17 @@ def extract_answer_first_token(model_output):
     if "질문:" in model_output:
         model_output = model_output.split("질문:")[0]
 
-    # 분석할 텍스트를 정리합니다.
     cleaned_output = model_output.strip().upper()
 
-    structured_patterns = [
-        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-J])\}?',  # #### Answer: A or #### 정답: A or {A}
-        r'\{([A-J])\}',  # {A} box format matching prompt style
-        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-J])\}?',        # Answer: A or 정답: A or {A}
-        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-J])\}?',  # So the answer is A or {A}
-    ]
+    import re
 
-    for pattern in structured_patterns:
-        matches = re.findall(pattern, cleaned_output)
-        if matches:
-            return matches[0]  # Return the first match (avoid repetitions/hallucinations)
-    
-    # Priority 2: Start of text patterns
-    start_patterns = [
-        r'^\s*([A-J])[\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([A-J])\)?\s*[\.:;]',  # (A): or A. or A:
-        r'^\s*([A-J])\s*$',          # Just A at start of line
-    ]
-    
-    for pattern in start_patterns:
-        match = re.search(pattern, cleaned_output, re.MULTILINE)
-        if match:
-            return match.group(1)
-    # 위 두 조건으로도 찾지 못하면 추출 실패로 간주
+    # STRICT: Only accept {} format for consistency across all evaluation scripts
+    box_pattern = r'\{([A-J])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        return box_matches[-1]  # Use last match (final answer)
+
+    # No fallback patterns - forces models to use {} format only
     return None
 
 

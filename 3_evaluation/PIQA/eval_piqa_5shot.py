@@ -270,41 +270,23 @@ def create_5shots_prompt(test_item, language="en"):
 
 def extract_final_answer(model_output):
     """
-    Extract answer from structured {} format first, then fallback to other methods.
+    Extract answer from model output using STRICT validation.
+    STRICT MODE: Only accepts {} format - unified across all evaluation scripts.
     """
     if not model_output:
         return None
-    
+
+    cleaned_output = model_output.strip().upper()
+
     import re
 
-    # Clean the output first
-    cleaned_output = model_output.strip()
-    
-    # Priority 1: Structured answer patterns (most reliable)
-    structured_patterns = [
-        r'####\s*(?:정답|답|ANSWER|THEREFORE\s+ANSWER)\s*:?\s*\{?([A-B])\}?',  # #### Answer: A or #### 정답: A or {A}
-        r'\{([A-B])\}',  # {A} box format matching prompt style
-        r'(?:정답|답|ANSWER)\s*:?\s*\{?([A-B])\}?',        # Answer: A or 정답: A or {A}
-        r'(?:따라서|그러므로|SO|THEREFORE)\s+(?:정답은|답은|정답|답|THE\s+ANSWER\s+IS|ANSWER\s+IS)\s*:?\s*\{?([A-B])\}?',  # So the answer is A or {A}
-    ]
-    
-    for pattern in structured_patterns:
-        matches = re.findall(pattern, cleaned_output)
-        if matches:
-            return matches[-1]  # Return the first match (avoid repetitions/hallucinations)
-    
-    # Priority 2: Start of text patterns
-    start_patterns = [
-        r'^\s*([A-B])[\.\)\]\s]',  # A. or A) or A] at start
-        r'^\s*\(?([A-B])\)?\s*[\.:;]',  # (A): or A. or A:
-        r'^\s*([A-B])\s*$',          # Just A at start of line
-    ]
-    
-    for pattern in start_patterns:
-        match = re.search(pattern, cleaned_output, re.MULTILINE)
-        if match:
-            return match.group(1)
+    # STRICT: Only accept {} format for consistency across all evaluation scripts
+    box_pattern = r'\{([A-B])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        return box_matches[-1]  # Use last match (final answer)
 
+    # No fallback patterns - forces models to use {} format only
     return None
 
 def process_single_with_retry(model, tokenizer, prompt, max_retries=0):

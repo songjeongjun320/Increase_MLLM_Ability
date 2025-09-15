@@ -340,37 +340,22 @@ def extract_answer_robust(model_output: str) -> str:
     """
     Extract the final answer (A, B, C, D) from model output using STRICT validation.
     Returns None if no clear structured answer is found.
-    STRICT MODE: Only accepts {} format or #### format like in few-shot examples.
+    STRICT MODE: Only accepts {} format - unified across all evaluation scripts.
     """
     if not model_output:
         return None
 
     cleaned_output = model_output.strip().upper()
-    valid_answers = ['A', 'B', 'C', 'D']
 
     import re
 
-    # STRICT: Only accept the exact formats shown in few-shot examples
-    # Priority 1: Box format {A} - exact match to few-shot examples
+    # STRICT: Only accept {} format for consistency across all evaluation scripts
     box_pattern = r'\{([A-D])\}'
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
         return box_matches[-1]  # Return the last match (final answer)
 
-    # Priority 2: #### format - exact match to few-shot examples
-    structured_patterns = [
-        r'####\s*(?:ANSWER)\s*:?\s*([A-D])',  # #### Answer: A
-        r'####\s*([A-D])',  # #### A
-    ]
-
-    for pattern in structured_patterns:
-        matches = re.findall(pattern, cleaned_output)
-        if matches:
-            return matches[-1]  # Return the last match (final answer)
-
-    # STRICT: No fallback patterns - if it doesn't match few-shot format, return None
-    # This forces the model to follow the exact format shown in examples
-
+    # No fallback patterns - forces models to use {} format only
     return None
 
 def load_arc_data(filepath):

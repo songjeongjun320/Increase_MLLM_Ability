@@ -1,5 +1,0 @@
-Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total
-qwem-2.5-3b-pt-tow-09_11_10epoch-merged,46.12,46.02,607,1316,1319
-gemma-3-4b-pt-tow-09_11_10epoch-merged,31.46,31.46,415,1319,1319
-llama-3.2-3b-pt-tow-09_11_10epoch-merged,14.58,14.56,192,1317,1319
-olmo-2-0425-1b-tow-09_11_10epoch-merged,1.90,1.90,25,1319,1319

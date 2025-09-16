@@ -11,7 +11,7 @@ STRICT MODE CHANGES:
 - Forces models to follow exact few-shot example formats
 
 Usage:
-    python re_extract_answers.py results_qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged_3shot.json
+    python re_extract_answers.py results_qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged_3shot.json
     python re_extract_answers.py results.json -o re_evaluated.json
     python re_extract_answers.py results.json -e 10  # Show 10 examples
 

@@ -353,7 +353,7 @@ def extract_answer_robust(model_output: str) -> str:
     box_pattern = r'\{([A-D])\}'
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
-        return box_matches[-1]  # Return the last match (final answer)
+        return box_matches[0]  # Return the last match (final answer)
 
     # No fallback patterns - forces models to use {} format only
     return None

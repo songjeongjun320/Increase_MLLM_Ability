@@ -272,86 +272,21 @@ def create_generic_5shot_korean_prompt(test_item):
 
 def extract_korean_answer_first_token(model_output, tokenizer):
     """
-    Extract answer from Korean model output using first token approach.
-    This follows the standard MMLU evaluation methodology adapted for Korean.
-    Fixed to avoid false positives from common words.
+    Extract answer from model output using STRICT validation.
+    STRICT MODE: Only accepts {} format - unified across all evaluation scripts.
     """
     # Clean and normalize output
     cleaned_output = model_output.strip().upper()
-    
-    # First, look for immediate A, B, C, or D at the start
-    if cleaned_output and cleaned_output[0] in ['A', 'B', 'C', 'D']:
-        return cleaned_output[0]
-    
-    # Look for patterns like "A.", "(A)", "A)", "답: A", "정답은 A" etc.
+
     import re
-    patterns = [
-        # Korean specific patterns (more comprehensive)
-        r'정답은\s*([ABCD])',               # 정답은 A
-        r'정답\s*:?\s*([ABCD])',           # 정답: A or 정답 A
-        r'답은\s*([ABCD])',                # 답은 A
-        r'답\s*:?\s*([ABCD])',             # 답: A or 답 A
-        r'정답은\s*([ABCD])번',            # 정답은 A번
-        r'정답은\s*([ABCD])\s*입니다',      # 정답은 A입니다
-        r'정답은\s*([ABCD])\s*이다',        # 정답은 A이다
-        r'답은\s*([ABCD])\s*입니다',        # 답은 A입니다
-        r'답은\s*([ABCD])\s*이다',          # 답은 A이다
-        r'([ABCD])가\s*정답',              # A가 정답
-        r'([ABCD])이\s*정답',              # A이 정답
-        r'([ABCD])번이\s*정답',            # A번이 정답
-        r'([ABCD])\s*입니다',              # A 입니다
-        
-        # English patterns
-        r'THE\s+CORRECT\s+ANSWER\s+IS\s+([ABCD])',  # The correct answer is A
-        r'CORRECT\s+ANSWER\s+IS\s+([ABCD])',        # correct answer is A
-        r'ANSWER\s+IS\s+([ABCD])',                  # answer is A
-        r'Answer\s*:?\s*([ABCD])',                  # Answer: A
-        
-        # Generic patterns
-        r'^\s*([ABCD])[\.\)\]\s]',         # A. or A) or A] at start
-        r'^\s*\(?([ABCD])\)?\s*$',         # (A) or A with parentheses (whole line)
-        r'^\s*([ABCD])\s*$'                # Just A, B, C, D (whole line)
-    ]
-    
-    for pattern in patterns:
-        matches = re.findall(pattern, cleaned_output)
-        if matches:
-            return matches[0]  # Return the last match (most likely the final answer)
-    
-    # More strict approach: Only look for isolated letters at word boundaries
-    # and exclude common English/Korean contexts
-    word_boundary_matches = re.findall(r'\b([ABCD])\b', cleaned_output)
-    
-    if word_boundary_matches:
-        for match in word_boundary_matches:
-            # Find all positions of this match
-            for m in re.finditer(r'\b' + match + r'\b', cleaned_output):
-                # Get context around the match
-                start_pos = max(0, m.start() - 20)
-                end_pos = min(len(cleaned_output), m.end() + 20)
-                context = cleaned_output[start_pos:end_pos]
-                
-                # Skip if it's clearly part of common words or phrases
-                skip_contexts = [
-                    # English words
-                    'BECAUSE', 'BECAU', 'LOGICAL', 'LOGIC', 'ABSTRACT', 'ABOUT',
-                    'ABOVE', 'ACCORDING', 'CONTEXT', 'CONTENT', 'CONSIDER', 
-                    'CORRECT', 'CONCEPT', 'CALCULATE', 'CHOICE', 'CHART',
-                    'BETWEEN', 'BEFORE', 'BASIC', 'BASED', 'DISCUSS', 
-                    'DESCRIBE', 'DIFFERENT', 'DETERMINE', 'DECIDE', 'DATA',
-                    'FOLLOWS', 'FOLLOW', 'LOGICALLY',
-                    # Korean contexts where A,B,C,D might appear as part of words
-                    '가나다라', '나다라마', '다라마바', '라마바사',
-                    # Common Korean phrases where letters might appear
-                    '과정에서', '근거로', '따라서', '그러나', '하지만'
-                ]
-                
-                is_part_of_word = any(skip_word in context for skip_word in skip_contexts)
-                
-                if not is_part_of_word:
-                    return match
-    
-    # If no valid answer pattern found, return None
+
+    # STRICT: Only accept {} format for consistency across all evaluation scripts
+    box_pattern = r'\{([A-D])\}'
+    box_matches = re.findall(box_pattern, cleaned_output)
+    if box_matches:
+        return box_matches[0]  # Use last match (final answer)
+
+    # No fallback patterns - forces models to use {} format only
     return None
 
 def load_kmmlu_data(filepath):

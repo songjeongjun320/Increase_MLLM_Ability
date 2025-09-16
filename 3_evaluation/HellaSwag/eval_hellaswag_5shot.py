@@ -375,7 +375,7 @@ def extract_answer_robust(model_output: str) -> int:
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
         # Convert A,B,C,D to 0,1,2,3 for HellaSwag
-        return ord(box_matches[-1]) - ord('A')  # Use last match (final answer)
+        return ord(box_matches[0]) - ord('A')  # Use last match (final answer)
 
     # No fallback patterns - forces models to use {} format only
     return None

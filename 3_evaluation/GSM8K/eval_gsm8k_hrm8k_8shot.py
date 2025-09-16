@@ -65,27 +65,27 @@ except ImportError:
 GSM8K_8SHOT_KOR_COT_EXAMPLES = [
     {
         "question": "연필 3자루를 각각 2달러, 공책 2권을 각각 5달러에 산다면 총 얼마를 쓰게 되나요?",
-        "cot_content": "연필 값은 3 × 2달러 = 6달러. 공책 값은 2 × 5달러 = 10달러. 합하면 6 + 10 = 16달러.",
+        "cot_content": "연필 값은 3 × 2<ToW>After setting up the multiplication for pencil cost (3 pencils × 2 dollars each), the next logical element is \"달러\" (dollars) to complete the unit specification before showing the equals sign and final calculation result.</ToW>달러 = 6달러. 공책 값은 2 × 5달러 = <ToW>Following the multiplication setup for notebook cost (2 notebooks × 5 dollars each), the natural next word is \"10달러\" to show the calculated result of this multiplication, maintaining the parallel structure with the previous pencil calculation.</ToW> 10달러. 합하면 6 + 10 = 16달러.",
         "answer": "16"
     },
     {
         "question": "기차가 시속 60마일로 달린다면, 3시간 동안 몇 마일을 갈까요?",
-        "cot_content": "기차는 1시간에 60마일을 간다. 3시간 동안은 60 × 3 = 180마일.",
+        "cot_content": "기차는 1시간에 60<ToW>After stating the train's speed as 60 per hour, \"마일을\" (miles) is the necessary next word to complete the speed unit specification, establishing that the train travels 60 miles per hour before moving to the distance calculation.</ToW>마일을 간다. 3시간 동안은 60 × 3 = <ToW>Following the multiplication setup for total distance (60 miles × 3 hours), \"180마일\" is the logical next element to show the calculated result of this multiplication, completing the distance calculation for the 3-hour journey.</ToW> 180마일.",        
         "answer": "180"
     },
     {
         "question": "사라는 사과 24개를 가지고 있다. 6명의 친구에게 똑같이 나누어 준다면, 친구 한 명당 몇 개를 받게 될까요?",
-        "cot_content": "24 ÷ 6 = 4개씩 받는다.",
+        "cot_content": "24 ÷ 6 = 4개씩 <ToW>After calculating 24 ÷ 6 = 4 and stating \"4개씩\" (4 each), \"받는다\" (receive) is the logical next word to complete the sentence describing the distribution outcome - indicating that each person/group receives 4 items each.</ToW> 받는다.",        
         "answer": "4"
     },
     {
         "question": "톰은 50달러를 가지고 있었다. 점심에 18달러, 책에 12달러를 썼다면, 남은 돈은 얼마인가요?",
-        "cot_content": "쓴 돈은 18 + 12 = 30달러. 남은 돈은 50 - 30 = 20달러.",
+        "cot_content": "쓴 돈은 18 + 12 = 30달러. 남은 <ToW>After calculating the total spent money (30 dollars) and starting with \"남은\" (remaining), \"돈은\" (money is) is the necessary next word to complete the subject of the sentence before showing the subtraction calculation for how much money is left.</ToW> 돈은 50 - 30 = 20달러.",        
         "answer": "20"
     },
     {
         "question": "상자 하나에 초콜릿이 8개 들어 있다. 7상자에는 총 몇 개의 초콜릿이 있을까요?",
-        "cot_content": "상자당 8개이므로 7 × 8 = 56개.",
+        "cot_content": "상자당 8개이므로 7 <ToW>After stating that each box contains 8 items and starting with \"7\", the logical next element is \"상자\" (boxes) to complete the multiplication setup, indicating we have 7 boxes before multiplying by 8 items per box.</ToW> × 8 = 56개.",
         "answer": "56"
     },
     {
@@ -100,7 +100,7 @@ GSM8K_8SHOT_KOR_COT_EXAMPLES = [
     },
     {
         "question": "피자 한 판은 8조각이다. 피자를 3판 주문하면 총 몇 조각이 될까요?",
-        "cot_content": "피자 한 판에 8조각이므로 3 × 8 = 24조각.",
+        "cot_content": "피자 한 판에 8조각이므로 <ToW>After stating that each pizza has 8 slices and starting with \"3\", the logical next element is \"판\" (pizzas) to complete the multiplication setup, indicating we have 3 pizzas before multiplying by 8 slices per pizza.</ToW> 3 × 8 = 24조각.",
         "answer": "24"
     }
 ]

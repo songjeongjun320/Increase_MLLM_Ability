@@ -137,7 +137,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/hellaswag_validation.json"
 KO_HELLASWAG_DATASET_PATH = "../../2_datasets/HellaSwag/ko_hellaswag_validation.json"
-BASE_OUTPUT_DIR = "hellaswag_5shot_results_tokenizer_added"
+BASE_OUTPUT_DIR = "hellaswag_5shot_results_tokenizer_added_few_tow_shots"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BATCH_SIZE = 16
@@ -370,8 +370,7 @@ def extract_answer_robust(model_output: str) -> int:
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
         # Convert A,B,C,D to 0,1,2,3 for HellaSwag
-        return ord(box_matches[-1]) - ord('A')  # Use last match (final answer)
-
+        return ord(box_matches[0]) - ord('A')  # Use last match (final answer)
     # No fallback patterns - forces models to use {} format only
     return None
 

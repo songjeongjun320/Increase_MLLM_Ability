@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "./GSM8K_8shot_tokenizer_added"  # Output directory
+BASE_OUTPUT_DIR = "./GSM8K_8shot_tokenizer_added_few_tow_shots"  # Output directory
 
 # Batch Processing Configuration
 BATCH_SIZE = 16  # A100 optimized batch size (4->16 = 4x speedup)
@@ -375,7 +375,7 @@ def extract_numerical_answer(model_output):
         numbers = re.findall(r'([+-]?(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)', line)
         if numbers:
             try:
-                return float(numbers[-1].replace(',', ''))
+                return float(numbers[0].replace(',', ''))
             except ValueError:
                 continue
 

@@ -146,7 +146,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 MMLU_PROX_EN_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_en.jsonl"
 MMLU_PROX_KO_DATASET_PATH = "../../2_datasets/MMLU_ProX/MMLU_ProX_ko.jsonl"
-BASE_OUTPUT_DIR = "mmlu_prox_3shot_tokenizer_added"
+BASE_OUTPUT_DIR = "mmlu_prox_3shot_tokenizer_added_few_tow_shots"
 BATCH_SIZE = 64
 MAX_NEW_TOKENS = 256
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -417,7 +417,7 @@ def extract_answer_first_token(model_output):
     box_pattern = r'\{([A-J])\}'
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
-        return box_matches[-1]  # Use last match (final answer)
+        return box_matches[0]  # Use last match (final answer)
 
     # No fallback patterns - forces models to use {} format only
     return None

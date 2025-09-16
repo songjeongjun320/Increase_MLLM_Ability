@@ -62,96 +62,96 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_allenai-merged",
+        use_quantization=False
+    ),
 
-    # ModelConfig(
-    #     name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_org_initialize-merged",
+        use_quantization=False
+    ),
 
-    # ModelConfig(
-    #     name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-tow-09_11_2epoch_fix_tow-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-tow-09_11_2epoch_fix_tow-merged",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-tow-09_11_2epoch_fix_tow-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-tow-09_11_2epoch_fix_tow-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-tow-09_11_2epoch_fix_tow-merged",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_2epoch_fix_tow-merged",
+        use_quantization=False
+    ),
 
     # 10 Epochs
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="olmo-2-0425-1b-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
 ]
 
 # --- General Configuration ---
 ARC_DATASET_PATH = "../../2_datasets/ARC/ARC.json"
 KO_ARC_DATASET_PATH = "../../2_datasets/ARC/Ko-ARC.json"
-BASE_OUTPUT_DIR = "arc_3shot_09_11_tokenizer_added"
+BASE_OUTPUT_DIR = "arc_3shot_09_11_tokenizer_added_few_tow_shots"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BATCH_SIZE = 16
@@ -292,7 +292,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     """
     for attempt in range(max_retries):
         try:
-            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2200).to(DEVICE)
             
             with torch.inference_mode():
                 outputs = model.generate(
@@ -350,7 +350,7 @@ def extract_answer_robust(model_output: str) -> str:
     box_pattern = r'\{([A-D])\}'
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
-        return box_matches[-1]  # Return the last match (final answer)
+        return box_matches[0]  # Return the last match (final answer)
 
     # No fallback patterns - forces models to use {} format only
     return None
@@ -539,7 +539,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         all_failure_cases = {}  # Store failure cases for both datasets
         
         datasets = [
-            ("ARC", arc_data, "arc"),
+            # ("ARC", arc_data, "arc"),
             ("Ko-ARC", ko_arc_data, "ko-arc")
         ]
         
@@ -595,7 +595,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         continue
 
                     try:
-                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
+                        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=2200).to(DEVICE)
                         
                         with torch.inference_mode():
                             outputs = model.generate(
@@ -822,9 +822,9 @@ def main():
             summary_results[config.name] = {
                 "model_id": config.model_id,
                 "adapter_path": config.adapter_path,
-                "ARC_accuracy_standard": results["ARC"]["accuracy_standard"],
-                "ARC_accuracy_strict": results["ARC"]["accuracy_strict"],
-                "ARC_failure_cases": results["ARC"]["failure_cases_count"],
+                # "ARC_accuracy_standard": results["ARC"]["accuracy_standard"],
+                # "ARC_accuracy_strict": results["ARC"]["accuracy_strict"],
+                # "ARC_failure_cases": results["ARC"]["failure_cases_count"],
                 "Ko-ARC_accuracy_standard": results["Ko-ARC"]["accuracy_standard"],
                 "Ko-ARC_accuracy_strict": results["Ko-ARC"]["accuracy_strict"],
                 "Ko-ARC_failure_cases": results["Ko-ARC"]["failure_cases_count"]

@@ -284,7 +284,7 @@ def extract_final_answer(model_output):
     box_pattern = r'\{([A-B])\}'
     box_matches = re.findall(box_pattern, cleaned_output)
     if box_matches:
-        return box_matches[-1]  # Use last match (final answer)
+        return box_matches[0]  # Use last match (final answer)
 
     # No fallback patterns - forces models to use {} format only
     return None

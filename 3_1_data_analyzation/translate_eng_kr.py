@@ -112,13 +112,17 @@ class TranslationChatBot:
     def generate_response(self, prompt: str, max_new_tokens: int = 512):
         """Generate response from the model"""
         try:
+            print(f"DEBUG: Input prompt: {prompt}")
+
             inputs = self.tokenizer(
                 prompt,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=512
+                max_length=2048  # Increased from 512
             ).to(DEVICE)
+
+            print(f"DEBUG: Input token length: {inputs['input_ids'].shape[1]}")
 
             with torch.inference_mode():
                 outputs = self.model.generate(
@@ -130,10 +134,18 @@ class TranslationChatBot:
                     temperature=0.1,
                 )
 
+            print(f"DEBUG: Output token length: {outputs.shape[1]}")
+
+            # Decode full output first to see what model generated
+            full_output = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            print(f"DEBUG: Full output: {full_output}")
+
             # Decode only the generated part
             input_length = inputs['input_ids'].shape[1]
             output_only_tokens = outputs[:, input_length:]
             generated_text = self.tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+
+            print(f"DEBUG: Generated text only: '{generated_text}'")
 
             return generated_text
 

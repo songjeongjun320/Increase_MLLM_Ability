@@ -106,7 +106,7 @@ class TranslationChatBot:
 
     def create_translation_prompt(self, text: str):
         """Create a translation prompt"""
-        prompt = f"Translate the following English text to Korean: {text}\n\nKorean translation:"
+        prompt = f"You are an expert korean translator. Translate the following English text to Korean: \"{text}\"\n\nKorean translation:"
         return prompt
 
     def generate_response(self, prompt: str, max_new_tokens: int = 512):
@@ -141,14 +141,18 @@ class TranslationChatBot:
 
             # Decode full output first to see what model generated
             full_output = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            print(f"DEBUG: Full output: {full_output}")
+            
+            print("================================================")
+            print(f"\n\nDEBUG: Full output: {full_output}\n\n")
 
             # Decode only the generated part
             input_length = inputs['input_ids'].shape[1]
             output_only_tokens = outputs[:, input_length:]
             generated_text = self.tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
 
-            print(f"DEBUG: Generated text only: '{generated_text}'")
+            print("================================================")
+            print(f"\n\nDEBUG: Generated text only:\n\n '{generated_text}'\n\n")
+            print("================================================")
 
             return generated_text
 

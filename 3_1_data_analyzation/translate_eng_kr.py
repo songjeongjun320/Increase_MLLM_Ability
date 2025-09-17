@@ -106,7 +106,7 @@ class TranslationChatBot:
 
     def create_translation_prompt(self, text: str):
         """Create a translation prompt"""
-        prompt = f"{text} 이 문장을 한글로 번역해줘."
+        prompt = f"Translate the following English text to Korean: {text}\n\nKorean translation:"
         return prompt
 
     def generate_response(self, prompt: str, max_new_tokens: int = 512):
@@ -127,11 +127,14 @@ class TranslationChatBot:
             with torch.inference_mode():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=max_new_tokens,
+                    max_new_tokens=min(max_new_tokens, 100),  # Limit tokens to prevent runaway
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
-                    do_sample=False,
-                    temperature=0.1,
+                    do_sample=True,
+                    temperature=0.3,  # Lower temperature
+                    top_p=0.95,
+                    repetition_penalty=1.2,  # Higher penalty to stop repetition
+                    no_repeat_ngram_size=3,  # Prevent 3-gram repetition
                 )
 
             print(f"DEBUG: Output token length: {outputs.shape[1]}")

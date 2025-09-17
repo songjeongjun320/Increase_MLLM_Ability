@@ -109,7 +109,7 @@ class TranslationChatBot:
         prompt = f"You are an expert korean translator. Translate the following English text to Korean: \"{text}\"\n\nKorean translation:"
         return prompt
 
-    def generate_response(self, prompt: str, max_new_tokens: int = 512):
+    def generate_response(self, prompt: str, max_new_tokens: int = 2048):
         """Generate response from the model"""
         try:
             print(f"DEBUG: Input prompt: {prompt}")
@@ -127,7 +127,7 @@ class TranslationChatBot:
             with torch.inference_mode():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=min(max_new_tokens, 100),  # Limit tokens to prevent runaway
+                    max_new_tokens=2048,  # Limit tokens to prevent runaway
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
                     do_sample=True,

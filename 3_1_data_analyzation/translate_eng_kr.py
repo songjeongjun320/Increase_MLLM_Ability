@@ -106,7 +106,7 @@ class TranslationChatBot:
 
     def create_translation_prompt(self, text: str):
         """Create a translation prompt"""
-        prompt = f"You are an expert korean translator. Translate the following English text to Korean: \"{text}\"\n\nKorean translation:"
+        prompt = f"You are an expert korean translator. Translate the following english_sentences to Korean: \"english_sentences={text}\"\n\nKorean translation:"
         return prompt
 
     def generate_response(self, prompt: str, max_new_tokens: int = 2048):

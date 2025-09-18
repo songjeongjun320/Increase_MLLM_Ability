@@ -67,6 +67,15 @@ visualization:
     style: "whitegrid"
     color_palette: "husl"
 
+  fonts:
+    korean:
+      windows: ["Malgun Gothic", "Gulim", "Dotum", "NanumGothic"]
+      macos: ["AppleGothic", "Apple SD Gothic Neo", "Nanum Gothic"]
+      linux: ["Noto Sans CJK KR", "Nanum Gothic", "UnDotum"]
+      fallback: ["DejaVu Sans", "Liberation Sans", "Arial", "sans-serif"]
+    auto_detect: true
+    validate_rendering: true
+
 # Analysis Configuration
 analysis:
   attention:

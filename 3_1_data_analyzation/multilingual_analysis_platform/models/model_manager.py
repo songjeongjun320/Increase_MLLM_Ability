@@ -357,7 +357,13 @@ class ModelManager:
 
         if next_token_only:
             # Focus on the last position (next token prediction)
-            last_pos = inputs['attention_mask'].sum(-1) - 1  # Last non-padded position
+            # Convert tensor to Python int for proper indexing
+            attention_mask = inputs['attention_mask']
+            if attention_mask.dim() == 2:  # [batch_size, seq_len]
+                last_pos = (attention_mask.sum(-1) - 1)[0].item()  # Take first batch item
+            else:  # [seq_len]
+                last_pos = (attention_mask.sum(-1) - 1).item()
+
             result['next_token'] = {
                 'logits': logits[0, last_pos],
                 'probabilities': probabilities[0, last_pos],

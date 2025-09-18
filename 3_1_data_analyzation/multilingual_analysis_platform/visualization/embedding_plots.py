@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 
 from utils.config_loader import get_config
+from utils.font_manager import get_font_manager, configure_plot_korean
 from core.sentence_embedding import SentenceEmbeddingAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class EmbeddingVisualizer:
         """Initialize the embedding visualizer."""
         self.config = get_config()
         self.analyzer = SentenceEmbeddingAnalyzer()
+        self.font_manager = get_font_manager()
 
         # Set up plotting style
         plt.style.use('seaborn-v0_8' if 'seaborn-v0_8' in plt.style.available else 'default')
@@ -87,12 +89,10 @@ class EmbeddingVisualizer:
                        save_path: Optional[str],
                        method: str) -> plt.Figure:
         """Create static 2D plot with matplotlib."""
-        # Font should already be set globally, but ensure it's set
-        if 'font.family' not in plt.rcParams or 'DejaVu Sans' in plt.rcParams['font.family']:
-            plt.rcParams['font.family'] = ['NanumGothic', 'Malgun Gothic', 'Gulim', 'sans-serif']
-        plt.rcParams['axes.unicode_minus'] = False
-
         fig, ax = plt.subplots(figsize=self.config.get('visualization.plotting.figure_size', [12, 8]))
+
+        # Configure Korean fonts using font manager
+        configure_plot_korean(fig, ax)
 
         # Plot points by language
         for lang in colors.keys():

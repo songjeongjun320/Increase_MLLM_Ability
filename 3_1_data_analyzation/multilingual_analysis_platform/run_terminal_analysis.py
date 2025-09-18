@@ -132,8 +132,12 @@ def print_header():
     print("=" * 60)
 
 def save_embedding_visualizations(results):
-    """Generate and save embedding visualizations."""
+    """Generate and save comprehensive embedding visualizations."""
     try:
+        # Initialize Korean font manager first
+        from utils.font_manager import setup_korean_fonts
+        setup_korean_fonts()
+
         # Create output directory
         output_dir = platform_dir / "outputs" / "terminal_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -154,58 +158,52 @@ def save_embedding_visualizations(results):
         embedding_result = embedding_analyzer.generate_embeddings(texts, languages)
         embeddings = embedding_result['embeddings']
 
-        # Generate visualizations quietly
+        # Generate comprehensive visualizations
         plots_saved = 0
+        total_plots = 0
 
-        # PCA
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                fig = visualizer.plot_embeddings_2d(
-                    embeddings=embeddings, languages=languages, texts=texts,
-                    method='pca', interactive=False, title="PCA - Sentence Embeddings"
-                )
-                plt.savefig(output_dir / "pca_embeddings.png", dpi=300, bbox_inches='tight', 
-                           facecolor='white', edgecolor='none')
-                plt.close()
-                plots_saved += 1
-        except Exception as e:
-            print(f"   ⚠️ PCA plot failed: {e}")
-            pass
+        print(f"   📊 Generating comprehensive visualizations...")
 
-        # t-SNE
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                fig = visualizer.plot_embeddings_2d(
-                    embeddings=embeddings, languages=languages, texts=texts,
-                    method='tsne', interactive=False, title="t-SNE - Sentence Embeddings"
-                )
-                plt.savefig(output_dir / "tsne_embeddings.png", dpi=300, bbox_inches='tight',
-                           facecolor='white', edgecolor='none')
-                plt.close()
-                plots_saved += 1
-        except Exception as e:
-            print(f"   ⚠️ t-SNE plot failed: {e}")
-            pass
+        # 2D Visualizations
+        for method in ['pca', 'tsne', 'umap']:
+            total_plots += 1
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    fig = visualizer.plot_embeddings_2d(
+                        embeddings=embeddings, languages=languages, texts=texts,
+                        method=method, interactive=False,
+                        title=f"{method.upper()} - Sentence Embeddings"
+                    )
+                    plt.savefig(output_dir / f"{method}_embeddings_2d.png",
+                               dpi=300, bbox_inches='tight',
+                               facecolor='white', edgecolor='none')
+                    plt.close()
+                    plots_saved += 1
+            except Exception as e:
+                print(f"      ⚠️ {method.upper()} 2D plot failed: {e}")
 
-        # UMAP
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                fig = visualizer.plot_embeddings_2d(
-                    embeddings=embeddings, languages=languages, texts=texts,
-                    method='umap', interactive=False, title="UMAP - Sentence Embeddings"
-                )
-                plt.savefig(output_dir / "umap_embeddings.png", dpi=300, bbox_inches='tight',
-                           facecolor='white', edgecolor='none')
-                plt.close()
-                plots_saved += 1
-        except Exception as e:
-            print(f"   ⚠️ UMAP plot failed: {e}")
-            pass
+        # 3D Visualizations
+        for method in ['pca', 'tsne', 'umap']:
+            total_plots += 1
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    fig = visualizer.plot_embeddings_3d(
+                        embeddings=embeddings, languages=languages, texts=texts,
+                        method=method, interactive=False,
+                        title=f"{method.upper()} - 3D Sentence Embeddings"
+                    )
+                    plt.savefig(output_dir / f"{method}_embeddings_3d.png",
+                               dpi=300, bbox_inches='tight',
+                               facecolor='white', edgecolor='none')
+                    plt.close()
+                    plots_saved += 1
+            except Exception as e:
+                print(f"      ⚠️ {method.upper()} 3D plot failed: {e}")
 
-        # Similarity heatmap
+        # Similarity Analysis
+        total_plots += 1
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -214,15 +212,52 @@ def save_embedding_visualizations(results):
                     similarity_matrix=similarity_matrix, texts=texts, languages=languages,
                     interactive=False, title="Sentence Similarity Heatmap"
                 )
-                plt.savefig(output_dir / "similarity_heatmap.png", dpi=300, bbox_inches='tight',
+                plt.savefig(output_dir / "similarity_heatmap.png",
+                           dpi=300, bbox_inches='tight',
                            facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
         except Exception as e:
-            print(f"   ⚠️ Similarity heatmap failed: {e}")
-            pass
+            print(f"      ⚠️ Similarity heatmap failed: {e}")
 
-        print(f"   ✅ Saved {plots_saved}/4 visualizations")
+        # Language Clustering Analysis
+        total_plots += 1
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                cluster_result = embedding_analyzer.analyze_language_clusters(embeddings, languages)
+                fig = visualizer.plot_clustering_analysis(
+                    embeddings, languages, cluster_result,
+                    title="Language Clustering Analysis"
+                )
+                plt.savefig(output_dir / "language_clustering.png",
+                           dpi=300, bbox_inches='tight',
+                           facecolor='white', edgecolor='none')
+                plt.close()
+                plots_saved += 1
+        except Exception as e:
+            print(f"      ⚠️ Language clustering plot failed: {e}")
+
+        # Cross-Language Performance
+        total_plots += 1
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                cross_lang_result = embedding_analyzer.analyze_cross_language_performance(
+                    embeddings, languages, texts
+                )
+                fig = visualizer.plot_cross_language_performance(
+                    cross_lang_result, title="Cross-Language Performance"
+                )
+                plt.savefig(output_dir / "cross_language_performance.png",
+                           dpi=300, bbox_inches='tight',
+                           facecolor='white', edgecolor='none')
+                plt.close()
+                plots_saved += 1
+        except Exception as e:
+            print(f"      ⚠️ Cross-language performance plot failed: {e}")
+
+        print(f"   ✅ Saved {plots_saved}/{total_plots} visualizations")
 
     except Exception as e:
         print(f"   ❌ Visualization generation failed: {e}")
@@ -532,7 +567,8 @@ def save_results_to_file(embedding_results, attention_results, confidence_result
 def main():
     """Main analysis function."""
     # Setup Korean font first
-    setup_korean_font()
+    from utils.font_manager import setup_korean_fonts
+    setup_korean_fonts()
 
     print_header()
 

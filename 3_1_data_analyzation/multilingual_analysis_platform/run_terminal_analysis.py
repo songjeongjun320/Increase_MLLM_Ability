@@ -21,6 +21,8 @@ from core.sentence_embedding import SentenceEmbeddingAnalyzer
 from core.attention_analysis import AttentionAnalyzer
 from core.confidence_analysis import ConfidenceAnalyzer
 from utils.comparison_utils import ModelComparisonSuite
+from visualization.embedding_plots import EmbeddingVisualizer
+import matplotlib.pyplot as plt
 
 # ============================================================================
 # 🔧 USER CONFIGURATION - 여기서 설정하세요!
@@ -55,6 +57,96 @@ def print_header():
     print(f"🎯 Training Model: {TRAINING_MODEL_PATH}")
     print(f"📝 Test Sentences: {len(TEST_SENTENCES)} pairs")
     print("=" * 60)
+
+def save_embedding_visualizations(results):
+    """Generate and save embedding visualizations."""
+    try:
+        # Create output directory
+        output_dir = platform_dir / "outputs" / "terminal_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize embedding analyzer and visualizer
+        embedding_analyzer = SentenceEmbeddingAnalyzer()
+        visualizer = EmbeddingVisualizer()
+
+        # Prepare text and language data
+        texts = []
+        languages = []
+        for en, ko in TEST_SENTENCES:
+            texts.extend([en, ko])
+            languages.extend(['en', 'ko'])
+
+        # Generate embeddings
+        embedding_result = embedding_analyzer.generate_embeddings(texts, languages)
+        embeddings = embedding_result['embeddings']
+
+        # Generate PCA visualization
+        try:
+            fig = visualizer.plot_embeddings_2d(
+                embeddings=embeddings,
+                languages=languages,
+                texts=texts,
+                method='pca',
+                interactive=False,
+                title="PCA - Sentence Embeddings Comparison"
+            )
+            plt.savefig(output_dir / "pca_embeddings.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"   ✅ PCA plot saved: {output_dir / 'pca_embeddings.png'}")
+        except Exception as e:
+            print(f"   ⚠️ PCA visualization failed: {e}")
+
+        # Generate t-SNE visualization
+        try:
+            fig = visualizer.plot_embeddings_2d(
+                embeddings=embeddings,
+                languages=languages,
+                texts=texts,
+                method='tsne',
+                interactive=False,
+                title="t-SNE - Sentence Embeddings Comparison"
+            )
+            plt.savefig(output_dir / "tsne_embeddings.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"   ✅ t-SNE plot saved: {output_dir / 'tsne_embeddings.png'}")
+        except Exception as e:
+            print(f"   ⚠️ t-SNE visualization failed: {e}")
+
+        # Generate UMAP visualization
+        try:
+            fig = visualizer.plot_embeddings_2d(
+                embeddings=embeddings,
+                languages=languages,
+                texts=texts,
+                method='umap',
+                interactive=False,
+                title="UMAP - Sentence Embeddings Comparison"
+            )
+            plt.savefig(output_dir / "umap_embeddings.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"   ✅ UMAP plot saved: {output_dir / 'umap_embeddings.png'}")
+        except Exception as e:
+            print(f"   ⚠️ UMAP visualization failed: {e}")
+
+        # Generate similarity heatmap
+        try:
+            similarity_matrix = embedding_result['similarity_matrix']
+            fig = visualizer.plot_similarity_heatmap(
+                similarity_matrix=similarity_matrix,
+                texts=texts,
+                languages=languages,
+                interactive=False,
+                title="Sentence Similarity Heatmap"
+            )
+            plt.savefig(output_dir / "similarity_heatmap.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"   ✅ Similarity heatmap saved: {output_dir / 'similarity_heatmap.png'}")
+        except Exception as e:
+            print(f"   ⚠️ Similarity heatmap failed: {e}")
+
+    except Exception as e:
+        print(f"   ❌ Visualization generation failed: {e}")
+        raise
 
 def analyze_embedding_differences():
     """Analyze embedding differences between models."""
@@ -91,6 +183,13 @@ def analyze_embedding_differences():
                     improvement = train_sim - base_sim
                     print(f"   \"{en}\" ↔ \"{ko}\"")
                     print(f"     Base: {base_sim:.3f} → Training: {train_sim:.3f} ({improvement:+.3f})")
+
+        # Generate and save visualizations
+        print(f"\n🎨 Generating Visualizations...")
+        try:
+            save_embedding_visualizations(results)
+        except Exception as e:
+            print(f"   ⚠️ Visualization generation failed: {e}")
 
         return results
 

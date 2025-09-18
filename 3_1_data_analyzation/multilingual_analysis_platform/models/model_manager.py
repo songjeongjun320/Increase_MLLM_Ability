@@ -8,7 +8,7 @@ Handles loading and managing various types of models for multilingual analysis:
 """
 
 import torch
-from transformers import AutoModel, AutoTokenizer, AutoConfig
+from transformers import AutoModel, AutoTokenizer, AutoConfig, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
 from typing import Dict, Any, Optional, List, Tuple, Union
 import logging
@@ -292,22 +292,37 @@ class ModelManager:
         inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        # Get model outputs
-        with torch.no_grad():
-            outputs = model(**inputs)
+        # Try to load as causal LM model for probability extraction
+        try:
+            if not hasattr(model, 'lm_head') and not hasattr(outputs, 'logits'):
+                # Try to load the same model as CausalLM
+                lm_model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
+                lm_model.to(self.device)
+                lm_model.eval()
 
-        # Extract logits (note: this assumes the model has a language modeling head)
-        if hasattr(outputs, 'logits'):
-            logits = outputs.logits
-        elif hasattr(outputs, 'last_hidden_state'):
-            # If no LM head, we can't get token probabilities
-            logger.warning("Model doesn't have language modeling head, returning hidden states only")
-            return {
-                'hidden_states': outputs.last_hidden_state,
-                'tokens': tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
-            }
-        else:
-            raise ValueError("Model output format not supported for probability extraction")
+                with torch.no_grad():
+                    outputs = lm_model(**inputs)
+
+                if hasattr(outputs, 'logits'):
+                    logits = outputs.logits
+                else:
+                    raise ValueError("Unable to extract logits from causal LM model")
+            else:
+                # Get model outputs
+                with torch.no_grad():
+                    outputs = model(**inputs)
+
+                if hasattr(outputs, 'logits'):
+                    logits = outputs.logits
+                else:
+                    raise ValueError("Model output format not supported for probability extraction")
+
+        except Exception as e:
+            logger.warning(f"Failed to extract probabilities: {e}")
+            logger.info("Attempting alternative approach using embedding similarity...")
+
+            # Alternative: Use embedding similarity for uncertainty estimation
+            return self._estimate_uncertainty_from_embeddings(model, tokenizer, inputs, text)
 
         # Convert logits to probabilities
         probabilities = torch.softmax(logits, dim=-1)
@@ -390,6 +405,76 @@ class ModelManager:
             })
 
         return memory_info
+
+    def _estimate_uncertainty_from_embeddings(self, model, tokenizer, inputs, text):
+        """
+        Estimate uncertainty using embedding-based approaches when logits are unavailable.
+
+        This method provides an alternative uncertainty estimation by analyzing:
+        1. Token-level embedding variations
+        2. Attention pattern entropy
+        3. Hidden state magnitudes
+        """
+        with torch.no_grad():
+            outputs = model(**inputs, output_hidden_states=True, output_attentions=True)
+
+        # Get hidden states and attention
+        hidden_states = outputs.last_hidden_state  # [batch, seq_len, hidden_size]
+        attentions = outputs.attentions if hasattr(outputs, 'attentions') else None
+
+        # Token information
+        tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+        seq_len = hidden_states.shape[1]
+
+        # Calculate embedding-based uncertainty measures
+        uncertainties = []
+        attention_entropies = []
+
+        for pos in range(seq_len):
+            # 1. Hidden state magnitude (higher magnitude = more confident)
+            hidden_vec = hidden_states[0, pos]  # [hidden_size]
+            magnitude = torch.norm(hidden_vec).item()
+
+            # 2. Attention entropy (higher entropy = more uncertain)
+            if attentions is not None:
+                # Average attention across all heads and layers
+                avg_attention = torch.stack([att[0, :, pos, :].mean(0) for att in attentions]).mean(0)
+                # Calculate entropy
+                att_entropy = -(avg_attention * torch.log(avg_attention + 1e-8)).sum().item()
+                attention_entropies.append(att_entropy)
+            else:
+                attention_entropies.append(0.0)
+
+            # 3. Normalize magnitude to uncertainty (inverse relationship)
+            # Higher magnitude = lower uncertainty
+            uncertainty = 1.0 / (1.0 + magnitude / 100.0)  # Normalize to [0, 1]
+            uncertainties.append(uncertainty)
+
+        # Calculate statistics
+        mean_uncertainty = sum(uncertainties) / len(uncertainties)
+        mean_attention_entropy = sum(attention_entropies) / len(attention_entropies) if attention_entropies else 0.0
+
+        # Classify uncertainty level
+        if mean_uncertainty < 0.3:
+            uncertainty_level = "low"
+        elif mean_uncertainty < 0.6:
+            uncertainty_level = "medium"
+        else:
+            uncertainty_level = "high"
+
+        return {
+            'logits': None,  # Not available
+            'tokens': tokens,
+            'uncertainty_estimates': {
+                'token_uncertainties': uncertainties,
+                'attention_entropies': attention_entropies,
+                'mean_uncertainty': mean_uncertainty,
+                'mean_attention_entropy': mean_attention_entropy,
+                'uncertainty_classification': uncertainty_level
+            },
+            'method': 'embedding_based',
+            'note': 'Probabilities unavailable - using embedding-based uncertainty estimation'
+        }
 
 
 # Global model manager instance

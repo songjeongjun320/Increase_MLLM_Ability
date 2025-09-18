@@ -64,8 +64,13 @@ class ConfidenceAnalyzer:
             model_name_or_path, text, model_type
         )
 
+        # Handle different types of prediction data
         if 'logits' not in prediction_data:
-            raise ValueError("Model does not support probability extraction")
+            # Check if we have embedding-based uncertainty estimates
+            if 'uncertainty_estimates' in prediction_data:
+                return self._process_embedding_uncertainty(prediction_data, analysis_methods)
+            else:
+                raise ValueError("Model does not support probability extraction")
 
         logits = prediction_data['logits']
         tokens = prediction_data['tokens']
@@ -563,6 +568,79 @@ class ConfidenceAnalyzer:
 
         logger.info(f"Confidence analysis exported to {output_path}")
         return str(output_path)
+
+    def _process_embedding_uncertainty(self, prediction_data: Dict[str, Any],
+                                     analysis_methods: List[str]) -> Dict[str, Any]:
+        """
+        Process embedding-based uncertainty estimates when logits are unavailable.
+
+        This provides alternative uncertainty measures using:
+        1. Hidden state magnitudes
+        2. Attention pattern entropies
+        3. Token-level uncertainty estimates
+        """
+        uncertainty_data = prediction_data['uncertainty_estimates']
+        tokens = prediction_data['tokens']
+
+        analysis_results = {
+            'model_name': prediction_data.get('model_name', 'unknown'),
+            'model_type': prediction_data.get('model_type', 'unknown'),
+            'text': prediction_data.get('text', ''),
+            'tokens': tokens,
+            'sequence_length': len(tokens),
+            'method': 'embedding_based_uncertainty',
+            'note': prediction_data.get('note', ''),
+            'confidence_measures': {}
+        }
+
+        # Process embedding-based entropy (from attention patterns)
+        if 'entropy' in analysis_methods and 'attention_entropies' in uncertainty_data:
+            attention_entropies = uncertainty_data['attention_entropies']
+            mean_entropy = uncertainty_data['mean_attention_entropy']
+
+            analysis_results['confidence_measures']['entropy'] = {
+                'mean_entropy': mean_entropy,
+                'std_entropy': np.std(attention_entropies) if attention_entropies else 0.0,
+                'position_entropies': attention_entropies,
+                'uncertainty_classification': uncertainty_data['uncertainty_classification'],
+                'method': 'attention_based'
+            }
+
+        # Process token-level uncertainties as variance alternative
+        if 'variance' in analysis_methods and 'token_uncertainties' in uncertainty_data:
+            token_uncertainties = uncertainty_data['token_uncertainties']
+
+            analysis_results['confidence_measures']['variance'] = {
+                'mean_variance': np.mean(token_uncertainties),
+                'std_variance': np.std(token_uncertainties),
+                'position_variances': token_uncertainties,
+                'method': 'hidden_state_magnitude_based'
+            }
+
+        # Process overall uncertainty as perplexity alternative
+        if 'perplexity' in analysis_methods:
+            mean_uncertainty = uncertainty_data['mean_uncertainty']
+            # Convert uncertainty to perplexity-like measure
+            pseudo_perplexity = np.exp(mean_uncertainty * 2)  # Scale for readability
+
+            analysis_results['confidence_measures']['perplexity'] = {
+                'overall_perplexity': pseudo_perplexity,
+                'position_perplexities': [np.exp(u * 2) for u in uncertainty_data['token_uncertainties']],
+                'method': 'uncertainty_based_pseudo_perplexity'
+            }
+
+        # Add summary statistics
+        analysis_results['summary'] = {
+            'mean_uncertainty': uncertainty_data['mean_uncertainty'],
+            'uncertainty_level': uncertainty_data['uncertainty_classification'],
+            'high_uncertainty_positions': [
+                i for i, u in enumerate(uncertainty_data['token_uncertainties'])
+                if u > uncertainty_data['mean_uncertainty'] + np.std(uncertainty_data['token_uncertainties'])
+            ],
+            'analysis_note': 'Embedding-based uncertainty estimation used due to unavailable logits'
+        }
+
+        return analysis_results
 
     def clear_cache(self):
         """Clear confidence analysis cache."""

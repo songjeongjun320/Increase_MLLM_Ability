@@ -87,6 +87,10 @@ class EmbeddingVisualizer:
                        save_path: Optional[str],
                        method: str) -> plt.Figure:
         """Create static 2D plot with matplotlib."""
+        # Set font for Korean support
+        plt.rcParams['font.family'] = ['DejaVu Sans', 'Malgun Gothic', 'AppleGothic', 'sans-serif']
+        plt.rcParams['axes.unicode_minus'] = False
+
         fig, ax = plt.subplots(figsize=self.config.get('visualization.plotting.figure_size', [12, 8]))
 
         # Plot points by language
@@ -99,31 +103,50 @@ class EmbeddingVisualizer:
                     c=colors[lang],
                     label=lang,
                     alpha=0.7,
-                    s=60
+                    s=80
                 )
 
-        # Add text annotations if provided and not too many points
+        # Add sentence index annotations
         if texts and len(texts) <= 50:
             for i, (x, y) in enumerate(reduced_embeddings):
+                # Show sentence index and truncated text
+                display_text = f"{i}: {texts[i][:25]}{'...' if len(texts[i]) > 25 else ''}"
                 ax.annotate(
-                    texts[i][:30] + ('...' if len(texts[i]) > 30 else ''),
+                    display_text,
                     (x, y),
                     xytext=(5, 5),
                     textcoords='offset points',
-                    fontsize=8,
-                    alpha=0.7
+                    fontsize=9,
+                    alpha=0.8,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.7),
+                    fontfamily='monospace'
+                )
+        else:
+            # If too many texts, just show indices
+            for i, (x, y) in enumerate(reduced_embeddings):
+                ax.annotate(
+                    str(i),
+                    (x, y),
+                    xytext=(3, 3),
+                    textcoords='offset points',
+                    fontsize=10,
+                    alpha=0.9,
+                    bbox=dict(boxstyle="circle,pad=0.2", facecolor='white', alpha=0.8),
+                    ha='center',
+                    va='center'
                 )
 
         ax.set_xlabel(f'{method.upper()} 1')
         ax.set_ylabel(f'{method.upper()} 2')
-        ax.set_title(title)
+        ax.set_title(title, fontsize=14, pad=20)
         ax.legend()
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
 
         if save_path:
-            fig.savefig(save_path, dpi=self.config.get('visualization.plotting.dpi', 300), bbox_inches='tight')
+            fig.savefig(save_path, dpi=self.config.get('visualization.plotting.dpi', 300),
+                       bbox_inches='tight', facecolor='white')
             logger.info(f"Plot saved to {save_path}")
 
         return fig
@@ -293,20 +316,28 @@ class EmbeddingVisualizer:
                            title: str,
                            save_path: Optional[str]) -> plt.Figure:
         """Create static heatmap with matplotlib."""
-        # Create labels
-        if texts and len(texts) <= 20:
-            labels = [f"{lang}: {text[:30]}..." for lang, text in zip(languages, texts)]
-        else:
-            labels = [f"{lang}_{i}" for i, lang in enumerate(languages)]
+        # Set font for Korean support
+        plt.rcParams['font.family'] = ['DejaVu Sans', 'Malgun Gothic', 'AppleGothic', 'sans-serif']
+        plt.rcParams['axes.unicode_minus'] = False
 
-        fig, ax = plt.subplots(figsize=(12, 10))
+        # Create labels with index and text
+        if texts and len(texts) <= 20:
+            labels = []
+            for i, (lang, text) in enumerate(zip(languages, texts)):
+                # Truncate text and add index
+                truncated_text = text[:20] + ('...' if len(text) > 20 else '')
+                labels.append(f"{i}:{lang} {truncated_text}")
+        else:
+            labels = [f"{i}:{lang}" for i, lang in enumerate(languages)]
+
+        fig, ax = plt.subplots(figsize=(14, 12))
 
         # Create heatmap
         im = ax.imshow(similarity_matrix, cmap='viridis', aspect='auto')
 
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Cosine Similarity')
+        cbar.set_label('Cosine Similarity', fontsize=12)
 
         # Set ticks and labels
         ax.set_xticks(range(len(labels)))

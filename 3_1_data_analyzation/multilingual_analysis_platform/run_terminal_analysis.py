@@ -22,6 +22,7 @@ from core.attention_analysis import AttentionAnalyzer
 from core.confidence_analysis import ConfidenceAnalyzer
 from utils.comparison_utils import ModelComparisonSuite
 from visualization.embedding_plots import EmbeddingVisualizer
+from visualization.confidence_plots import ConfidenceVisualizer
 import matplotlib.pyplot as plt
 
 # ============================================================================
@@ -56,6 +57,11 @@ def print_header():
     print(f"📊 Base Model: {BASE_MODEL_PATH}")
     print(f"🎯 Training Model: {TRAINING_MODEL_PATH}")
     print(f"📝 Test Sentences: {len(TEST_SENTENCES)} pairs")
+    print("=" * 60)
+    print("\n📝 Sentence Index Reference:")
+    for i, (en, ko) in enumerate(TEST_SENTENCES):
+        print(f"   [{i*2}] {en}")
+        print(f"   [{i*2+1}] {ko}")
     print("=" * 60)
 
 def save_embedding_visualizations(results):
@@ -148,6 +154,68 @@ def save_embedding_visualizations(results):
         print(f"   ❌ Visualization generation failed: {e}")
         raise
 
+def save_confidence_visualizations(confidence_result):
+    """Generate and save confidence analysis visualizations."""
+    try:
+        output_dir = platform_dir / "outputs" / "terminal_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        visualizer = ConfidenceVisualizer()
+
+        # Generate entropy by position plot
+        try:
+            fig = visualizer.plot_entropy_by_position(
+                confidence_result=confidence_result,
+                interactive=False,
+                title="Token-wise Confidence Analysis"
+            )
+            plt.savefig(output_dir / "confidence_entropy.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"   ✅ Confidence plot saved: {output_dir / 'confidence_entropy.png'}")
+        except Exception as e:
+            print(f"   ⚠️ Entropy plot failed: {e}")
+
+        # Generate uncertainty heatmap if we have token-level data
+        try:
+            if 'confidence_measures' in confidence_result:
+                measures = confidence_result['confidence_measures']
+                if 'variance' in measures or 'entropy' in measures:
+                    fig = visualizer.plot_confidence_heatmap(
+                        confidence_result=confidence_result,
+                        interactive=False,
+                        title="Confidence Heatmap"
+                    )
+                    plt.savefig(output_dir / "confidence_heatmap.png", dpi=300, bbox_inches='tight')
+                    plt.close()
+                    print(f"   ✅ Confidence heatmap saved: {output_dir / 'confidence_heatmap.png'}")
+        except Exception as e:
+            print(f"   ⚠️ Confidence heatmap failed: {e}")
+
+    except Exception as e:
+        print(f"   ❌ Confidence visualization failed: {e}")
+
+def save_confidence_comparison(base_result, train_result):
+    """Generate and save confidence comparison visualizations."""
+    try:
+        output_dir = platform_dir / "outputs" / "terminal_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        visualizer = ConfidenceVisualizer()
+
+        # Generate side-by-side confidence comparison
+        fig = visualizer.plot_confidence_comparison(
+            base_result=base_result,
+            training_result=train_result,
+            interactive=False,
+            title="Base vs Training Model Confidence Comparison"
+        )
+        plt.savefig(output_dir / "confidence_comparison.png", dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"   ✅ Confidence comparison saved: {output_dir / 'confidence_comparison.png'}")
+
+    except Exception as e:
+        print(f"   ❌ Confidence comparison visualization failed: {e}")
+
 def analyze_embedding_differences():
     """Analyze embedding differences between models."""
     print("\n📊 Running Sentence Embedding Analysis...")
@@ -181,7 +249,7 @@ def analyze_embedding_differences():
                     base_sim = pairs['base_similarities'][i]
                     train_sim = pairs['training_similarities'][i]
                     improvement = train_sim - base_sim
-                    print(f"   \"{en}\" ↔ \"{ko}\"")
+                    print(f"   [{i*2}] \"{en}\" ↔ [{i*2+1}] \"{ko}\"")
                     print(f"     Base: {base_sim:.3f} → Training: {train_sim:.3f} ({improvement:+.3f})")
 
         # Generate and save visualizations
@@ -263,6 +331,7 @@ def analyze_confidence_differences():
         )
 
         print(f"   ✅ Base Model Confidence analyzed for {base_confidence['sequence_length']} tokens")
+        print(f"   📊 Method: {base_confidence.get('method', 'logit_based')}")
 
         if 'confidence_measures' in base_confidence:
             measures = base_confidence['confidence_measures']
@@ -270,22 +339,49 @@ def analyze_confidence_differences():
                 entropy_data = measures['entropy']
                 print(f"     Mean Entropy: {entropy_data['mean_entropy']:.3f}")
                 print(f"     Uncertainty: {entropy_data['uncertainty_classification']}")
+                print(f"     Method: {entropy_data.get('method', 'standard')}")
+
+        # Check if we have embedding-based uncertainty summary
+        if 'summary' in base_confidence:
+            summary = base_confidence['summary']
+            print(f"     Overall Uncertainty: {summary['uncertainty_level']}")
+            if 'high_uncertainty_positions' in summary:
+                high_positions = summary['high_uncertainty_positions']
+                if high_positions:
+                    print(f"     High Uncertainty Positions: {high_positions}")
+
+        # Generate confidence visualization
+        try:
+            save_confidence_visualizations(base_confidence)
+        except Exception as e:
+            print(f"   ⚠️ Confidence visualization failed: {e}")
 
         # Training model confidence (if exists)
+        train_confidence = None
         if os.path.exists(TRAINING_MODEL_PATH):
-            train_confidence = confidence_analyzer.analyze_prediction_confidence(
-                model_name_or_path=TRAINING_MODEL_PATH,
-                text=sample_text,
-                model_type='trained'
-            )
-            print(f"   ✅ Training Model Confidence analyzed")
+            try:
+                train_confidence = confidence_analyzer.analyze_prediction_confidence(
+                    model_name_or_path=TRAINING_MODEL_PATH,
+                    text=sample_text,
+                    model_type='trained'
+                )
+                print(f"   ✅ Training Model Confidence analyzed")
 
-            if 'confidence_measures' in train_confidence:
-                measures = train_confidence['confidence_measures']
-                if 'entropy' in measures:
-                    entropy_data = measures['entropy']
-                    print(f"     Mean Entropy: {entropy_data['mean_entropy']:.3f}")
-                    print(f"     Uncertainty: {entropy_data['uncertainty_classification']}")
+                if 'confidence_measures' in train_confidence:
+                    measures = train_confidence['confidence_measures']
+                    if 'entropy' in measures:
+                        entropy_data = measures['entropy']
+                        print(f"     Mean Entropy: {entropy_data['mean_entropy']:.3f}")
+                        print(f"     Uncertainty: {entropy_data['uncertainty_classification']}")
+
+                # Generate comparison visualization
+                try:
+                    save_confidence_comparison(base_confidence, train_confidence)
+                except Exception as e:
+                    print(f"   ⚠️ Confidence comparison visualization failed: {e}")
+
+            except Exception as e:
+                print(f"   ❌ Training model confidence analysis failed: {e}")
         else:
             print(f"   ⚠️ Training model path not found: {TRAINING_MODEL_PATH}")
 

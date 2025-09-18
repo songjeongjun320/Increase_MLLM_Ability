@@ -118,6 +118,15 @@ class ModelManager:
                 # Load tokenizer
                 tokenizer = AutoTokenizer.from_pretrained(model_path)
 
+                # Fix padding token issue
+                if tokenizer.pad_token is None:
+                    if tokenizer.eos_token is not None:
+                        tokenizer.pad_token = tokenizer.eos_token
+                    elif tokenizer.unk_token is not None:
+                        tokenizer.pad_token = tokenizer.unk_token
+                    else:
+                        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
                 # Load model
                 model = AutoModel.from_pretrained(
                     model_path,

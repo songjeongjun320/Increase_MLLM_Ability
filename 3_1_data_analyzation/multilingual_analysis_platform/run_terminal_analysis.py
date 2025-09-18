@@ -27,8 +27,8 @@ from utils.comparison_utils import ModelComparisonSuite
 # ============================================================================
 
 # 모델 경로 설정
-BASE_MODEL_PATH = "bert-base-multilingual-cased"  # 베이스 모델
-TRAINING_MODEL_PATH = "/path/to/your/trained/model"  # 훈련된 모델 경로
+BASE_MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"  # 베이스 모델
+TRAINING_MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged"
 
 # 분석할 문장들 (영어-한국어 쌍)
 TEST_SENTENCES = [
@@ -215,13 +215,24 @@ def save_results_to_file(embedding_results, attention_results, confidence_result
                 def convert_numpy(obj):
                     if isinstance(obj, np.ndarray):
                         return obj.tolist()
-                    elif isinstance(obj, np.floating):
+                    elif isinstance(obj, (np.floating, float)):
                         return float(obj)
-                    elif isinstance(obj, np.integer):
+                    elif isinstance(obj, (np.integer, int)):
                         return int(obj)
+                    elif hasattr(obj, '__dict__'):
+                        return str(obj)  # Convert complex objects to string
                     return obj
 
-                json.dump(embedding_results, f, ensure_ascii=False, indent=2, default=convert_numpy)
+                # Create a safe copy of results without circular references
+                safe_results = {}
+                for key, value in embedding_results.items():
+                    try:
+                        converted = convert_numpy(value)
+                        safe_results[key] = converted
+                    except (TypeError, ValueError):
+                        safe_results[key] = str(value)
+
+                json.dump(safe_results, f, ensure_ascii=False, indent=2, default=str)
             print(f"   ✅ Embedding results saved to: {output_dir / 'embedding_comparison.json'}")
 
         # Save summary

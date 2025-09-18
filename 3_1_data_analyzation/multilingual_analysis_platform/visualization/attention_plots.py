@@ -17,8 +17,8 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 import logging
 from pathlib import Path
 
-from ..utils.config_loader import get_config
-from ..core.attention_analysis import AttentionAnalyzer
+from utils.config_loader import get_config
+from core.attention_analysis import AttentionAnalyzer
 
 logger = logging.getLogger(__name__)
 

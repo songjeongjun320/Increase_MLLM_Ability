@@ -16,7 +16,7 @@ from pathlib import Path
 import gc
 import warnings
 
-from ..utils.config_loader import get_config
+from utils.config_loader import get_config
 
 logger = logging.getLogger(__name__)
 

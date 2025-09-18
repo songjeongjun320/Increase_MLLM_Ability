@@ -15,8 +15,8 @@ from sklearn.metrics import mutual_info_score
 import logging
 from pathlib import Path
 
-from ..models.model_manager import get_model_manager
-from ..utils.config_loader import get_config
+from models.model_manager import get_model_manager
+from utils.config_loader import get_config
 
 logger = logging.getLogger(__name__)
 

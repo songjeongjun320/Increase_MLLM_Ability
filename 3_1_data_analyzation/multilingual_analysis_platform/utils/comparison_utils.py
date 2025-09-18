@@ -12,9 +12,9 @@ import logging
 from pathlib import Path
 
 from .config_loader import get_config
-from ..core.sentence_embedding import SentenceEmbeddingAnalyzer
-from ..core.attention_analysis import AttentionAnalyzer
-from ..core.confidence_analysis import ConfidenceAnalyzer
+from core.sentence_embedding import SentenceEmbeddingAnalyzer
+from core.attention_analysis import AttentionAnalyzer
+from core.confidence_analysis import ConfidenceAnalyzer
 
 logger = logging.getLogger(__name__)
 

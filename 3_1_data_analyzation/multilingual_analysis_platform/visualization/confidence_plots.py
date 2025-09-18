@@ -17,8 +17,8 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 import logging
 from pathlib import Path
 
-from ..utils.config_loader import get_config
-from ..core.confidence_analysis import ConfidenceAnalyzer
+from utils.config_loader import get_config
+from core.confidence_analysis import ConfidenceAnalyzer
 
 logger = logging.getLogger(__name__)
 

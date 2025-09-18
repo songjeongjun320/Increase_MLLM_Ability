@@ -441,6 +441,22 @@ class AttentionAnalyzer:
                 patterns1['head_entropy'], patterns2['head_entropy']
             )
 
+        # Calculate overall similarity score
+        if comparison_results['comparison_metrics']:
+            similarities = []
+            for layer_data in comparison_results['comparison_metrics'].values():
+                if 'cosine_similarity' in layer_data:
+                    similarities.append(layer_data['cosine_similarity'])
+                elif 'correlation' in layer_data:
+                    similarities.append(abs(layer_data['correlation']))  # Use absolute correlation
+
+            if similarities:
+                comparison_results['overall_similarity'] = np.mean(similarities)
+            else:
+                comparison_results['overall_similarity'] = 0.0
+        else:
+            comparison_results['overall_similarity'] = 0.0
+
         return comparison_results
 
     def _compare_entropies(self, entropy1: Dict[str, Any], entropy2: Dict[str, Any]) -> Dict[str, Any]:

@@ -65,6 +65,9 @@ class ConfidenceAnalyzer:
         )
 
         # Handle different types of prediction data
+        if prediction_data is None:
+            raise ValueError("Failed to get prediction data from model")
+
         if 'logits' not in prediction_data:
             # Check if we have embedding-based uncertainty estimates
             if 'uncertainty_estimates' in prediction_data:

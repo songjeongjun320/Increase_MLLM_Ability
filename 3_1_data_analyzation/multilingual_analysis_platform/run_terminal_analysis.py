@@ -17,13 +17,29 @@ platform_dir = Path(__file__).parent
 sys.path.insert(0, str(platform_dir))
 
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import warnings
+import logging
+import os
+
+# Suppress warnings and logs
+warnings.filterwarnings('ignore')
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger('PIL').setLevel(logging.WARNING)
+logging.getLogger('transformers').setLevel(logging.WARNING)
+logging.getLogger('sentence_transformers').setLevel(logging.WARNING)
+logging.getLogger('torch').setLevel(logging.WARNING)
+
+# Suppress matplotlib font warnings
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
 from core.sentence_embedding import SentenceEmbeddingAnalyzer
 from core.attention_analysis import AttentionAnalyzer
 from core.confidence_analysis import ConfidenceAnalyzer
 from utils.comparison_utils import ModelComparisonSuite
 from visualization.embedding_plots import EmbeddingVisualizer
 from visualization.confidence_plots import ConfidenceVisualizer
-import matplotlib.pyplot as plt
 
 # ============================================================================
 # 🔧 USER CONFIGURATION - 여기서 설정하세요!
@@ -49,6 +65,54 @@ ENABLE_CONFIDENCE_ANALYSIS = True
 SAVE_RESULTS = True
 
 # ============================================================================
+
+def setup_korean_font():
+    """Setup Korean font for matplotlib to display Korean text properly."""
+    try:
+        # Suppress all font-related warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            # Try to find Korean fonts quietly
+            korean_font_names = ['NanumGothic', 'Nanum Gothic', 'NanumBarunGothic', 'Malgun Gothic', 'Gulim', 'Dotum']
+            available_fonts = [f.name for f in fm.fontManager.ttflist]
+
+            found_font = None
+            for font_name in korean_font_names:
+                if font_name in available_fonts:
+                    found_font = font_name
+                    break
+
+            if found_font:
+                plt.rcParams['font.family'] = found_font
+                print(f"🔤 Korean font: {found_font}")
+            else:
+                # Try manual download approach quietly
+                try:
+                    import urllib.request
+                    font_dir = platform_dir / "fonts"
+                    font_dir.mkdir(exist_ok=True)
+                    font_path = font_dir / "NanumGothic.ttf"
+
+                    if not font_path.exists():
+                        print("🔤 Downloading Korean font...")
+                        font_url = "https://github.com/naver/nanumfont/raw/master/fonts/NanumGothic.ttf"
+                        urllib.request.urlretrieve(font_url, font_path)
+
+                    # Add font to matplotlib quietly
+                    fm.fontManager.addfont(str(font_path))
+                    plt.rcParams['font.family'] = 'NanumGothic'
+                    print("🔤 Korean font: NanumGothic (downloaded)")
+
+                except:
+                    # Final fallback - use DejaVu Sans
+                    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
+                    print("🔤 Korean font: Unicode fallback")
+
+    except:
+        plt.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
+
+    plt.rcParams['axes.unicode_minus'] = False
 
 def print_header():
     """Print analysis header."""
@@ -86,69 +150,67 @@ def save_embedding_visualizations(results):
         embedding_result = embedding_analyzer.generate_embeddings(texts, languages)
         embeddings = embedding_result['embeddings']
 
-        # Generate PCA visualization
-        try:
-            fig = visualizer.plot_embeddings_2d(
-                embeddings=embeddings,
-                languages=languages,
-                texts=texts,
-                method='pca',
-                interactive=False,
-                title="PCA - Sentence Embeddings Comparison"
-            )
-            plt.savefig(output_dir / "pca_embeddings.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"   ✅ PCA plot saved: {output_dir / 'pca_embeddings.png'}")
-        except Exception as e:
-            print(f"   ⚠️ PCA visualization failed: {e}")
+        # Generate visualizations quietly
+        plots_saved = 0
 
-        # Generate t-SNE visualization
+        # PCA
         try:
-            fig = visualizer.plot_embeddings_2d(
-                embeddings=embeddings,
-                languages=languages,
-                texts=texts,
-                method='tsne',
-                interactive=False,
-                title="t-SNE - Sentence Embeddings Comparison"
-            )
-            plt.savefig(output_dir / "tsne_embeddings.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"   ✅ t-SNE plot saved: {output_dir / 'tsne_embeddings.png'}")
-        except Exception as e:
-            print(f"   ⚠️ t-SNE visualization failed: {e}")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fig = visualizer.plot_embeddings_2d(
+                    embeddings=embeddings, languages=languages, texts=texts,
+                    method='pca', interactive=False, title="PCA - Sentence Embeddings"
+                )
+                plt.savefig(output_dir / "pca_embeddings.png", dpi=300, bbox_inches='tight')
+                plt.close()
+                plots_saved += 1
+        except:
+            pass
 
-        # Generate UMAP visualization
+        # t-SNE
         try:
-            fig = visualizer.plot_embeddings_2d(
-                embeddings=embeddings,
-                languages=languages,
-                texts=texts,
-                method='umap',
-                interactive=False,
-                title="UMAP - Sentence Embeddings Comparison"
-            )
-            plt.savefig(output_dir / "umap_embeddings.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"   ✅ UMAP plot saved: {output_dir / 'umap_embeddings.png'}")
-        except Exception as e:
-            print(f"   ⚠️ UMAP visualization failed: {e}")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fig = visualizer.plot_embeddings_2d(
+                    embeddings=embeddings, languages=languages, texts=texts,
+                    method='tsne', interactive=False, title="t-SNE - Sentence Embeddings"
+                )
+                plt.savefig(output_dir / "tsne_embeddings.png", dpi=300, bbox_inches='tight')
+                plt.close()
+                plots_saved += 1
+        except:
+            pass
 
-        # Generate similarity heatmap
+        # UMAP
         try:
-            similarity_matrix = embedding_result['similarity_matrix']
-            fig = visualizer.plot_similarity_heatmap(
-                similarity_matrix=similarity_matrix,
-                texts=texts,
-                languages=languages,
-                interactive=False,
-                title="Sentence Similarity Heatmap"
-            )
-            plt.savefig(output_dir / "similarity_heatmap.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"   ✅ Similarity heatmap saved: {output_dir / 'similarity_heatmap.png'}")
-        except Exception as e:
-            print(f"   ⚠️ Similarity heatmap failed: {e}")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fig = visualizer.plot_embeddings_2d(
+                    embeddings=embeddings, languages=languages, texts=texts,
+                    method='umap', interactive=False, title="UMAP - Sentence Embeddings"
+                )
+                plt.savefig(output_dir / "umap_embeddings.png", dpi=300, bbox_inches='tight')
+                plt.close()
+                plots_saved += 1
+        except:
+            pass
+
+        # Similarity heatmap
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                similarity_matrix = embedding_result['similarity_matrix']
+                fig = visualizer.plot_similarity_heatmap(
+                    similarity_matrix=similarity_matrix, texts=texts, languages=languages,
+                    interactive=False, title="Sentence Similarity Heatmap"
+                )
+                plt.savefig(output_dir / "similarity_heatmap.png", dpi=300, bbox_inches='tight')
+                plt.close()
+                plots_saved += 1
+        except:
+            pass
+
+        print(f"   ✅ Saved {plots_saved}/4 visualizations")
 
     except Exception as e:
         print(f"   ❌ Visualization generation failed: {e}")
@@ -457,6 +519,9 @@ def save_results_to_file(embedding_results, attention_results, confidence_result
 
 def main():
     """Main analysis function."""
+    # Setup Korean font first
+    setup_korean_font()
+
     print_header()
 
     # Check if training model exists

@@ -87,8 +87,9 @@ class EmbeddingVisualizer:
                        save_path: Optional[str],
                        method: str) -> plt.Figure:
         """Create static 2D plot with matplotlib."""
-        # Set font for Korean support
-        plt.rcParams['font.family'] = ['DejaVu Sans', 'Malgun Gothic', 'AppleGothic', 'sans-serif']
+        # Font should already be set globally, but ensure it's set
+        if 'font.family' not in plt.rcParams or 'DejaVu Sans' in plt.rcParams['font.family']:
+            plt.rcParams['font.family'] = ['NanumGothic', 'Malgun Gothic', 'Gulim', 'sans-serif']
         plt.rcParams['axes.unicode_minus'] = False
 
         fig, ax = plt.subplots(figsize=self.config.get('visualization.plotting.figure_size', [12, 8]))
@@ -316,8 +317,9 @@ class EmbeddingVisualizer:
                            title: str,
                            save_path: Optional[str]) -> plt.Figure:
         """Create static heatmap with matplotlib."""
-        # Set font for Korean support
-        plt.rcParams['font.family'] = ['DejaVu Sans', 'Malgun Gothic', 'AppleGothic', 'sans-serif']
+        # Font should already be set globally, but ensure it's set
+        if 'font.family' not in plt.rcParams or 'DejaVu Sans' in plt.rcParams['font.family']:
+            plt.rcParams['font.family'] = ['NanumGothic', 'Malgun Gothic', 'Gulim', 'sans-serif']
         plt.rcParams['axes.unicode_minus'] = False
 
         # Create labels with index and text

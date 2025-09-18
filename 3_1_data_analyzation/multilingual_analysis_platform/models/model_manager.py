@@ -292,10 +292,20 @@ class ModelManager:
         inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        # Try to load as causal LM model for probability extraction
+        # Try to extract logits from model
+        outputs = None
+        logits = None
+
         try:
-            if not hasattr(model, 'lm_head') and not hasattr(outputs, 'logits'):
-                # Try to load the same model as CausalLM
+            # First, try with the loaded model
+            with torch.no_grad():
+                outputs = model(**inputs)
+
+            if hasattr(outputs, 'logits'):
+                logits = outputs.logits
+            elif not hasattr(model, 'lm_head'):
+                # Try to load as CausalLM if no language modeling head
+                logger.info("No LM head found, trying to load as CausalLM...")
                 lm_model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
                 lm_model.to(self.device)
                 lm_model.eval()
@@ -308,20 +318,18 @@ class ModelManager:
                 else:
                     raise ValueError("Unable to extract logits from causal LM model")
             else:
-                # Get model outputs
-                with torch.no_grad():
-                    outputs = model(**inputs)
-
-                if hasattr(outputs, 'logits'):
-                    logits = outputs.logits
-                else:
-                    raise ValueError("Model output format not supported for probability extraction")
+                raise ValueError("Model output format not supported for probability extraction")
 
         except Exception as e:
             logger.warning(f"Failed to extract probabilities: {e}")
             logger.info("Attempting alternative approach using embedding similarity...")
 
             # Alternative: Use embedding similarity for uncertainty estimation
+            return self._estimate_uncertainty_from_embeddings(model, tokenizer, inputs, text)
+
+        # Check if we successfully got logits
+        if logits is None:
+            logger.warning("Could not extract logits, falling back to embedding-based uncertainty")
             return self._estimate_uncertainty_from_embeddings(model, tokenizer, inputs, text)
 
         # Convert logits to probabilities

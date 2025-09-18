@@ -72,19 +72,18 @@ SAVE_RESULTS = True
 
 def setup_korean_font():
     """Setup Korean font for matplotlib to display Korean text properly."""
+    import matplotlib.pyplot as plt  # Import at the beginning
+    
     try:
         # Suppress all font-related warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            # Clear matplotlib font cache to force refresh
-            fm.fontManager.__init__()
-
             # Try to find Korean fonts quietly
             korean_font_names = [
                 'NanumGothic', 'Nanum Gothic', 'NanumBarunGothic', 'NanumBarunGothicOTF',
                 'Malgun Gothic', 'Gulim', 'Dotum', 'Batang', 'Gungsuh', 'AppleGothic',
-                'Noto Sans CJK KR', 'Source Han Sans KR', 'Roboto'
+                'Noto Sans CJK KR', 'Source Han Sans KR', 'Roboto', 'Arial Unicode MS'
             ]
             
             available_fonts = [f.name for f in fm.fontManager.ttflist]
@@ -101,43 +100,22 @@ def setup_korean_font():
                 plt.rcParams['font.size'] = 10
                 print(f"🔤 Korean font: {found_font}")
             else:
-                # Try manual download approach quietly
-                try:
-                    import urllib.request
-                    font_dir = platform_dir / "fonts"
-                    font_dir.mkdir(exist_ok=True)
-                    font_path = font_dir / "NanumGothic.ttf"
-
-                    if not font_path.exists():
-                        print("🔤 Downloading Korean font...")
-                        font_url = "https://github.com/naver/nanumfont/raw/master/fonts/NanumGothic.ttf"
-                        urllib.request.urlretrieve(font_url, font_path)
-
-                    # Add font to matplotlib quietly
-                    fm.fontManager.addfont(str(font_path))
-                    plt.rcParams['font.family'] = 'NanumGothic'
-                    plt.rcParams['font.size'] = 10
-                    print("🔤 Korean font: NanumGothic (downloaded)")
-
-                except Exception as e:
-                    print(f"🔤 Font download failed: {e}")
-                    # Try system fonts with better fallback
-                    plt.rcParams['font.family'] = ['Arial Unicode MS', 'AppleGothic', 'Malgun Gothic', 'DejaVu Sans']
-                    plt.rcParams['font.size'] = 10
-                    print("🔤 Korean font: System font fallback")
+                # Use system fallback fonts
+                plt.rcParams['font.family'] = ['Arial Unicode MS', 'AppleGothic', 'Malgun Gothic', 'DejaVu Sans', 'sans-serif']
+                plt.rcParams['font.size'] = 10
+                print("🔤 Korean font: System font fallback")
 
     except Exception as e:
         print(f"🔤 Font setup failed: {e}")
-        plt.rcParams['font.family'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
+        # Final fallback
+        plt.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
         plt.rcParams['font.size'] = 10
 
     # Additional matplotlib settings for better Korean support
     plt.rcParams['axes.unicode_minus'] = False
     plt.rcParams['figure.autolayout'] = True
     
-    # Force font refresh
-    import matplotlib.pyplot as plt
-    plt.rcParams.update(plt.rcParams)
+    print(f"🔤 Final font family: {plt.rcParams['font.family']}")
 
 def print_header():
     """Print analysis header."""

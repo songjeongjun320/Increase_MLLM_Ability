@@ -47,16 +47,14 @@ from visualization.confidence_plots import ConfidenceVisualizer
 
 # 모델 경로 설정
 BASE_MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"  # 베이스 모델
-TRAINING_MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_2epoch_allenai-merged"
+TRAINING_MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-tow-allenai-merged"
 
 # 분석할 문장들 (영어-한국어 쌍)
 TEST_SENTENCES = [
-    ("Hello world", "안녕하세요"),
-    ("How are you?", "어떻게 지내세요?"),
-    ("Thank you very much", "정말 감사합니다"),
-    ("I love machine learning", "나는 기계학습을 좋아합니다"),
-    ("The weather is beautiful today", "오늘 날씨가 정말 좋습니다"),
-    ("Artificial intelligence is amazing", "인공지능은 놀랍습니다")
+    ("An engineer is using a computer to design a bridge. Which test is the most important for safety purposes?", "엔지니어가 컴퓨터를 사용하여 교량을 설계하고 있습니다. 안전을 위해 가장 중요한 테스트는 무엇인가요?"),
+    ("Phillip was making hot tea. When he poured the hot water into a glass, the glass broke. Which is the most likely reason the glass broke?", "지현은 뜨거운 차를 만들고 있었습니다. 그가 뜨거운 물을 유리잔에 부었을 때 유리잔이 깨졌습니다. 유리잔이 깨진 이유로 가능성이 가장 높은 것은 무엇일까요?"),
+    ("A 20 N object is placed on a surface and starts to slide. What is the most likely reason the object begins to move?", "20N의 물체가 표면 위에 놓인 후 미끄러지기 시작합니다. 물체가 움직이기 시작하는 가장 가능성이 높은 이유는 무엇일까요?"),
+    ("What is most likely the first step for students to do for a recycling project?", "학생들이 재활용 프로젝트를 위해 가장 먼저 해야 할 일은 무엇인가요?")
 ]
 
 # 분석 옵션

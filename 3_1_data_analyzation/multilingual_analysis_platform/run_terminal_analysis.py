@@ -3,6 +3,9 @@
 Terminal-based Model Comparison Analysis
 
 Simple script to compare two models without browser interface.
+
+module load cuda-12.6.1-gcc-12.1.0
+
 """
 
 import sys

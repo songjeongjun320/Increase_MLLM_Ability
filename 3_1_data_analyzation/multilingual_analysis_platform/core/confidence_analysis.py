@@ -21,6 +21,16 @@ from utils.config_loader import get_config
 logger = logging.getLogger(__name__)
 
 
+def _safe_float_conversion(value):
+    """Safely convert numpy/torch values to Python float."""
+    if hasattr(value, 'item'):
+        return float(value.item())
+    elif hasattr(value, 'tolist'):
+        return float(value.tolist())
+    else:
+        return float(value)
+
+
 class ConfidenceAnalyzer:
     """Analyzes prediction confidence and uncertainty in language models."""
 
@@ -148,11 +158,11 @@ class ConfidenceAnalyzer:
         # Calculate statistics
         entropy_stats = {
             'position_entropies': position_entropies,
-            'mean_entropy': np.mean(position_entropies),
-            'std_entropy': np.std(position_entropies),
-            'max_entropy': np.max(position_entropies),
-            'min_entropy': np.min(position_entropies),
-            'entropy_range': np.max(position_entropies) - np.min(position_entropies)
+            'mean_entropy': _safe_float_conversion(np.mean(position_entropies)),
+            'std_entropy': _safe_float_conversion(np.std(position_entropies)),
+            'max_entropy': _safe_float_conversion(np.max(position_entropies)),
+            'min_entropy': _safe_float_conversion(np.min(position_entropies)),
+            'entropy_range': _safe_float_conversion(np.max(position_entropies) - np.min(position_entropies))
         }
 
         # Identify high/low confidence positions
@@ -199,10 +209,10 @@ class ConfidenceAnalyzer:
 
         variance_stats = {
             'position_variances': position_variances,
-            'mean_variance': np.mean(position_variances),
-            'std_variance': np.std(position_variances),
-            'max_variance': np.max(position_variances),
-            'min_variance': np.min(position_variances)
+            'mean_variance': _safe_float_conversion(np.mean(position_variances)),
+            'std_variance': _safe_float_conversion(np.std(position_variances)),
+            'max_variance': _safe_float_conversion(np.max(position_variances)),
+            'min_variance': _safe_float_conversion(np.min(position_variances))
         }
 
         return variance_stats
@@ -232,8 +242,8 @@ class ConfidenceAnalyzer:
                 position_predictions.append({
                     'rank': j + 1,
                     'token_id': int(idx),
-                    'probability': float(prob),
-                    'confidence_contribution': float(prob / top_k_confidence)
+                    'probability': _safe_float_conversion(prob),
+                    'confidence_contribution': _safe_float_conversion(prob / top_k_confidence)
                 })
 
             position_top_k_predictions.append(position_predictions)
@@ -242,10 +252,10 @@ class ConfidenceAnalyzer:
             'k': top_k,
             'position_top_k_confidence': position_top_k_confidence,
             'position_top_k_predictions': position_top_k_predictions,
-            'mean_top_k_confidence': np.mean(position_top_k_confidence),
-            'std_top_k_confidence': np.std(position_top_k_confidence),
-            'min_top_k_confidence': np.min(position_top_k_confidence),
-            'max_top_k_confidence': np.max(position_top_k_confidence)
+            'mean_top_k_confidence': _safe_float_conversion(np.mean(position_top_k_confidence)),
+            'std_top_k_confidence': _safe_float_conversion(np.std(position_top_k_confidence)),
+            'min_top_k_confidence': _safe_float_conversion(np.min(position_top_k_confidence)),
+            'max_top_k_confidence': _safe_float_conversion(np.max(position_top_k_confidence))
         }
 
         return top_k_stats
@@ -270,11 +280,11 @@ class ConfidenceAnalyzer:
 
         perplexity_stats = {
             'position_perplexities': position_perplexities,
-            'overall_perplexity': float(overall_perplexity),
-            'mean_position_perplexity': np.mean(position_perplexities),
-            'std_position_perplexity': np.std(position_perplexities),
-            'max_perplexity': np.max(position_perplexities),
-            'min_perplexity': np.min(position_perplexities)
+            'overall_perplexity': _safe_float_conversion(overall_perplexity),
+            'mean_position_perplexity': _safe_float_conversion(np.mean(position_perplexities)),
+            'std_position_perplexity': _safe_float_conversion(np.std(position_perplexities)),
+            'max_perplexity': _safe_float_conversion(np.max(position_perplexities)),
+            'min_perplexity': _safe_float_conversion(np.min(position_perplexities))
         }
 
         return perplexity_stats
@@ -302,9 +312,9 @@ class ConfidenceAnalyzer:
 
         mutual_info_stats = {
             'mutual_info_matrix': mutual_info_matrix,
-            'mean_mutual_info': np.mean(mutual_info_matrix),
-            'max_mutual_info': np.max(mutual_info_matrix),
-            'min_mutual_info': np.min(mutual_info_matrix)
+            'mean_mutual_info': _safe_float_conversion(np.mean(mutual_info_matrix)),
+            'max_mutual_info': _safe_float_conversion(np.max(mutual_info_matrix)),
+            'min_mutual_info': _safe_float_conversion(np.min(mutual_info_matrix))
         }
 
         return mutual_info_stats
@@ -337,15 +347,15 @@ class ConfidenceAnalyzer:
 
             position_confidence_intervals.append({
                 'tokens_needed': int(tokens_needed),
-                'interval_probability': float(interval_probability),
-                'coverage_ratio': float(tokens_needed / len(sorted_probs))
+                'interval_probability': _safe_float_conversion(interval_probability),
+                'coverage_ratio': _safe_float_conversion(tokens_needed / len(sorted_probs))
             })
 
         confidence_interval_stats = {
             'confidence_level': confidence_level,
             'position_confidence_intervals': position_confidence_intervals,
-            'mean_tokens_needed': np.mean([ci['tokens_needed'] for ci in position_confidence_intervals]),
-            'mean_coverage_ratio': np.mean([ci['coverage_ratio'] for ci in position_confidence_intervals])
+            'mean_tokens_needed': _safe_float_conversion(np.mean([ci['tokens_needed'] for ci in position_confidence_intervals])),
+            'mean_coverage_ratio': _safe_float_conversion(np.mean([ci['coverage_ratio'] for ci in position_confidence_intervals]))
         }
 
         return confidence_interval_stats

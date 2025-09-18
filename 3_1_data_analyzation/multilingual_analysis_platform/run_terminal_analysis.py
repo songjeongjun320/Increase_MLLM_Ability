@@ -51,10 +51,16 @@ TRAINING_MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/5_training/finetu
 
 # 분석할 문장들 (영어-한국어 쌍)
 TEST_SENTENCES = [
+    # Questions which model could get an answer in eng, but not in kor.
     ("An engineer is using a computer to design a bridge. Which test is the most important for safety purposes?", "엔지니어가 컴퓨터를 사용하여 교량을 설계하고 있습니다. 안전을 위해 가장 중요한 테스트는 무엇인가요?"),
     ("Phillip was making hot tea. When he poured the hot water into a glass, the glass broke. Which is the most likely reason the glass broke?", "지현은 뜨거운 차를 만들고 있었습니다. 그가 뜨거운 물을 유리잔에 부었을 때 유리잔이 깨졌습니다. 유리잔이 깨진 이유로 가능성이 가장 높은 것은 무엇일까요?"),
     ("A 20 N object is placed on a surface and starts to slide. What is the most likely reason the object begins to move?", "20N의 물체가 표면 위에 놓인 후 미끄러지기 시작합니다. 물체가 움직이기 시작하는 가장 가능성이 높은 이유는 무엇일까요?"),
-    ("What is most likely the first step for students to do for a recycling project?", "학생들이 재활용 프로젝트를 위해 가장 먼저 해야 할 일은 무엇인가요?")
+    ("What is most likely the first step for students to do for a recycling project?", "학생들이 재활용 프로젝트를 위해 가장 먼저 해야 할 일은 무엇인가요?"),
+    # Questions which model could get an answer both lang.
+    ("Which has the greatest effect on wind speed?", "풍속에 가장 큰 영향을 미치는 것은 무엇인가요?"),
+    ("Why does a town in the desert rarely experience early morning fog as compared to a town along the coast?","사막에 있는 마을이 해안가에 있는 마을에 비해 이른 아침에 안개가 거의 발생하지 않는 이유는 무엇인가요?"),
+    ("A student mixed 25 grams of salt into 1,000 grams of water. What is the mass of the saltwater mixture?","한 학생이 소금 25그램을 물 1,000그램에 섞었습니다. 소금물 혼합물의 질량은 얼마입니까?"),
+    ("One characteristic that is unique to water is that it","물의 독특한 특징 중 하나는 다음과 같습니다.")
 ]
 
 # 분석 옵션
@@ -71,9 +77,18 @@ def setup_korean_font():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
+            # Clear matplotlib font cache to force refresh
+            fm.fontManager.__init__()
+
             # Try to find Korean fonts quietly
-            korean_font_names = ['NanumGothic', 'Nanum Gothic', 'NanumBarunGothic', 'Malgun Gothic', 'Gulim', 'Dotum']
+            korean_font_names = [
+                'NanumGothic', 'Nanum Gothic', 'NanumBarunGothic', 'NanumBarunGothicOTF',
+                'Malgun Gothic', 'Gulim', 'Dotum', 'Batang', 'Gungsuh', 'AppleGothic',
+                'Noto Sans CJK KR', 'Source Han Sans KR', 'Roboto'
+            ]
+            
             available_fonts = [f.name for f in fm.fontManager.ttflist]
+            print(f"🔍 Available fonts: {len(available_fonts)} total")
 
             found_font = None
             for font_name in korean_font_names:
@@ -83,6 +98,7 @@ def setup_korean_font():
 
             if found_font:
                 plt.rcParams['font.family'] = found_font
+                plt.rcParams['font.size'] = 10
                 print(f"🔤 Korean font: {found_font}")
             else:
                 # Try manual download approach quietly
@@ -100,17 +116,28 @@ def setup_korean_font():
                     # Add font to matplotlib quietly
                     fm.fontManager.addfont(str(font_path))
                     plt.rcParams['font.family'] = 'NanumGothic'
+                    plt.rcParams['font.size'] = 10
                     print("🔤 Korean font: NanumGothic (downloaded)")
 
-                except:
-                    # Final fallback - use DejaVu Sans
-                    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
-                    print("🔤 Korean font: Unicode fallback")
+                except Exception as e:
+                    print(f"🔤 Font download failed: {e}")
+                    # Try system fonts with better fallback
+                    plt.rcParams['font.family'] = ['Arial Unicode MS', 'AppleGothic', 'Malgun Gothic', 'DejaVu Sans']
+                    plt.rcParams['font.size'] = 10
+                    print("🔤 Korean font: System font fallback")
 
-    except:
-        plt.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
+    except Exception as e:
+        print(f"🔤 Font setup failed: {e}")
+        plt.rcParams['font.family'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
+        plt.rcParams['font.size'] = 10
 
+    # Additional matplotlib settings for better Korean support
     plt.rcParams['axes.unicode_minus'] = False
+    plt.rcParams['figure.autolayout'] = True
+    
+    # Force font refresh
+    import matplotlib.pyplot as plt
+    plt.rcParams.update(plt.rcParams)
 
 def print_header():
     """Print analysis header."""
@@ -137,11 +164,12 @@ def save_embedding_visualizations(results):
         embedding_analyzer = SentenceEmbeddingAnalyzer()
         visualizer = EmbeddingVisualizer()
 
-        # Prepare text and language data
+        # Prepare text and language data with proper encoding
         texts = []
         languages = []
         for en, ko in TEST_SENTENCES:
-            texts.extend([en, ko])
+            # Ensure proper UTF-8 encoding for Korean text
+            texts.extend([en, ko.encode('utf-8').decode('utf-8')])
             languages.extend(['en', 'ko'])
 
         # Generate embeddings
@@ -159,10 +187,12 @@ def save_embedding_visualizations(results):
                     embeddings=embeddings, languages=languages, texts=texts,
                     method='pca', interactive=False, title="PCA - Sentence Embeddings"
                 )
-                plt.savefig(output_dir / "pca_embeddings.png", dpi=300, bbox_inches='tight')
+                plt.savefig(output_dir / "pca_embeddings.png", dpi=300, bbox_inches='tight', 
+                           facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
-        except:
+        except Exception as e:
+            print(f"   ⚠️ PCA plot failed: {e}")
             pass
 
         # t-SNE
@@ -173,10 +203,12 @@ def save_embedding_visualizations(results):
                     embeddings=embeddings, languages=languages, texts=texts,
                     method='tsne', interactive=False, title="t-SNE - Sentence Embeddings"
                 )
-                plt.savefig(output_dir / "tsne_embeddings.png", dpi=300, bbox_inches='tight')
+                plt.savefig(output_dir / "tsne_embeddings.png", dpi=300, bbox_inches='tight',
+                           facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
-        except:
+        except Exception as e:
+            print(f"   ⚠️ t-SNE plot failed: {e}")
             pass
 
         # UMAP
@@ -187,10 +219,12 @@ def save_embedding_visualizations(results):
                     embeddings=embeddings, languages=languages, texts=texts,
                     method='umap', interactive=False, title="UMAP - Sentence Embeddings"
                 )
-                plt.savefig(output_dir / "umap_embeddings.png", dpi=300, bbox_inches='tight')
+                plt.savefig(output_dir / "umap_embeddings.png", dpi=300, bbox_inches='tight',
+                           facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
-        except:
+        except Exception as e:
+            print(f"   ⚠️ UMAP plot failed: {e}")
             pass
 
         # Similarity heatmap
@@ -202,10 +236,12 @@ def save_embedding_visualizations(results):
                     similarity_matrix=similarity_matrix, texts=texts, languages=languages,
                     interactive=False, title="Sentence Similarity Heatmap"
                 )
-                plt.savefig(output_dir / "similarity_heatmap.png", dpi=300, bbox_inches='tight')
+                plt.savefig(output_dir / "similarity_heatmap.png", dpi=300, bbox_inches='tight',
+                           facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
-        except:
+        except Exception as e:
+            print(f"   ⚠️ Similarity heatmap failed: {e}")
             pass
 
         print(f"   ✅ Saved {plots_saved}/4 visualizations")

@@ -1,0 +1,130 @@
+# Multilingual Analysis Platform Configuration
+
+# Model Configuration
+models:
+  sentence_transformer:
+    default_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    backup_models:
+      - "sentence-transformers/distiluse-base-multilingual-cased"
+      - "sentence-transformers/LaBSE"
+
+  base_models:
+    # Add your base models here
+    default: "bert-base-multilingual-cased"
+    alternatives:
+      - "xlm-roberta-base"
+      - "distilbert-base-multilingual-cased"
+
+  training_models:
+    # Add your trained models here
+    custom_path: "./models/custom_trained/"
+
+# Language Configuration
+languages:
+  supported:
+    - code: "en"
+      name: "English"
+      color: "#1f77b4"
+    - code: "ko"
+      name: "Korean"
+      color: "#ff7f0e"
+    - code: "ja"
+      name: "Japanese"
+      color: "#2ca02c"
+    - code: "zh"
+      name: "Chinese"
+      color: "#d62728"
+
+  default_pair:
+    source: "en"
+    target: "ko"
+
+# Visualization Configuration
+visualization:
+  dimensionality_reduction:
+    methods:
+      - "pca"
+      - "tsne"
+      - "umap"
+    default_method: "umap"
+
+    parameters:
+      pca:
+        n_components: 2
+      tsne:
+        n_components: 2
+        perplexity: 30
+        random_state: 42
+      umap:
+        n_components: 2
+        n_neighbors: 15
+        min_dist: 0.1
+        random_state: 42
+
+  plotting:
+    figure_size: [12, 8]
+    dpi: 300
+    style: "whitegrid"
+    color_palette: "husl"
+
+# Analysis Configuration
+analysis:
+  attention:
+    layers_to_analyze: "all"  # or specific layer numbers
+    heads_to_analyze: "all"   # or specific head numbers
+    max_sequence_length: 512
+
+  uncertainty:
+    methods:
+      - "entropy"
+      - "variance"
+      - "mutual_information"
+    temperature_scaling: true
+    monte_carlo_samples: 100
+
+  embedding:
+    batch_size: 32
+    normalize_embeddings: true
+    similarity_metric: "cosine"
+
+# Dashboard Configuration
+dashboard:
+  title: "Multilingual Language Model Analysis Platform"
+  layout: "wide"
+  theme: "light"
+
+  cache:
+    enable: true
+    ttl: 3600  # seconds
+
+  export:
+    formats: ["png", "pdf", "svg", "html"]
+    default_format: "png"
+
+# Data Configuration
+data:
+  cache_dir: "./cache/"
+  output_dir: "./outputs/"
+  max_samples: 10000
+
+  preprocessing:
+    max_length: 512
+    truncation: true
+    padding: "max_length"
+
+# Performance Configuration
+performance:
+  device: "auto"  # auto, cpu, cuda
+  batch_size: 16
+  num_workers: 4
+  pin_memory: true
+
+  memory_optimization:
+    gradient_checkpointing: false
+    mixed_precision: false
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "./logs/analysis.log"

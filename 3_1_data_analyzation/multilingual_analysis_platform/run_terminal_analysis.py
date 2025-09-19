@@ -528,6 +528,142 @@ def save_multilingual_confidence_comparison(confidence_results):
     except Exception as e:
         print(f"   ⚠️ Multilingual confidence comparison failed: {e}")
 
+def save_attention_visualizations(attention_results):
+    """Generate and save attention analysis visualizations for all sentence pairs."""
+    try:
+        output_dir = platform_dir / "outputs" / "terminal_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize Korean font manager
+        from utils.font_manager import setup_korean_fonts
+        setup_korean_fonts()
+
+        if not attention_results or 'comparison_results' not in attention_results:
+            print(f"   ⚠️ No attention results to visualize")
+            return
+
+        # Extract similarity data for all sentence pairs
+        similarities = []
+        for comp in attention_results['comparison_results']:
+            sim = comp.get('overall_similarity', 0.0)
+            similarities.append(sim if sim is not None else 0.0)
+
+        if not similarities:
+            print(f"   ⚠️ No valid attention similarities found")
+            return
+
+        # Create comprehensive attention analysis plot
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+
+        # 1. Sentence-wise attention similarity
+        num_pairs = len(similarities)
+        x_pos = np.arange(num_pairs)
+        colors = plt.cm.viridis(np.linspace(0, 1, num_pairs))
+
+        bars = ax1.bar(x_pos, similarities, color=colors, alpha=0.8)
+        ax1.set_title(f'EN-KO Attention Similarity by Sentence Pair (Total: {num_pairs})', fontsize=14)
+        ax1.set_xlabel('Sentence Pair Index')
+        ax1.set_ylabel('Attention Similarity Score')
+        ax1.set_xticks(x_pos)
+        ax1.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
+        ax1.grid(True, alpha=0.3)
+        ax1.set_ylim(0, 1)
+
+        # Add value labels on bars
+        for i, (bar, value) in enumerate(zip(bars, similarities)):
+            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+
+        # 2. Similarity distribution
+        ax2.hist(similarities, bins=10, alpha=0.7, color='skyblue', edgecolor='black')
+        ax2.axvline(np.mean(similarities), color='red', linestyle='--', linewidth=2, label=f'Mean: {np.mean(similarities):.3f}')
+        ax2.axvline(np.median(similarities), color='green', linestyle='--', linewidth=2, label=f'Median: {np.median(similarities):.3f}')
+        ax2.set_title('Attention Similarity Distribution', fontsize=14)
+        ax2.set_xlabel('Similarity Score')
+        ax2.set_ylabel('Frequency')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # 3. Similarity range analysis
+        similarity_ranges = {
+            'High (0.8-1.0)': sum(1 for s in similarities if s >= 0.8),
+            'Medium (0.6-0.8)': sum(1 for s in similarities if 0.6 <= s < 0.8),
+            'Low (0.4-0.6)': sum(1 for s in similarities if 0.4 <= s < 0.6),
+            'Very Low (0.0-0.4)': sum(1 for s in similarities if s < 0.4)
+        }
+
+        labels = list(similarity_ranges.keys())
+        sizes = list(similarity_ranges.values())
+        colors_pie = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
+
+        # Only show non-zero slices
+        non_zero_labels = [label for label, size in zip(labels, sizes) if size > 0]
+        non_zero_sizes = [size for size in sizes if size > 0]
+        non_zero_colors = [color for color, size in zip(colors_pie, sizes) if size > 0]
+
+        if non_zero_sizes:
+            ax3.pie(non_zero_sizes, labels=non_zero_labels, colors=non_zero_colors, autopct='%1.0f%%', startangle=90)
+            ax3.set_title('Attention Similarity Range Distribution', fontsize=14)
+        else:
+            ax3.text(0.5, 0.5, 'No valid similarity data', ha='center', va='center', transform=ax3.transAxes)
+
+        # 4. Summary statistics and top/bottom pairs
+        ax4.axis('off')
+
+        # Calculate statistics
+        mean_sim = np.mean(similarities)
+        std_sim = np.std(similarities)
+        max_sim = max(similarities)
+        min_sim = min(similarities)
+        max_idx = similarities.index(max_sim)
+        min_idx = similarities.index(min_sim)
+
+        # Get sentence previews for top/bottom pairs
+        if 'english_sentences' in attention_results and 'korean_sentences' in attention_results:
+            max_en_preview = attention_results['english_sentences'][max_idx][:40] + "..." if len(attention_results['english_sentences'][max_idx]) > 40 else attention_results['english_sentences'][max_idx]
+            max_ko_preview = attention_results['korean_sentences'][max_idx][:40] + "..." if len(attention_results['korean_sentences'][max_idx]) > 40 else attention_results['korean_sentences'][max_idx]
+            min_en_preview = attention_results['english_sentences'][min_idx][:40] + "..." if len(attention_results['english_sentences'][min_idx]) > 40 else attention_results['english_sentences'][min_idx]
+            min_ko_preview = attention_results['korean_sentences'][min_idx][:40] + "..." if len(attention_results['korean_sentences'][min_idx]) > 40 else attention_results['korean_sentences'][min_idx]
+        else:
+            max_en_preview = max_ko_preview = min_en_preview = min_ko_preview = "N/A"
+
+        summary_text = f"""
+🔍 Attention Pattern Analysis Summary:
+
+📊 Total Sentence Pairs: {num_pairs}
+📈 Analysis Method: Cross-language attention comparison
+
+📋 Statistics:
+  • Average Similarity: {mean_sim:.4f}
+  • Standard Deviation: {std_sim:.4f}
+  • Range: {min_sim:.4f} - {max_sim:.4f}
+
+🏆 Most Similar Pair ({max_idx + 1}): {max_sim:.4f}
+  EN: {max_en_preview}
+  KO: {max_ko_preview}
+
+🔻 Least Similar Pair ({min_idx + 1}): {min_sim:.4f}
+  EN: {min_en_preview}
+  KO: {min_ko_preview}
+
+💡 Higher values indicate more similar attention patterns
+   between English and Korean sentences.
+        """
+
+        ax4.text(0.02, 0.98, summary_text, transform=ax4.transAxes, fontsize=9,
+                verticalalignment='top', fontfamily='monospace',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgreen', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_dir / "attention_analysis_comparison.png",
+                   dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"   ✅ Attention analysis visualization saved")
+
+    except Exception as e:
+        print(f"   ⚠️ Attention visualization failed: {e}")
+
         # Generate uncertainty heatmap if we have token-level data
         try:
             if 'confidence_measures' in confidence_result:
@@ -937,6 +1073,19 @@ def main():
     embedding_results = analyze_embedding_differences()
     attention_results = analyze_attention_differences()
     confidence_results = analyze_confidence_differences()
+
+    # Generate visualizations for each analysis type
+    print("\n🎨 Generating Visualizations...")
+
+    # Embedding visualizations (already includes all sentences)
+    if embedding_results:
+        save_embedding_visualizations(embedding_results)
+
+    # Attention visualizations (all sentence pairs)
+    if attention_results and ENABLE_ATTENTION_ANALYSIS:
+        save_attention_visualizations(attention_results)
+
+    # Confidence visualizations are already called within analyze_confidence_differences()
 
     # Save results
     save_results_to_file(embedding_results, attention_results, confidence_results)

@@ -628,36 +628,89 @@ def analyze_attention_differences():
     try:
         attention_analyzer = AttentionAnalyzer()
 
-        # Analyze first sentence as example
-        sample_text = TEST_SENTENCES[0][0]  # First English sentence
+        # Store results for all sentence pairs
+        attention_results = {
+            'english_sentences': [],
+            'korean_sentences': [],
+            'base_model_attention': [],
+            'train_model_attention': [],
+            'comparison_results': []
+        }
 
-        # Base model attention
-        base_attention = attention_analyzer.extract_attention_weights(
-            model_name_or_path=BASE_MODEL_PATH,
-            text=sample_text,
-            model_type='base'
-        )
+        # Analyze all sentence pairs
+        total_pairs = len(TEST_SENTENCES)
+        for i, (en_text, ko_text) in enumerate(TEST_SENTENCES):
+            print(f"   📝 Analyzing attention for sentence pair {i+1}/{total_pairs}...")
 
-        print(f"   ✅ Base Model Attention: {base_attention['num_layers']} layers, {base_attention['num_heads']} heads")
+            # English sentence attention analysis
+            try:
+                en_base_attention = attention_analyzer.extract_attention_weights(
+                    model_name_or_path=BASE_MODEL_PATH,
+                    text=en_text,
+                    model_type='base'
+                )
+                attention_results['english_sentences'].append(en_text)
+                attention_results['base_model_attention'].append(en_base_attention)
 
-        # Training model attention (if path exists)
-        if os.path.exists(TRAINING_MODEL_PATH):
-            train_attention = attention_analyzer.extract_attention_weights(
-                model_name_or_path=TRAINING_MODEL_PATH,
-                text=sample_text,
-                model_type='trained'
-            )
-            print(f"   ✅ Training Model Attention: {train_attention['num_layers']} layers, {train_attention['num_heads']} heads")
+                # Korean sentence attention analysis
+                ko_base_attention = attention_analyzer.extract_attention_weights(
+                    model_name_or_path=BASE_MODEL_PATH,
+                    text=ko_text,
+                    model_type='base'
+                )
+                attention_results['korean_sentences'].append(ko_text)
 
-            # Compare patterns
-            comparison = attention_analyzer.compare_attention_patterns(
-                base_attention, train_attention
-            )
-            print(f"   📊 Attention Similarity: {comparison.get('overall_similarity', 'N/A')}")
+                # Compare English vs Korean attention patterns
+                en_ko_comparison = attention_analyzer.compare_attention_patterns(
+                    en_base_attention, ko_base_attention
+                )
+                attention_results['comparison_results'].append(en_ko_comparison)
+
+                print(f"      Pair {i+1}: EN-KO Attention Similarity = {en_ko_comparison.get('overall_similarity', 'N/A'):.4f}")
+
+            except Exception as e:
+                print(f"      ⚠️ Pair {i+1} failed: {e}")
+                attention_results['comparison_results'].append({'overall_similarity': 0.0})
+
+        # Overall statistics
+        similarities = [comp.get('overall_similarity', 0.0) for comp in attention_results['comparison_results'] if comp.get('overall_similarity') is not None]
+        if similarities:
+            avg_similarity = sum(similarities) / len(similarities)
+            max_similarity = max(similarities)
+            min_similarity = min(similarities)
+            max_idx = similarities.index(max_similarity)
+            min_idx = similarities.index(min_similarity)
+
+            print(f"\n   📊 Attention Analysis Summary:")
+            print(f"     Total Pairs Analyzed: {len(similarities)}")
+            print(f"     Average EN-KO Similarity: {avg_similarity:.4f}")
+            print(f"     Max Similarity: {max_similarity:.4f} (Pair {max_idx + 1})")
+            print(f"     Min Similarity: {min_similarity:.4f} (Pair {min_idx + 1})")
+
+        # Training model comparison (if exists) - use first sentence as sample
+        train_attention = None
+        if os.path.exists(TRAINING_MODEL_PATH) and attention_results['base_model_attention']:
+            try:
+                sample_text = TEST_SENTENCES[0][0]
+                train_attention = attention_analyzer.extract_attention_weights(
+                    model_name_or_path=TRAINING_MODEL_PATH,
+                    text=sample_text,
+                    model_type='trained'
+                )
+
+                # Compare base vs training model
+                base_train_comparison = attention_analyzer.compare_attention_patterns(
+                    attention_results['base_model_attention'][0], train_attention
+                )
+                print(f"     Base vs Training Model Similarity: {base_train_comparison.get('overall_similarity', 'N/A'):.4f}")
+
+            except Exception as e:
+                print(f"   ⚠️ Training model comparison failed: {e}")
         else:
-            print(f"   ⚠️ Training model path not found: {TRAINING_MODEL_PATH}")
+            print(f"   ℹ️ Training model not available for comparison")
 
-        return base_attention
+        attention_results['train_model_attention'] = train_attention
+        return attention_results
 
     except Exception as e:
         print(f"   ❌ Attention analysis failed: {e}")

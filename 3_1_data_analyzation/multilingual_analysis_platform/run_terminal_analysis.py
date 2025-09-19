@@ -528,8 +528,8 @@ def save_multilingual_confidence_comparison(confidence_results):
     except Exception as e:
         print(f"   ⚠️ Multilingual confidence comparison failed: {e}")
 
-def save_attention_visualizations(attention_results):
-    """Generate and save attention analysis visualizations for all sentence pairs."""
+def save_comprehensive_confidence_comparison(confidence_results):
+    """Generate comprehensive 4-way confidence comparison visualizations: Base_EN, Base_KO, Train_EN, Train_KO."""
     try:
         output_dir = platform_dir / "outputs" / "terminal_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -538,116 +538,152 @@ def save_attention_visualizations(attention_results):
         from utils.font_manager import setup_korean_fonts
         setup_korean_fonts()
 
-        if not attention_results or 'comparison_results' not in attention_results:
-            print(f"   ⚠️ No attention results to visualize")
-            return
+        # Extract uncertainty scores from 4-way analysis
+        def extract_uncertainties(results, default=0.5):
+            uncertainties = []
+            for result in results:
+                if 'confidence_measures' in result:
+                    measures = result['confidence_measures']
+                    avg_confidence = measures.get('average_confidence', default)
+                    uncertainties.append(1.0 - avg_confidence)
+                elif 'uncertainty_estimates' in result:
+                    uncertainties.append(result['uncertainty_estimates']['mean_uncertainty'])
+                else:
+                    uncertainties.append(default)
+            return uncertainties
 
-        # Extract similarity data for all sentence pairs
-        similarities = []
-        for comp in attention_results['comparison_results']:
-            sim = comp.get('overall_similarity', 0.0)
-            similarities.append(sim if sim is not None else 0.0)
+        base_en_uncertainties = extract_uncertainties(confidence_results['base_model_en_results'], 0.5)
+        base_ko_uncertainties = extract_uncertainties(confidence_results['base_model_ko_results'], 0.6)
+        train_en_uncertainties = extract_uncertainties(confidence_results['train_model_en_results'], 0.5)
+        train_ko_uncertainties = extract_uncertainties(confidence_results['train_model_ko_results'], 0.6)
 
-        if not similarities:
-            print(f"   ⚠️ No valid attention similarities found")
-            return
-
-        # Create comprehensive attention analysis plot
+        # Create comprehensive 4-way comparison plot
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
 
-        # 1. Sentence-wise attention similarity
-        num_pairs = len(similarities)
-        x_pos = np.arange(num_pairs)
-        colors = plt.cm.viridis(np.linspace(0, 1, num_pairs))
+        # 1. 4-way Model-Language Average Comparison
+        categories = ['Base_EN', 'Base_KO', 'Train_EN', 'Train_KO']
+        avg_uncertainties = [
+            np.mean(base_en_uncertainties),
+            np.mean(base_ko_uncertainties),
+            np.mean(train_en_uncertainties),
+            np.mean(train_ko_uncertainties)
+        ]
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
-        bars = ax1.bar(x_pos, similarities, color=colors, alpha=0.8)
-        ax1.set_title(f'EN-KO Attention Similarity by Sentence Pair (Total: {num_pairs})', fontsize=14)
-        ax1.set_xlabel('Sentence Pair Index')
-        ax1.set_ylabel('Attention Similarity Score')
-        ax1.set_xticks(x_pos)
-        ax1.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
-        ax1.grid(True, alpha=0.3)
+        bars = ax1.bar(categories, avg_uncertainties, color=colors, alpha=0.8)
+        ax1.set_title('4-Way Model-Language Uncertainty Comparison', fontsize=14)
+        ax1.set_ylabel('Average Uncertainty Score')
         ax1.set_ylim(0, 1)
+        ax1.tick_params(axis='x', rotation=45)
 
-        # Add value labels on bars
-        for i, (bar, value) in enumerate(zip(bars, similarities)):
+        # Add value labels and improvement indicators
+        for i, (bar, value) in enumerate(zip(bars, avg_uncertainties)):
             ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f'{value:.3f}', ha='center', va='bottom', fontsize=9)
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
 
-        # 2. Similarity distribution
-        ax2.hist(similarities, bins=10, alpha=0.7, color='skyblue', edgecolor='black')
-        ax2.axvline(np.mean(similarities), color='red', linestyle='--', linewidth=2, label=f'Mean: {np.mean(similarities):.3f}')
-        ax2.axvline(np.median(similarities), color='green', linestyle='--', linewidth=2, label=f'Median: {np.median(similarities):.3f}')
-        ax2.set_title('Attention Similarity Distribution', fontsize=14)
-        ax2.set_xlabel('Similarity Score')
-        ax2.set_ylabel('Frequency')
-        ax2.legend()
+            # Add improvement indicators
+            if i == 2:  # Train_EN vs Base_EN
+                improvement = base_en_uncertainties[0] - value if base_en_uncertainties else 0
+                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
+                        f'Δ{improvement:+.3f}', ha='center', va='bottom', fontsize=10, color='green' if improvement > 0 else 'red')
+            elif i == 3:  # Train_KO vs Base_KO
+                improvement = base_ko_uncertainties[0] - value if base_ko_uncertainties else 0
+                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
+                        f'Δ{improvement:+.3f}', ha='center', va='bottom', fontsize=10, color='green' if improvement > 0 else 'red')
+
+        # 2. Sentence-wise 4-way Comparison
+        num_pairs = len(base_en_uncertainties)
+        x_pos = np.arange(num_pairs)
+        width = 0.2
+
+        bars1 = ax2.bar(x_pos - 1.5*width, base_en_uncertainties, width, label='Base_EN', color=colors[0], alpha=0.8)
+        bars2 = ax2.bar(x_pos - 0.5*width, base_ko_uncertainties, width, label='Base_KO', color=colors[1], alpha=0.8)
+        bars3 = ax2.bar(x_pos + 0.5*width, train_en_uncertainties, width, label='Train_EN', color=colors[2], alpha=0.8)
+        bars4 = ax2.bar(x_pos + 1.5*width, train_ko_uncertainties, width, label='Train_KO', color=colors[3], alpha=0.8)
+
+        ax2.set_title(f'4-Way Uncertainty by Sentence Pair (Total: {num_pairs} pairs)', fontsize=14)
+        ax2.set_xlabel('Sentence Pair Index')
+        ax2.set_ylabel('Uncertainty Score')
+        ax2.set_xticks(x_pos)
+        ax2.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
+        ax2.legend(loc='upper right')
         ax2.grid(True, alpha=0.3)
 
-        # 3. Similarity range analysis
-        similarity_ranges = {
-            'High (0.8-1.0)': sum(1 for s in similarities if s >= 0.8),
-            'Medium (0.6-0.8)': sum(1 for s in similarities if 0.6 <= s < 0.8),
-            'Low (0.4-0.6)': sum(1 for s in similarities if 0.4 <= s < 0.6),
-            'Very Low (0.0-0.4)': sum(1 for s in similarities if s < 0.4)
-        }
+        # 3. Cross-lingual and Cross-model Improvement Analysis
+        cross_lingual_base = [abs(en - ko) for en, ko in zip(base_en_uncertainties, base_ko_uncertainties)]
+        cross_lingual_train = [abs(en - ko) for en, ko in zip(train_en_uncertainties, train_ko_uncertainties)]
+        cross_model_en = [abs(base - train) for base, train in zip(base_en_uncertainties, train_en_uncertainties)]
+        cross_model_ko = [abs(base - train) for base, train in zip(base_ko_uncertainties, train_ko_uncertainties)]
 
-        labels = list(similarity_ranges.keys())
-        sizes = list(similarity_ranges.values())
-        colors_pie = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
+        improvement_categories = ['Cross-lingual\n(Base)', 'Cross-lingual\n(Train)', 'Cross-model\n(English)', 'Cross-model\n(Korean)']
+        avg_improvements = [
+            np.mean(cross_lingual_base),
+            np.mean(cross_lingual_train),
+            np.mean(cross_model_en),
+            np.mean(cross_model_ko)
+        ]
 
-        # Only show non-zero slices
-        non_zero_labels = [label for label, size in zip(labels, sizes) if size > 0]
-        non_zero_sizes = [size for size in sizes if size > 0]
-        non_zero_colors = [color for color, size in zip(colors_pie, sizes) if size > 0]
+        bars = ax3.bar(improvement_categories, avg_improvements, color=['lightcoral', 'lightgreen', 'lightblue', 'lightyellow'], alpha=0.8)
+        ax3.set_title('Cross-dimensional Analysis', fontsize=14)
+        ax3.set_ylabel('Average Difference Score')
+        ax3.tick_params(axis='x', rotation=0)
 
-        if non_zero_sizes:
-            ax3.pie(non_zero_sizes, labels=non_zero_labels, colors=non_zero_colors, autopct='%1.0f%%', startangle=90)
-            ax3.set_title('Attention Similarity Range Distribution', fontsize=14)
-        else:
-            ax3.text(0.5, 0.5, 'No valid similarity data', ha='center', va='center', transform=ax3.transAxes)
+        # Add improvement indicator for cross-lingual comparison
+        cross_lingual_improvement = np.mean(cross_lingual_base) - np.mean(cross_lingual_train)
+        ax3.text(1, max(avg_improvements) * 0.9, f'Improvement: {cross_lingual_improvement:+.3f}',
+                ha='center', va='center', fontweight='bold',
+                color='green' if cross_lingual_improvement > 0 else 'red',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
 
-        # 4. Summary statistics and top/bottom pairs
+        for bar, value in zip(bars, avg_improvements):
+            ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.005,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 4. Comprehensive Analysis Summary
         ax4.axis('off')
 
-        # Calculate statistics
-        mean_sim = np.mean(similarities)
-        std_sim = np.std(similarities)
-        max_sim = max(similarities)
-        min_sim = min(similarities)
-        max_idx = similarities.index(max_sim)
-        min_idx = similarities.index(min_sim)
+        # Calculate comprehensive statistics
+        base_en_avg = np.mean(base_en_uncertainties)
+        base_ko_avg = np.mean(base_ko_uncertainties)
+        train_en_avg = np.mean(train_en_uncertainties)
+        train_ko_avg = np.mean(train_ko_uncertainties)
 
-        # Get sentence previews for top/bottom pairs
-        if 'english_sentences' in attention_results and 'korean_sentences' in attention_results:
-            max_en_preview = attention_results['english_sentences'][max_idx][:40] + "..." if len(attention_results['english_sentences'][max_idx]) > 40 else attention_results['english_sentences'][max_idx]
-            max_ko_preview = attention_results['korean_sentences'][max_idx][:40] + "..." if len(attention_results['korean_sentences'][max_idx]) > 40 else attention_results['korean_sentences'][max_idx]
-            min_en_preview = attention_results['english_sentences'][min_idx][:40] + "..." if len(attention_results['english_sentences'][min_idx]) > 40 else attention_results['english_sentences'][min_idx]
-            min_ko_preview = attention_results['korean_sentences'][min_idx][:40] + "..." if len(attention_results['korean_sentences'][min_idx]) > 40 else attention_results['korean_sentences'][min_idx]
-        else:
-            max_en_preview = max_ko_preview = min_en_preview = min_ko_preview = "N/A"
+        en_improvement = base_en_avg - train_en_avg
+        ko_improvement = base_ko_avg - train_ko_avg
+        cross_lingual_base_avg = np.mean(cross_lingual_base)
+        cross_lingual_train_avg = np.mean(cross_lingual_train)
+
+        # Count improvements
+        en_improved_pairs = sum(1 for base, train in zip(base_en_uncertainties, train_en_uncertainties) if base > train)
+        ko_improved_pairs = sum(1 for base, train in zip(base_ko_uncertainties, train_ko_uncertainties) if base > train)
 
         summary_text = f"""
-🔍 Attention Pattern Analysis Summary:
+🔍 Comprehensive 4-Way Confidence Analysis:
 
-📊 Total Sentence Pairs: {num_pairs}
-📈 Analysis Method: Cross-language attention comparison
+📊 Dataset: {num_pairs} English-Korean sentence pairs
+📈 Analysis: Base vs Training Model comparison
 
-📋 Statistics:
-  • Average Similarity: {mean_sim:.4f}
-  • Standard Deviation: {std_sim:.4f}
-  • Range: {min_sim:.4f} - {max_sim:.4f}
+🇺🇸 English Performance:
+  • Base Model Uncertainty:     {base_en_avg:.4f}
+  • Training Model Uncertainty: {train_en_avg:.4f}
+  • Improvement:               {en_improvement:+.4f} ({en_improved_pairs}/{num_pairs} pairs)
 
-🏆 Most Similar Pair ({max_idx + 1}): {max_sim:.4f}
-  EN: {max_en_preview}
-  KO: {max_ko_preview}
+🇰🇷 Korean Performance:
+  • Base Model Uncertainty:     {base_ko_avg:.4f}
+  • Training Model Uncertainty: {train_ko_avg:.4f}
+  • Improvement:               {ko_improvement:+.4f} ({ko_improved_pairs}/{num_pairs} pairs)
 
-🔻 Least Similar Pair ({min_idx + 1}): {min_sim:.4f}
-  EN: {min_en_preview}
-  KO: {min_ko_preview}
+🌍 Cross-lingual Analysis:
+  • Base Model EN-KO Difference:  {cross_lingual_base_avg:.4f}
+  • Train Model EN-KO Difference: {cross_lingual_train_avg:.4f}
+  • Cross-lingual Improvement:    {cross_lingual_improvement:+.4f}
 
-💡 Higher values indicate more similar attention patterns
-   between English and Korean sentences.
+💡 Key Insights:
+  • {'English' if en_improvement > ko_improvement else 'Korean'} shows better training improvement
+  • Cross-lingual consistency {'improved' if cross_lingual_improvement > 0 else 'decreased'} by {abs(cross_lingual_improvement):.3f}
+  • Language bias: {'Reduced' if cross_lingual_improvement > 0.01 else 'Minimal change'}
+
+🎯 Lower uncertainty = Better model confidence
         """
 
         ax4.text(0.02, 0.98, summary_text, transform=ax4.transAxes, fontsize=9,
@@ -655,33 +691,174 @@ def save_attention_visualizations(attention_results):
                 bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgreen', alpha=0.9))
 
         plt.tight_layout()
-        plt.savefig(output_dir / "attention_analysis_comparison.png",
+        plt.savefig(output_dir / "comprehensive_confidence_4way_comparison.png",
                    dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
         plt.close()
 
-        print(f"   ✅ Attention analysis visualization saved")
+        print(f"   ✅ Comprehensive 4-way confidence comparison saved")
 
     except Exception as e:
-        print(f"   ⚠️ Attention visualization failed: {e}")
+        print(f"   ⚠️ Comprehensive confidence comparison failed: {e}")
 
-        # Generate uncertainty heatmap if we have token-level data
-        try:
-            if 'confidence_measures' in confidence_result:
-                measures = confidence_result['confidence_measures']
-                if 'variance' in measures or 'entropy' in measures:
-                    fig = visualizer.plot_confidence_heatmap(
-                        confidence_result=confidence_result,
-                        interactive=False,
-                        title="Confidence Heatmap"
-                    )
-                    plt.savefig(output_dir / "confidence_heatmap.png", dpi=300, bbox_inches='tight')
-                    plt.close()
-                    print(f"   ✅ Confidence heatmap saved: {output_dir / 'confidence_heatmap.png'}")
-        except Exception as e:
-            print(f"   ⚠️ Confidence heatmap failed: {e}")
+def save_attention_visualizations(attention_results):
+    """Generate comprehensive 4-way attention analysis visualizations: Base_EN, Base_KO, Train_EN, Train_KO."""
+    try:
+        output_dir = platform_dir / "outputs" / "terminal_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize Korean font manager
+        from utils.font_manager import setup_korean_fonts
+        setup_korean_fonts()
+
+        if not attention_results or 'cross_lingual_comparisons' not in attention_results:
+            print(f"   ⚠️ No attention results to visualize")
+            return
+
+        # Extract similarity data from 4-way analysis
+        base_cross_lingual = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_lingual_comparisons']['base_model']]
+        train_cross_lingual = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_lingual_comparisons']['train_model']]
+        en_cross_model = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_model_comparisons']['english']]
+        ko_cross_model = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_model_comparisons']['korean']]
+
+        if not (base_cross_lingual and train_cross_lingual):
+            print(f"   ⚠️ No valid attention similarities found")
+            return
+
+        # Create comprehensive 4-way attention analysis plot
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+
+        # 1. Cross-lingual Attention Similarity Comparison (Base vs Training)
+        num_pairs = len(base_cross_lingual)
+        x_pos = np.arange(num_pairs)
+        width = 0.35
+
+        bars1 = ax1.bar(x_pos - width/2, base_cross_lingual, width, label='Base Model (EN-KO)', color='#1f77b4', alpha=0.8)
+        bars2 = ax1.bar(x_pos + width/2, train_cross_lingual, width, label='Training Model (EN-KO)', color='#ff7f0e', alpha=0.8)
+
+        ax1.set_title(f'Cross-lingual Attention Similarity Comparison (Total: {num_pairs} pairs)', fontsize=14)
+        ax1.set_xlabel('Sentence Pair Index')
+        ax1.set_ylabel('EN-KO Attention Similarity')
+        ax1.set_xticks(x_pos)
+        ax1.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        ax1.set_ylim(0, 1)
+
+        # Add improvement indicators
+        for i, (base_val, train_val) in enumerate(zip(base_cross_lingual, train_cross_lingual)):
+            improvement = train_val - base_val
+            if abs(improvement) > 0.05:  # Only show significant changes
+                ax1.annotate(f'{improvement:+.2f}', xy=(i, max(base_val, train_val) + 0.02),
+                           ha='center', va='bottom', fontsize=8,
+                           color='green' if improvement > 0 else 'red', fontweight='bold')
+
+        # 2. Cross-model Consistency Analysis (English vs Korean)
+        if en_cross_model and ko_cross_model:
+            bars3 = ax2.bar(x_pos - width/2, en_cross_model, width, label='English (Base-Train)', color='#2ca02c', alpha=0.8)
+            bars4 = ax2.bar(x_pos + width/2, ko_cross_model, width, label='Korean (Base-Train)', color='#d62728', alpha=0.8)
+
+            ax2.set_title(f'Cross-model Consistency by Language', fontsize=14)
+            ax2.set_xlabel('Sentence Pair Index')
+            ax2.set_ylabel('Base-Train Attention Similarity')
+            ax2.set_xticks(x_pos)
+            ax2.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            ax2.set_ylim(0, 1)
+        else:
+            ax2.text(0.5, 0.5, 'Cross-model data not available', ha='center', va='center', transform=ax2.transAxes)
+
+        # 3. Comprehensive Performance Metrics
+        categories = ['Base\n(EN-KO)', 'Train\n(EN-KO)', 'English\n(Base-Train)', 'Korean\n(Base-Train)']
+        avg_similarities = [
+            np.mean(base_cross_lingual),
+            np.mean(train_cross_lingual),
+            np.mean(en_cross_model) if en_cross_model else 0,
+            np.mean(ko_cross_model) if ko_cross_model else 0
+        ]
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+
+        bars = ax3.bar(categories, avg_similarities, color=colors, alpha=0.8)
+        ax3.set_title('Average Attention Similarity by Category', fontsize=14)
+        ax3.set_ylabel('Average Similarity Score')
+        ax3.set_ylim(0, 1)
+        ax3.tick_params(axis='x', rotation=0)
+
+        # Add value labels and improvement indicators
+        for i, (bar, value) in enumerate(zip(bars, avg_similarities)):
+            ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+            # Add improvement indicator for training model
+            if i == 1:  # Training model cross-lingual
+                improvement = avg_similarities[1] - avg_similarities[0]
+                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
+                        f'Δ{improvement:+.3f}', ha='center', va='bottom', fontsize=10,
+                        color='green' if improvement > 0 else 'red', fontweight='bold')
+
+        # 4. Comprehensive Analysis Summary
+        ax4.axis('off')
+
+        # Calculate comprehensive statistics
+        base_avg = np.mean(base_cross_lingual)
+        train_avg = np.mean(train_cross_lingual)
+        cross_lingual_improvement = train_avg - base_avg
+
+        en_avg = np.mean(en_cross_model) if en_cross_model else 0
+        ko_avg = np.mean(ko_cross_model) if ko_cross_model else 0
+
+        # Count improvements
+        improved_pairs = sum(1 for base, train in zip(base_cross_lingual, train_cross_lingual) if train > base)
+        degraded_pairs = sum(1 for base, train in zip(base_cross_lingual, train_cross_lingual) if train < base)
+
+        # Find best and worst performing pairs
+        improvements = [train - base for base, train in zip(base_cross_lingual, train_cross_lingual)]
+        max_improvement_idx = improvements.index(max(improvements))
+        min_improvement_idx = improvements.index(min(improvements))
+
+        summary_text = f"""
+🔍 Comprehensive 4-Way Attention Analysis:
+
+📊 Dataset: {num_pairs} English-Korean sentence pairs
+📈 Analysis: Base vs Training Model attention patterns
+
+🌍 Cross-lingual Performance (EN-KO similarity):
+  • Base Model Average:     {base_avg:.4f}
+  • Training Model Average: {train_avg:.4f}
+  • Improvement:           {cross_lingual_improvement:+.4f} ({improved_pairs}/{num_pairs} pairs improved)
+
+🔄 Cross-model Consistency:
+  • English (Base-Train):   {en_avg:.4f}
+  • Korean (Base-Train):    {ko_avg:.4f}
+  • Language Bias: {'Korean' if ko_avg > en_avg else 'English'} shows {'higher' if abs(ko_avg - en_avg) > 0.05 else 'similar'} consistency
+
+📈 Training Impact:
+  • Improved Pairs: {improved_pairs}/{num_pairs} ({improved_pairs/num_pairs*100:.1f}%)
+  • Degraded Pairs: {degraded_pairs}/{num_pairs} ({degraded_pairs/num_pairs*100:.1f}%)
+  • Biggest Improvement: Pair {max_improvement_idx + 1} ({max(improvements):+.3f})
+  • Biggest Degradation: Pair {min_improvement_idx + 1} ({min(improvements):+.3f})
+
+💡 Key Insights:
+  • Cross-lingual ability {'improved' if cross_lingual_improvement > 0.01 else 'showed minimal change' if abs(cross_lingual_improvement) <= 0.01 else 'degraded'}
+  • Training {'enhanced' if improved_pairs > degraded_pairs else 'had mixed effects on'} attention alignment
+  • {'Consistent' if abs(en_avg - ko_avg) < 0.05 else 'Language-specific'} attention pattern changes
+
+🎯 Higher similarity = Better cross-lingual attention alignment
+        """
+
+        ax4.text(0.02, 0.98, summary_text, transform=ax4.transAxes, fontsize=9,
+                verticalalignment='top', fontfamily='monospace',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightcyan', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_dir / "comprehensive_attention_4way_comparison.png",
+                   dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"   ✅ Comprehensive 4-way attention analysis saved")
 
     except Exception as e:
-        print(f"   ❌ Confidence visualization failed: {e}")
+        print(f"   ⚠️ Comprehensive attention visualization failed: {e}")
 
 def save_confidence_comparison(base_result, train_result):
     """Generate and save confidence comparison visualizations."""
@@ -755,97 +932,165 @@ def analyze_embedding_differences():
         return None
 
 def analyze_attention_differences():
-    """Analyze attention pattern differences."""
+    """Analyze attention pattern differences between Base and Training models for all sentences."""
     if not ENABLE_ATTENTION_ANALYSIS:
         return None
 
-    print("\n🔍 Running Attention Analysis...")
+    print("\n🔍 Running Comprehensive Attention Analysis...")
 
     try:
         attention_analyzer = AttentionAnalyzer()
 
-        # Store results for all sentence pairs
+        # Store results for 4-way comparison: Base_EN, Base_KO, Train_EN, Train_KO
         attention_results = {
             'english_sentences': [],
             'korean_sentences': [],
-            'base_model_attention': [],
-            'train_model_attention': [],
-            'comparison_results': []
+            'base_model_en_attention': [],
+            'base_model_ko_attention': [],
+            'train_model_en_attention': [],
+            'train_model_ko_attention': [],
+            'cross_lingual_comparisons': {
+                'base_model': [],  # EN-KO comparisons for base model
+                'train_model': [], # EN-KO comparisons for training model
+            },
+            'cross_model_comparisons': {
+                'english': [],     # Base-Train comparisons for English
+                'korean': []       # Base-Train comparisons for Korean
+            }
         }
 
-        # Analyze all sentence pairs
-        total_pairs = len(TEST_SENTENCES)
-        for i, (en_text, ko_text) in enumerate(TEST_SENTENCES):
-            print(f"   📝 Analyzing attention for sentence pair {i+1}/{total_pairs}...")
+        # Check if training model exists
+        training_available = os.path.exists(TRAINING_MODEL_PATH)
+        if not training_available:
+            print(f"   ⚠️ Training model not found: {TRAINING_MODEL_PATH}")
+            return None
 
-            # English sentence attention analysis
+        # Analyze all sentence pairs for both models
+        total_pairs = len(TEST_SENTENCES)
+        print(f"   📊 Analyzing {total_pairs} sentence pairs across both models...")
+
+        for i, (en_text, ko_text) in enumerate(TEST_SENTENCES):
+            print(f"   📝 Processing sentence pair {i+1}/{total_pairs}...")
+
             try:
+                # Store sentences
+                attention_results['english_sentences'].append(en_text)
+                attention_results['korean_sentences'].append(ko_text)
+
+                # === BASE MODEL ANALYSIS ===
+                print(f"      🔍 Base Model Analysis...")
+
+                # English sentence - Base model
                 en_base_attention = attention_analyzer.extract_attention_weights(
                     model_name_or_path=BASE_MODEL_PATH,
                     text=en_text,
                     model_type='base'
                 )
-                attention_results['english_sentences'].append(en_text)
-                attention_results['base_model_attention'].append(en_base_attention)
+                attention_results['base_model_en_attention'].append(en_base_attention)
 
-                # Korean sentence attention analysis
+                # Korean sentence - Base model
                 ko_base_attention = attention_analyzer.extract_attention_weights(
                     model_name_or_path=BASE_MODEL_PATH,
                     text=ko_text,
                     model_type='base'
                 )
-                attention_results['korean_sentences'].append(ko_text)
+                attention_results['base_model_ko_attention'].append(ko_base_attention)
 
-                # Compare English vs Korean attention patterns
-                en_ko_comparison = attention_analyzer.compare_attention_patterns(
-                    en_base_attention, ko_base_attention
-                )
-                attention_results['comparison_results'].append(en_ko_comparison)
+                # === TRAINING MODEL ANALYSIS ===
+                print(f"      🎯 Training Model Analysis...")
 
-                print(f"      Pair {i+1}: EN-KO Attention Similarity = {en_ko_comparison.get('overall_similarity', 'N/A'):.4f}")
-
-            except Exception as e:
-                print(f"      ⚠️ Pair {i+1} failed: {e}")
-                attention_results['comparison_results'].append({'overall_similarity': 0.0})
-
-        # Overall statistics
-        similarities = [comp.get('overall_similarity', 0.0) for comp in attention_results['comparison_results'] if comp.get('overall_similarity') is not None]
-        if similarities:
-            avg_similarity = sum(similarities) / len(similarities)
-            max_similarity = max(similarities)
-            min_similarity = min(similarities)
-            max_idx = similarities.index(max_similarity)
-            min_idx = similarities.index(min_similarity)
-
-            print(f"\n   📊 Attention Analysis Summary:")
-            print(f"     Total Pairs Analyzed: {len(similarities)}")
-            print(f"     Average EN-KO Similarity: {avg_similarity:.4f}")
-            print(f"     Max Similarity: {max_similarity:.4f} (Pair {max_idx + 1})")
-            print(f"     Min Similarity: {min_similarity:.4f} (Pair {min_idx + 1})")
-
-        # Training model comparison (if exists) - use first sentence as sample
-        train_attention = None
-        if os.path.exists(TRAINING_MODEL_PATH) and attention_results['base_model_attention']:
-            try:
-                sample_text = TEST_SENTENCES[0][0]
-                train_attention = attention_analyzer.extract_attention_weights(
+                # English sentence - Training model
+                en_train_attention = attention_analyzer.extract_attention_weights(
                     model_name_or_path=TRAINING_MODEL_PATH,
-                    text=sample_text,
+                    text=en_text,
                     model_type='trained'
                 )
+                attention_results['train_model_en_attention'].append(en_train_attention)
 
-                # Compare base vs training model
-                base_train_comparison = attention_analyzer.compare_attention_patterns(
-                    attention_results['base_model_attention'][0], train_attention
+                # Korean sentence - Training model
+                ko_train_attention = attention_analyzer.extract_attention_weights(
+                    model_name_or_path=TRAINING_MODEL_PATH,
+                    text=ko_text,
+                    model_type='trained'
                 )
-                print(f"     Base vs Training Model Similarity: {base_train_comparison.get('overall_similarity', 'N/A'):.4f}")
+                attention_results['train_model_ko_attention'].append(ko_train_attention)
+
+                # === CROSS-LINGUAL COMPARISONS ===
+                # Base model: EN vs KO
+                base_en_ko_comparison = attention_analyzer.compare_attention_patterns(
+                    en_base_attention, ko_base_attention
+                )
+                attention_results['cross_lingual_comparisons']['base_model'].append(base_en_ko_comparison)
+
+                # Training model: EN vs KO
+                train_en_ko_comparison = attention_analyzer.compare_attention_patterns(
+                    en_train_attention, ko_train_attention
+                )
+                attention_results['cross_lingual_comparisons']['train_model'].append(train_en_ko_comparison)
+
+                # === CROSS-MODEL COMPARISONS ===
+                # English: Base vs Training
+                en_base_train_comparison = attention_analyzer.compare_attention_patterns(
+                    en_base_attention, en_train_attention
+                )
+                attention_results['cross_model_comparisons']['english'].append(en_base_train_comparison)
+
+                # Korean: Base vs Training
+                ko_base_train_comparison = attention_analyzer.compare_attention_patterns(
+                    ko_base_attention, ko_train_attention
+                )
+                attention_results['cross_model_comparisons']['korean'].append(ko_base_train_comparison)
+
+                # Print progress
+                base_en_ko_sim = base_en_ko_comparison.get('overall_similarity', 0.0)
+                train_en_ko_sim = train_en_ko_comparison.get('overall_similarity', 0.0)
+                en_improvement = train_en_ko_sim - base_en_ko_sim
+
+                print(f"      ✅ Pair {i+1}: Base_EN-KO={base_en_ko_sim:.4f}, Train_EN-KO={train_en_ko_sim:.4f}, Δ={en_improvement:+.4f}")
 
             except Exception as e:
-                print(f"   ⚠️ Training model comparison failed: {e}")
-        else:
-            print(f"   ℹ️ Training model not available for comparison")
+                print(f"      ❌ Pair {i+1} failed: {e}")
+                # Add placeholder data for failed analysis
+                attention_results['base_model_en_attention'].append(None)
+                attention_results['base_model_ko_attention'].append(None)
+                attention_results['train_model_en_attention'].append(None)
+                attention_results['train_model_ko_attention'].append(None)
+                attention_results['cross_lingual_comparisons']['base_model'].append({'overall_similarity': 0.0})
+                attention_results['cross_lingual_comparisons']['train_model'].append({'overall_similarity': 0.0})
+                attention_results['cross_model_comparisons']['english'].append({'overall_similarity': 0.0})
+                attention_results['cross_model_comparisons']['korean'].append({'overall_similarity': 0.0})
 
-        attention_results['train_model_attention'] = train_attention
+        # === COMPREHENSIVE STATISTICS ===
+        print(f"\n   📊 Comprehensive Attention Analysis Results:")
+        print(f"     Total Sentence Pairs: {total_pairs}")
+
+        # Cross-lingual similarities
+        base_similarities = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_lingual_comparisons']['base_model']]
+        train_similarities = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_lingual_comparisons']['train_model']]
+
+        if base_similarities and train_similarities:
+            base_avg = sum(base_similarities) / len(base_similarities)
+            train_avg = sum(train_similarities) / len(train_similarities)
+            cross_lingual_improvement = train_avg - base_avg
+
+            print(f"\n     🌍 Cross-lingual Performance (EN-KO Similarity):")
+            print(f"       Base Model Average:     {base_avg:.4f}")
+            print(f"       Training Model Average: {train_avg:.4f}")
+            print(f"       Cross-lingual Improvement: {cross_lingual_improvement:+.4f} ({cross_lingual_improvement/base_avg*100:+.1f}%)")
+
+        # Cross-model similarities
+        en_cross_model = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_model_comparisons']['english']]
+        ko_cross_model = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_model_comparisons']['korean']]
+
+        if en_cross_model and ko_cross_model:
+            en_avg = sum(en_cross_model) / len(en_cross_model)
+            ko_avg = sum(ko_cross_model) / len(ko_cross_model)
+
+            print(f"\n     🔄 Cross-model Consistency:")
+            print(f"       English (Base-Train):   {en_avg:.4f}")
+            print(f"       Korean (Base-Train):    {ko_avg:.4f}")
+            print(f"       Language Bias: {'Korean' if ko_avg > en_avg else 'English'} shows {'higher' if abs(ko_avg - en_avg) > 0.05 else 'similar'} consistency")
+
         return attention_results
 
     except Exception as e:
@@ -853,140 +1098,211 @@ def analyze_attention_differences():
         return None
 
 def analyze_confidence_differences():
-    """Analyze confidence differences for English-Korean sentence pairs."""
+    """Analyze confidence differences between Base and Training models for all sentences."""
     if not ENABLE_CONFIDENCE_ANALYSIS:
         return None
 
-    print("\n📈 Running Confidence Analysis...")
+    print("\n📈 Running Comprehensive Confidence Analysis...")
 
     try:
         confidence_analyzer = ConfidenceAnalyzer()
 
-        # Analyze confidence for all sentence pairs
+        # Store results for 4-way comparison: Base_EN, Base_KO, Train_EN, Train_KO
         confidence_results = {
             'english_sentences': [],
             'korean_sentences': [],
-            'base_model_results': [],
-            'train_model_results': []
+            'base_model_en_results': [],
+            'base_model_ko_results': [],
+            'train_model_en_results': [],
+            'train_model_ko_results': [],
+            'cross_lingual_analysis': {
+                'base_model': [],  # EN-KO uncertainty differences for base model
+                'train_model': [] # EN-KO uncertainty differences for training model
+            },
+            'cross_model_analysis': {
+                'english': [],     # Base-Train uncertainty differences for English
+                'korean': []       # Base-Train uncertainty differences for Korean
+            }
         }
 
-        # Analyze ALL sentence pairs
+        # Check if training model exists
+        training_available = os.path.exists(TRAINING_MODEL_PATH)
+        if not training_available:
+            print(f"   ⚠️ Training model not found: {TRAINING_MODEL_PATH}")
+            return None
+
+        # Analyze all sentence pairs for both models
         total_pairs = len(TEST_SENTENCES)
+        print(f"   📊 Analyzing {total_pairs} sentence pairs across both models...")
+
         for i, (en_text, ko_text) in enumerate(TEST_SENTENCES):
-            print(f"   📝 Analyzing sentence pair {i+1}/{total_pairs}...")
+            print(f"   📝 Processing sentence pair {i+1}/{total_pairs}...")
 
-            # English sentence analysis
-            en_confidence = confidence_analyzer.analyze_prediction_confidence(
-                model_name_or_path=BASE_MODEL_PATH,
-                text=en_text,
-                model_type='base'
-            )
-            confidence_results['english_sentences'].append(en_text)
-            confidence_results['base_model_results'].append(en_confidence)
+            try:
+                # Store sentences
+                confidence_results['english_sentences'].append(en_text)
+                confidence_results['korean_sentences'].append(ko_text)
 
-            # Korean sentence analysis
-            ko_confidence = confidence_analyzer.analyze_prediction_confidence(
-                model_name_or_path=BASE_MODEL_PATH,
-                text=ko_text,
-                model_type='base'
-            )
-            confidence_results['korean_sentences'].append(ko_text)
-            confidence_results['train_model_results'].append(ko_confidence)  # Store Korean results separately
+                # === BASE MODEL ANALYSIS ===
+                print(f"      🔍 Base Model Analysis...")
 
-        # Use first English sentence for visualization (backward compatibility)
-        sample_text = TEST_SENTENCES[0][0]
-        base_confidence = confidence_results['base_model_results'][0]
+                # English sentence - Base model
+                en_base_confidence = confidence_analyzer.analyze_prediction_confidence(
+                    model_name_or_path=BASE_MODEL_PATH,
+                    text=en_text,
+                    model_type='base'
+                )
+                confidence_results['base_model_en_results'].append(en_base_confidence)
 
-        total_analyzed = len(confidence_results['base_model_results'])
-        print(f"   ✅ Analyzed {total_analyzed} English-Korean sentence pairs")
-        print(f"   📊 Method: {base_confidence.get('method', 'logit_based')}")
+                # Korean sentence - Base model
+                ko_base_confidence = confidence_analyzer.analyze_prediction_confidence(
+                    model_name_or_path=BASE_MODEL_PATH,
+                    text=ko_text,
+                    model_type='base'
+                )
+                confidence_results['base_model_ko_results'].append(ko_base_confidence)
 
-        # Show results for each sentence pair
-        print(f"\n   📋 Sentence Pair Analysis Results:")
-        for i in range(total_analyzed):
-            en_result = confidence_results['base_model_results'][i]
-            ko_result = confidence_results['train_model_results'][i]
+                # === TRAINING MODEL ANALYSIS ===
+                print(f"      🎯 Training Model Analysis...")
 
-            # Extract uncertainty scores
-            en_uncertainty = 0.5
-            ko_uncertainty = 0.6
+                # English sentence - Training model
+                en_train_confidence = confidence_analyzer.analyze_prediction_confidence(
+                    model_name_or_path=TRAINING_MODEL_PATH,
+                    text=en_text,
+                    model_type='trained'
+                )
+                confidence_results['train_model_en_results'].append(en_train_confidence)
 
-            if 'confidence_measures' in en_result:
-                en_measures = en_result['confidence_measures']
-                en_uncertainty = 1.0 - en_measures.get('average_confidence', 0.5)
-            elif 'uncertainty_estimates' in en_result:
-                en_uncertainty = en_result['uncertainty_estimates']['mean_uncertainty']
+                # Korean sentence - Training model
+                ko_train_confidence = confidence_analyzer.analyze_prediction_confidence(
+                    model_name_or_path=TRAINING_MODEL_PATH,
+                    text=ko_text,
+                    model_type='trained'
+                )
+                confidence_results['train_model_ko_results'].append(ko_train_confidence)
 
-            if 'confidence_measures' in ko_result:
-                ko_measures = ko_result['confidence_measures']
-                ko_uncertainty = 1.0 - ko_measures.get('average_confidence', 0.5)
-            elif 'uncertainty_estimates' in ko_result:
-                ko_uncertainty = ko_result['uncertainty_estimates']['mean_uncertainty']
+                # === EXTRACT UNCERTAINTY SCORES ===
+                def extract_uncertainty(confidence_result, default=0.5):
+                    """Extract uncertainty score from confidence analysis result."""
+                    if 'confidence_measures' in confidence_result:
+                        measures = confidence_result['confidence_measures']
+                        avg_confidence = measures.get('average_confidence', default)
+                        return 1.0 - avg_confidence  # Convert confidence to uncertainty
+                    elif 'uncertainty_estimates' in confidence_result:
+                        return confidence_result['uncertainty_estimates']['mean_uncertainty']
+                    else:
+                        return default
 
-            # Show short preview of sentences
-            en_preview = confidence_results['english_sentences'][i][:50] + "..." if len(confidence_results['english_sentences'][i]) > 50 else confidence_results['english_sentences'][i]
-            ko_preview = confidence_results['korean_sentences'][i][:50] + "..." if len(confidence_results['korean_sentences'][i]) > 50 else confidence_results['korean_sentences'][i]
+                en_base_uncertainty = extract_uncertainty(en_base_confidence, 0.5)
+                ko_base_uncertainty = extract_uncertainty(ko_base_confidence, 0.6)
+                en_train_uncertainty = extract_uncertainty(en_train_confidence, 0.5)
+                ko_train_uncertainty = extract_uncertainty(ko_train_confidence, 0.6)
 
-            print(f"     Pair {i+1:2d}: EN={en_uncertainty:.3f} | KO={ko_uncertainty:.3f} | Diff={abs(en_uncertainty-ko_uncertainty):.3f}")
-            print(f"             EN: {en_preview}")
-            print(f"             KO: {ko_preview}")
+                # === CROSS-LINGUAL ANALYSIS ===
+                # Base model: EN vs KO uncertainty difference
+                base_en_ko_diff = abs(en_base_uncertainty - ko_base_uncertainty)
+                confidence_results['cross_lingual_analysis']['base_model'].append({
+                    'en_uncertainty': en_base_uncertainty,
+                    'ko_uncertainty': ko_base_uncertainty,
+                    'difference': base_en_ko_diff,
+                    'language_bias': 'korean' if ko_base_uncertainty > en_base_uncertainty else 'english'
+                })
 
-        # Overall summary
-        if 'confidence_measures' in base_confidence:
-            measures = base_confidence['confidence_measures']
-            if 'entropy' in measures:
-                entropy_data = measures['entropy']
-                print(f"\n   📈 Sample Analysis (Pair 1):")
-                print(f"     Mean Entropy: {entropy_data['mean_entropy']:.3f}")
-                print(f"     Uncertainty: {entropy_data['uncertainty_classification']}")
-                print(f"     Method: {entropy_data.get('method', 'standard')}")
+                # Training model: EN vs KO uncertainty difference
+                train_en_ko_diff = abs(en_train_uncertainty - ko_train_uncertainty)
+                confidence_results['cross_lingual_analysis']['train_model'].append({
+                    'en_uncertainty': en_train_uncertainty,
+                    'ko_uncertainty': ko_train_uncertainty,
+                    'difference': train_en_ko_diff,
+                    'language_bias': 'korean' if ko_train_uncertainty > en_train_uncertainty else 'english'
+                })
 
-        # Check if we have embedding-based uncertainty summary
-        if 'summary' in base_confidence:
-            summary = base_confidence['summary']
-            print(f"     Overall Uncertainty: {summary['uncertainty_level']}")
-            if 'high_uncertainty_positions' in summary:
-                high_positions = summary['high_uncertainty_positions']
-                if high_positions:
-                    print(f"     High Uncertainty Positions: {high_positions}")
+                # === CROSS-MODEL ANALYSIS ===
+                # English: Base vs Training uncertainty difference
+                en_base_train_diff = abs(en_base_uncertainty - en_train_uncertainty)
+                en_improvement = en_base_uncertainty - en_train_uncertainty  # Positive = improvement
+                confidence_results['cross_model_analysis']['english'].append({
+                    'base_uncertainty': en_base_uncertainty,
+                    'train_uncertainty': en_train_uncertainty,
+                    'difference': en_base_train_diff,
+                    'improvement': en_improvement
+                })
 
-        # Generate confidence visualizations
+                # Korean: Base vs Training uncertainty difference
+                ko_base_train_diff = abs(ko_base_uncertainty - ko_train_uncertainty)
+                ko_improvement = ko_base_uncertainty - ko_train_uncertainty  # Positive = improvement
+                confidence_results['cross_model_analysis']['korean'].append({
+                    'base_uncertainty': ko_base_uncertainty,
+                    'train_uncertainty': ko_train_uncertainty,
+                    'difference': ko_base_train_diff,
+                    'improvement': ko_improvement
+                })
+
+                # Print progress with comprehensive metrics
+                print(f"      ✅ Pair {i+1}:")
+                print(f"         Cross-lingual: Base_EN-KO={base_en_ko_diff:.3f}, Train_EN-KO={train_en_ko_diff:.3f}")
+                print(f"         Cross-model: EN_improvement={en_improvement:+.3f}, KO_improvement={ko_improvement:+.3f}")
+
+            except Exception as e:
+                print(f"      ❌ Pair {i+1} failed: {e}")
+                # Add placeholder data for failed analysis
+                confidence_results['base_model_en_results'].append({'confidence_measures': {'average_confidence': 0.5}})
+                confidence_results['base_model_ko_results'].append({'confidence_measures': {'average_confidence': 0.4}})
+                confidence_results['train_model_en_results'].append({'confidence_measures': {'average_confidence': 0.5}})
+                confidence_results['train_model_ko_results'].append({'confidence_measures': {'average_confidence': 0.4}})
+                confidence_results['cross_lingual_analysis']['base_model'].append({'difference': 0.1, 'language_bias': 'korean'})
+                confidence_results['cross_lingual_analysis']['train_model'].append({'difference': 0.1, 'language_bias': 'korean'})
+                confidence_results['cross_model_analysis']['english'].append({'improvement': 0.0})
+                confidence_results['cross_model_analysis']['korean'].append({'improvement': 0.0})
+
+        # === COMPREHENSIVE STATISTICS ===
+        print(f"\n   📊 Comprehensive Confidence Analysis Results:")
+        print(f"     Total Sentence Pairs: {total_pairs}")
+
+        # Cross-lingual bias analysis
+        base_cross_lingual = confidence_results['cross_lingual_analysis']['base_model']
+        train_cross_lingual = confidence_results['cross_lingual_analysis']['train_model']
+
+        if base_cross_lingual and train_cross_lingual:
+            base_avg_diff = sum(item['difference'] for item in base_cross_lingual) / len(base_cross_lingual)
+            train_avg_diff = sum(item['difference'] for item in train_cross_lingual) / len(train_cross_lingual)
+            cross_lingual_improvement = base_avg_diff - train_avg_diff  # Positive = improvement
+
+            # Language bias statistics
+            base_korean_bias = sum(1 for item in base_cross_lingual if item['language_bias'] == 'korean') / len(base_cross_lingual)
+            train_korean_bias = sum(1 for item in train_cross_lingual if item['language_bias'] == 'korean') / len(train_cross_lingual)
+
+            print(f"\n     🌍 Cross-lingual Uncertainty Analysis:")
+            print(f"       Base Model Avg EN-KO Diff:     {base_avg_diff:.4f}")
+            print(f"       Training Model Avg EN-KO Diff: {train_avg_diff:.4f}")
+            print(f"       Cross-lingual Improvement:     {cross_lingual_improvement:+.4f} ({cross_lingual_improvement/base_avg_diff*100:+.1f}%)")
+            print(f"       Korean Bias: Base={base_korean_bias:.1%}, Train={train_korean_bias:.1%}")
+
+        # Cross-model improvement analysis
+        en_cross_model = confidence_results['cross_model_analysis']['english']
+        ko_cross_model = confidence_results['cross_model_analysis']['korean']
+
+        if en_cross_model and ko_cross_model:
+            en_avg_improvement = sum(item['improvement'] for item in en_cross_model) / len(en_cross_model)
+            ko_avg_improvement = sum(item['improvement'] for item in ko_cross_model) / len(ko_cross_model)
+
+            # Count improvements vs regressions
+            en_improvements = sum(1 for item in en_cross_model if item['improvement'] > 0)
+            ko_improvements = sum(1 for item in ko_cross_model if item['improvement'] > 0)
+
+            print(f"\n     🔄 Cross-model Improvement Analysis:")
+            print(f"       English Avg Improvement:       {en_avg_improvement:+.4f} ({en_improvements}/{total_pairs} pairs improved)")
+            print(f"       Korean Avg Improvement:        {ko_avg_improvement:+.4f} ({ko_improvements}/{total_pairs} pairs improved)")
+            print(f"       Overall Training Effectiveness: {'English' if en_avg_improvement > ko_avg_improvement else 'Korean'} shows better improvement")
+
+        # Generate enhanced visualizations
         try:
-            save_confidence_visualizations(base_confidence)
-            save_multilingual_confidence_comparison(confidence_results)
+            save_confidence_visualizations(confidence_results['base_model_en_results'][0])  # Sample for compatibility
+            save_comprehensive_confidence_comparison(confidence_results)
         except Exception as e:
             print(f"   ⚠️ Confidence visualization failed: {e}")
 
-        # Training model confidence (if exists)
-        train_confidence = None
-        if os.path.exists(TRAINING_MODEL_PATH):
-            try:
-                train_confidence = confidence_analyzer.analyze_prediction_confidence(
-                    model_name_or_path=TRAINING_MODEL_PATH,
-                    text=sample_text,
-                    model_type='trained'
-                )
-                print(f"   ✅ Training Model Confidence analyzed")
-
-                if 'confidence_measures' in train_confidence:
-                    measures = train_confidence['confidence_measures']
-                    if 'entropy' in measures:
-                        entropy_data = measures['entropy']
-                        print(f"     Mean Entropy: {entropy_data['mean_entropy']:.3f}")
-                        print(f"     Uncertainty: {entropy_data['uncertainty_classification']}")
-
-                # Generate comparison visualization
-                try:
-                    save_confidence_comparison(base_confidence, train_confidence)
-                except Exception as e:
-                    print(f"   ⚠️ Confidence comparison visualization failed: {e}")
-
-            except Exception as e:
-                print(f"   ❌ Training model confidence analysis failed: {e}")
-        else:
-            print(f"   ⚠️ Training model path not found: {TRAINING_MODEL_PATH}")
-
-        return base_confidence
+        return confidence_results
 
     except Exception as e:
         print(f"   ❌ Confidence analysis failed: {e}")

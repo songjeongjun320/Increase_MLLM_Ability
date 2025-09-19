@@ -220,42 +220,104 @@ def save_embedding_visualizations(results):
         except Exception as e:
             print(f"      ⚠️ Similarity heatmap failed: {e}")
 
-        # Language Clustering Analysis
+        # Language distance analysis (simplified)
         total_plots += 1
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                cluster_result = embedding_analyzer.analyze_language_clusters(embeddings, languages)
-                fig = visualizer.plot_clustering_analysis(
-                    embeddings, languages, cluster_result,
-                    title="Language Clustering Analysis"
-                )
-                plt.savefig(output_dir / "language_clustering.png",
-                           dpi=300, bbox_inches='tight',
-                           facecolor='white', edgecolor='none')
-                plt.close()
-                plots_saved += 1
-        except Exception as e:
-            print(f"      ⚠️ Language clustering plot failed: {e}")
+                # Create language distance visualization
+                from sklearn.metrics.pairwise import cosine_similarity
 
-        # Cross-Language Performance
-        total_plots += 1
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                cross_lang_result = embedding_analyzer.analyze_cross_language_performance(
-                    embeddings, languages, texts
-                )
-                fig = visualizer.plot_cross_language_performance(
-                    cross_lang_result, title="Cross-Language Performance"
-                )
-                plt.savefig(output_dir / "cross_language_performance.png",
+                # Calculate average embeddings per language
+                lang_embeddings = {}
+                for lang in set(languages):
+                    mask = np.array(languages) == lang
+                    if np.any(mask):
+                        lang_embeddings[lang] = embeddings[mask].mean(axis=0)
+
+                # Create distance matrix
+                lang_names = list(lang_embeddings.keys())
+                distance_matrix = np.zeros((len(lang_names), len(lang_names)))
+                for i, lang1 in enumerate(lang_names):
+                    for j, lang2 in enumerate(lang_names):
+                        distance_matrix[i, j] = cosine_similarity(
+                            [lang_embeddings[lang1]], [lang_embeddings[lang2]]
+                        )[0, 0]
+
+                # Plot distance matrix
+                fig, ax = plt.subplots(figsize=(8, 6))
+                im = ax.imshow(distance_matrix, cmap='viridis')
+                ax.set_xticks(range(len(lang_names)))
+                ax.set_yticks(range(len(lang_names)))
+                ax.set_xticklabels(lang_names)
+                ax.set_yticklabels(lang_names)
+                plt.colorbar(im)
+                ax.set_title("Language Distance Matrix")
+
+                plt.savefig(output_dir / "language_distance.png",
                            dpi=300, bbox_inches='tight',
                            facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
         except Exception as e:
-            print(f"      ⚠️ Cross-language performance plot failed: {e}")
+            print(f"      ⚠️ Language distance plot failed: {e}")
+
+        # Embedding statistics
+        total_plots += 1
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+
+                # Plot embedding statistics
+                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
+
+                # 1. Embedding magnitude by language
+                lang_magnitudes = {}
+                for lang in set(languages):
+                    mask = np.array(languages) == lang
+                    if np.any(mask):
+                        lang_magnitudes[lang] = np.linalg.norm(embeddings[mask], axis=1)
+
+                lang_names = list(lang_magnitudes.keys())
+                lang_data = [lang_magnitudes[lang] for lang in lang_names]
+                ax1.boxplot(lang_data, labels=lang_names)
+                ax1.set_title("Embedding Magnitude by Language")
+                ax1.set_ylabel("L2 Norm")
+
+                # 2. Embedding variance
+                lang_variances = [np.var(data) for data in lang_data]
+                ax2.bar(lang_names, lang_variances)
+                ax2.set_title("Embedding Variance by Language")
+                ax2.set_ylabel("Variance")
+
+                # 3. Sentence length distribution
+                sentence_lengths = [len(text.split()) for text in texts]
+                lang_lengths = {}
+                for i, lang in enumerate(languages):
+                    if lang not in lang_lengths:
+                        lang_lengths[lang] = []
+                    lang_lengths[lang].append(sentence_lengths[i])
+
+                length_data = [lang_lengths[lang] for lang in lang_names]
+                ax3.boxplot(length_data, labels=lang_names)
+                ax3.set_title("Sentence Length by Language")
+                ax3.set_ylabel("Word Count")
+
+                # 4. Similarity statistics
+                similarity_matrix = cosine_similarity(embeddings)
+                ax4.hist(similarity_matrix.flatten(), bins=50, alpha=0.7)
+                ax4.set_title("Similarity Distribution")
+                ax4.set_xlabel("Cosine Similarity")
+                ax4.set_ylabel("Frequency")
+
+                plt.tight_layout()
+                plt.savefig(output_dir / "embedding_statistics.png",
+                           dpi=300, bbox_inches='tight',
+                           facecolor='white', edgecolor='none')
+                plt.close()
+                plots_saved += 1
+        except Exception as e:
+            print(f"      ⚠️ Embedding statistics plot failed: {e}")
 
         print(f"   ✅ Saved {plots_saved}/{total_plots} visualizations")
 

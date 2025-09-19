@@ -24,9 +24,30 @@ logger = logging.getLogger(__name__)
 def _safe_float_conversion(value):
     """Safely convert numpy/torch values to Python float."""
     if hasattr(value, 'item'):
-        return float(value.item())
-    elif hasattr(value, 'tolist'):
-        return float(value.tolist())
+        try:
+            # Check if it's a single element tensor
+            if hasattr(value, 'numel') and value.numel() == 1:
+                return float(value.item())
+            elif hasattr(value, 'size') and value.size == 1:
+                return float(value.item())
+            else:
+                # Multi-element tensor, take mean or first element
+                if hasattr(value, 'mean'):
+                    return float(value.mean().item())
+                else:
+                    return float(value.flatten()[0].item())
+        except (RuntimeError, ValueError):
+            # Fallback to other methods
+            pass
+
+    if hasattr(value, 'tolist'):
+        result = value.tolist()
+        if isinstance(result, list) and len(result) == 1:
+            return float(result[0])
+        elif isinstance(result, list):
+            return float(sum(result) / len(result))  # Take average
+        else:
+            return float(result)
     else:
         return float(value)
 

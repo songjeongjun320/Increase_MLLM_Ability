@@ -406,7 +406,11 @@ class AttentionAnalyzer:
             # Ensure same shape for comparison
             if layer_data1.shape != layer_data2.shape:
                 logger.warning(f"Layer {layer} has different shapes: {layer_data1.shape} vs {layer_data2.shape}")
-                continue
+                # Try to align shapes by padding or cropping
+                layer_data1, layer_data2 = self._align_attention_shapes(layer_data1, layer_data2)
+                if layer_data1 is None or layer_data2 is None:
+                    logger.warning(f"Could not align shapes for layer {layer}, skipping...")
+                    continue
 
             # Average across heads if multiple heads
             if len(layer_data1.shape) == 3:
@@ -422,7 +426,17 @@ class AttentionAnalyzer:
                 # Flatten arrays for cosine similarity
                 flat1 = avg_attention1.flatten()
                 flat2 = avg_attention2.flatten()
-                cosine_sim = np.dot(flat1, flat2) / (np.linalg.norm(flat1) * np.linalg.norm(flat2))
+
+                # Calculate norms with zero-division protection
+                norm1 = np.linalg.norm(flat1)
+                norm2 = np.linalg.norm(flat2)
+
+                if norm1 == 0 or norm2 == 0:
+                    cosine_sim = 0.0  # Handle zero vectors
+                    logger.warning(f"Zero norm detected in cosine similarity calculation for layer {layer}")
+                else:
+                    cosine_sim = np.dot(flat1, flat2) / (norm1 * norm2)
+
                 layer_comparison['cosine_similarity'] = cosine_sim
 
             if 'mse' in comparison_metrics:
@@ -556,6 +570,88 @@ class AttentionAnalyzer:
 
         logger.info(f"Attention data exported to {output_path}")
         return str(output_path)
+
+    def _align_attention_shapes(self, attention1: np.ndarray, attention2: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Align attention matrices with different shapes by padding or cropping.
+
+        Args:
+            attention1: First attention matrix
+            attention2: Second attention matrix
+
+        Returns:
+            Tuple of aligned attention matrices, or (None, None) if alignment fails
+        """
+        try:
+            # Handle different number of dimensions
+            if attention1.ndim != attention2.ndim:
+                logger.warning(f"Different number of dimensions: {attention1.ndim} vs {attention2.ndim}")
+                return None, None
+
+            if attention1.ndim == 2:
+                # 2D case: (seq_len, seq_len)
+                max_seq_len = max(attention1.shape[0], attention1.shape[1],
+                                attention2.shape[0], attention2.shape[1])
+
+                # Pad both matrices to the same size
+                attention1_padded = self._pad_attention_matrix_2d(attention1, max_seq_len)
+                attention2_padded = self._pad_attention_matrix_2d(attention2, max_seq_len)
+
+                return attention1_padded, attention2_padded
+
+            elif attention1.ndim == 3:
+                # 3D case: (num_heads, seq_len, seq_len)
+                max_heads = max(attention1.shape[0], attention2.shape[0])
+                max_seq_len = max(attention1.shape[1], attention1.shape[2],
+                                attention2.shape[1], attention2.shape[2])
+
+                # Pad both matrices to the same size
+                attention1_padded = self._pad_attention_matrix_3d(attention1, max_heads, max_seq_len)
+                attention2_padded = self._pad_attention_matrix_3d(attention2, max_heads, max_seq_len)
+
+                return attention1_padded, attention2_padded
+
+            else:
+                logger.warning(f"Unsupported attention matrix dimensions: {attention1.ndim}")
+                return None, None
+
+        except Exception as e:
+            logger.error(f"Error aligning attention shapes: {e}")
+            return None, None
+
+    def _pad_attention_matrix_2d(self, attention: np.ndarray, target_size: int) -> np.ndarray:
+        """Pad 2D attention matrix to target size."""
+        current_size = attention.shape[0]
+        if current_size >= target_size:
+            return attention[:target_size, :target_size]
+
+        # Pad with zeros
+        padded = np.zeros((target_size, target_size))
+        padded[:current_size, :current_size] = attention
+        return padded
+
+    def _pad_attention_matrix_3d(self, attention: np.ndarray, target_heads: int, target_seq_len: int) -> np.ndarray:
+        """Pad 3D attention matrix to target size."""
+        current_heads, current_seq_len = attention.shape[0], attention.shape[1]
+
+        # Crop or pad heads
+        if current_heads >= target_heads:
+            attention = attention[:target_heads]
+        else:
+            # Pad with zeros for additional heads
+            padding = np.zeros((target_heads - current_heads, current_seq_len, attention.shape[2]))
+            attention = np.concatenate([attention, padding], axis=0)
+
+        # Crop or pad sequence length
+        if current_seq_len >= target_seq_len:
+            attention = attention[:, :target_seq_len, :target_seq_len]
+        else:
+            # Pad with zeros for additional sequence length
+            new_attention = np.zeros((target_heads, target_seq_len, target_seq_len))
+            new_attention[:, :current_seq_len, :current_seq_len] = attention
+            attention = new_attention
+
+        return attention
 
     def clear_cache(self):
         """Clear attention cache to free memory."""

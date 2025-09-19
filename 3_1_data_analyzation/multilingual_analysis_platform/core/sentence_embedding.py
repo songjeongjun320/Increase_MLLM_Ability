@@ -13,7 +13,15 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from sklearn.cluster import KMeans, DBSCAN
-import umap
+try:
+    from umap import UMAP
+except ImportError:
+    try:
+        import umap.umap_ as umap
+        UMAP = umap.UMAP
+    except ImportError:
+        UMAP = None
+        print("Warning: UMAP not available. Install with: pip install umap-learn")
 import logging
 from pathlib import Path
 
@@ -124,10 +132,12 @@ class SentenceEmbeddingAnalyzer:
                 n_components=n_components,
                 perplexity=kwargs.get('perplexity', 30),
                 random_state=kwargs.get('random_state', 42),
-                n_iter=kwargs.get('n_iter', 1000)
+                max_iter=kwargs.get('max_iter', kwargs.get('n_iter', 1000))  # Support both old and new parameter names
             )
         elif method == 'umap':
-            reducer = umap.UMAP(
+            if UMAP is None:
+                raise ImportError("UMAP is not available. Install with: pip install umap-learn")
+            reducer = UMAP(
                 n_components=n_components,
                 n_neighbors=kwargs.get('n_neighbors', 15),
                 min_dist=kwargs.get('min_dist', 0.1),

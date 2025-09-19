@@ -38,6 +38,7 @@ from core.sentence_embedding import SentenceEmbeddingAnalyzer
 from core.attention_analysis import AttentionAnalyzer
 from core.confidence_analysis import ConfidenceAnalyzer
 from utils.comparison_utils import ModelComparisonSuite
+from utils.font_manager import configure_plot_korean
 from visualization.embedding_plots import EmbeddingVisualizer
 from visualization.confidence_plots import ConfidenceVisualizer
 
@@ -132,7 +133,7 @@ def print_header():
     print("=" * 60)
 
 def save_embedding_visualizations(results):
-    """Generate and save comprehensive embedding visualizations."""
+    """Generate and save comprehensive 4-way embedding visualizations: Base vs Training models."""
     try:
         # Initialize Korean font manager first
         from utils.font_manager import setup_korean_fonts

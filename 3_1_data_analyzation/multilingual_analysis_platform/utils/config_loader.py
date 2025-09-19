@@ -124,6 +124,17 @@ class ConfigLoader:
                 return lang.get('color', '#000000')
         return '#000000'  # Default black
 
+    def get_language_colors(self) -> Dict[str, str]:
+        """Get colors for all supported languages."""
+        colors = {}
+        languages = self.get_supported_languages()
+        for lang in languages:
+            lang_code = lang.get('code')
+            lang_color = lang.get('color', '#000000')
+            if lang_code:
+                colors[lang_code] = lang_color
+        return colors
+
     def reload(self):
         """Reload configuration from file."""
         self.config = self._load_config()
@@ -147,3 +158,9 @@ def reload_config():
     global _global_config
     if _global_config is not None:
         _global_config.reload()
+
+
+def get_language_colors() -> Dict[str, str]:
+    """Get colors for all supported languages from global config."""
+    config = get_config()
+    return config.get_language_colors()

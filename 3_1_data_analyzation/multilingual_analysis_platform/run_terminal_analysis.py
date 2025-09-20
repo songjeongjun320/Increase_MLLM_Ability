@@ -314,6 +314,122 @@ def plot_dual_model_pca_comparison(dual_embeddings, output_path):
         print(f"      ⚠️ Dual model PCA plot failed: {e}")
         return False
 
+def plot_dual_model_comparison(dual_embeddings, output_path, method='tsne'):
+    """
+    Create a comparison plot showing both base and training model embeddings using specified method.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        output_path: Path to save the plot
+        method: Dimensionality reduction method ('tsne', 'umap')
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+        languages = dual_embeddings['languages']
+
+        # Combine embeddings for joint reduction
+        all_embeddings = np.vstack([base_embeddings, train_embeddings])
+
+        # Perform dimensionality reduction
+        if method == 'tsne':
+            from sklearn.manifold import TSNE
+            reducer = TSNE(n_components=2, random_state=42, perplexity=min(30, len(all_embeddings)-1))
+            reduced_embeddings = reducer.fit_transform(all_embeddings)
+            method_name = "t-SNE"
+        elif method == 'umap':
+            try:
+                from umap import UMAP
+                reducer = UMAP(n_components=2, random_state=42, n_neighbors=min(15, len(all_embeddings)-1))
+                reduced_embeddings = reducer.fit_transform(all_embeddings)
+                method_name = "UMAP"
+            except ImportError:
+                print(f"      ⚠️ UMAP not available, skipping")
+                return False
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+
+        # Split back into base and training
+        n_samples = len(base_embeddings)
+        base_reduced = reduced_embeddings[:n_samples]
+        train_reduced = reduced_embeddings[n_samples:]
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, ax)
+
+        # Color mapping for languages
+        from utils.config_loader import get_language_colors
+        colors = get_language_colors()
+
+        # Plot base model embeddings
+        for lang in set(languages):
+            lang_mask = np.array(languages) == lang
+            if np.any(lang_mask):
+                base_color = colors.get(lang, '#1f77b4')
+                train_color = colors.get(lang, '#ff7f0e')
+
+                # Base model points (circles)
+                ax.scatter(
+                    base_reduced[lang_mask, 0],
+                    base_reduced[lang_mask, 1],
+                    c=base_color, marker='o', s=80, alpha=0.7,
+                    label=f'Base-{lang}', edgecolors='black', linewidth=0.5
+                )
+
+                # Training model points (triangles)
+                ax.scatter(
+                    train_reduced[lang_mask, 0],
+                    train_reduced[lang_mask, 1],
+                    c=train_color, marker='^', s=80, alpha=0.7,
+                    label=f'Train-{lang}', edgecolors='black', linewidth=0.5
+                )
+
+        # Add index labels (only indices, not full text)
+        for i in range(n_samples):
+            # Base model labels
+            ax.annotate(f'{i}', (base_reduced[i, 0], base_reduced[i, 1]),
+                       xytext=(5, 5), textcoords='offset points',
+                       fontsize=8, alpha=0.8, color='darkblue')
+
+            # Training model labels
+            ax.annotate(f'{i}', (train_reduced[i, 0], train_reduced[i, 1]),
+                       xytext=(5, 5), textcoords='offset points',
+                       fontsize=8, alpha=0.8, color='darkred')
+
+        # Set labels and title
+        ax.set_xlabel(f'{method_name} Component 1')
+        ax.set_ylabel(f'{method_name} Component 2')
+        ax.set_title(f'Base vs Training Model - {method_name} Comparison\n(Circles=Base, Triangles=Training)', fontsize=14, pad=20)
+
+        # Add legend
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        # Add grid
+        ax.grid(True, alpha=0.3)
+
+        # Add model information
+        model_info = f"Base: {Path(dual_embeddings['base_model_path']).name}\nTrain: {Path(dual_embeddings['train_model_path']).name}"
+        ax.text(0.02, 0.98, model_info, transform=ax.transAxes,
+               fontsize=9, verticalalignment='top',
+               bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight',
+                   facecolor='white', edgecolor='none')
+        plt.close()
+
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Dual model {method} plot failed: {e}")
+        return False
+
 def print_header():
     """Print analysis header."""
     print("🌍 Multilingual Model Comparison Analysis")
@@ -361,117 +477,35 @@ def save_embedding_visualizations(results):
 
         print(f"   📊 Generating comprehensive visualizations...")
 
-        # 1. Dual-model PCA comparison (NEW - shows both models)
+        # Dual-model comparisons for different dimensionality reduction methods
+
+        # 1. PCA comparison
         total_plots += 1
         success = plot_dual_model_pca_comparison(dual_embeddings, output_dir / "dual_model_pca_comparison.png")
         if success:
             plots_saved += 1
             print(f"      ✅ Dual-model PCA comparison saved")
 
-        # 2D Visualizations using sentence transformer (for compatibility)
+        # 2. t-SNE comparison
+        total_plots += 1
+        success = plot_dual_model_comparison(dual_embeddings, output_dir / "dual_model_tsne_comparison.png", method='tsne')
+        if success:
+            plots_saved += 1
+            print(f"      ✅ Dual-model t-SNE comparison saved")
+
+        # 3. UMAP comparison (if available)
+        total_plots += 1
+        success = plot_dual_model_comparison(dual_embeddings, output_dir / "dual_model_umap_comparison.png", method='umap')
+        if success:
+            plots_saved += 1
+            print(f"      ✅ Dual-model UMAP comparison saved")
+        else:
+            print(f"      ⚠️ UMAP comparison skipped (not available)")
+
+        # Generate sentence transformer similarity matrix for legacy compatibility
         embedding_analyzer = SentenceEmbeddingAnalyzer()
-        visualizer = EmbeddingVisualizer()
         embedding_result = embedding_analyzer.generate_embeddings(texts, languages)
         embeddings = embedding_result['embeddings']
-
-        for method in ['pca', 'tsne', 'umap']:
-            total_plots += 1
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-
-                    # Create visualization with index-only labels
-                    reduced_embeddings = embedding_analyzer.reduce_dimensions(embeddings, method=method, n_components=2)
-
-                    # Create custom plot with index labels only
-                    fig, ax = plt.subplots(figsize=(12, 10))
-                    configure_plot_korean(fig, ax)
-
-                    from utils.config_loader import get_language_colors
-                    colors = get_language_colors()
-
-                    # Plot points by language with index labels only
-                    for lang in set(languages):
-                        mask = np.array(languages) == lang
-                        if np.any(mask):
-                            color = colors.get(lang, '#1f77b4')
-                            ax.scatter(
-                                reduced_embeddings[mask, 0],
-                                reduced_embeddings[mask, 1],
-                                c=color, label=lang, alpha=0.7, s=60
-                            )
-
-                    # Add index labels only (not full text)
-                    for i, (x, y) in enumerate(reduced_embeddings):
-                        ax.annotate(f'{i}', (x, y), xytext=(3, 3), textcoords='offset points',
-                                   fontsize=8, alpha=0.8)
-
-                    ax.set_xlabel(f'{method.upper()} 1')
-                    ax.set_ylabel(f'{method.upper()} 2')
-                    ax.set_title(f"{method.upper()} - Sentence Embeddings (Index Labels)", fontsize=14, pad=20)
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-
-                    plt.savefig(output_dir / f"{method}_embeddings_2d.png",
-                               dpi=300, bbox_inches='tight',
-                               facecolor='white', edgecolor='none')
-                    plt.close()
-                    plots_saved += 1
-            except Exception as e:
-                print(f"      ⚠️ {method.upper()} 2D plot failed: {e}")
-
-        # 3D Visualizations (using matplotlib)
-        for method in ['pca', 'tsne', 'umap']:
-            total_plots += 1
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-
-                    # Create 3D plot with matplotlib
-                    from mpl_toolkits.mplot3d import Axes3D
-
-                    # Reduce to 3D
-                    reduced_3d = embedding_analyzer.reduce_dimensions(
-                        embeddings, method=method, n_components=3
-                    )
-
-                    # Create 3D plot
-                    fig = plt.figure(figsize=(12, 10))
-                    ax = fig.add_subplot(111, projection='3d')
-
-                    # Configure Korean fonts
-                    configure_plot_korean(fig, ax)
-
-                    # Get colors for languages
-                    from utils.config_loader import get_language_colors
-                    colors = get_language_colors()
-
-                    # Plot points by language
-                    for lang in set(languages):
-                        mask = np.array(languages) == lang
-                        if np.any(mask):
-                            color = colors.get(lang, '#1f77b4')
-                            ax.scatter(
-                                reduced_3d[mask, 0],
-                                reduced_3d[mask, 1],
-                                reduced_3d[mask, 2],
-                                c=color, label=lang, alpha=0.7, s=60
-                            )
-
-                    # Add labels and title
-                    ax.set_xlabel(f'{method.upper()} 1')
-                    ax.set_ylabel(f'{method.upper()} 2')
-                    ax.set_zlabel(f'{method.upper()} 3')
-                    ax.set_title(f"{method.upper()} - 3D Sentence Embeddings", fontsize=14, pad=20)
-                    ax.legend()
-
-                    plt.savefig(output_dir / f"{method}_embeddings_3d.png",
-                               dpi=300, bbox_inches='tight',
-                               facecolor='white', edgecolor='none')
-                    plt.close()
-                    plots_saved += 1
-            except Exception as e:
-                print(f"      ⚠️ {method.upper()} 3D plot failed: {e}")
 
         # Similarity Analysis
         total_plots += 1

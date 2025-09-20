@@ -41,6 +41,98 @@ from utils.comparison_utils import ModelComparisonSuite
 from utils.font_manager import configure_plot_korean
 from visualization.embedding_plots import EmbeddingVisualizer
 from visualization.confidence_plots import ConfidenceVisualizer
+from models.model_manager import get_model_manager
+
+# ============================================================================
+# ModelEmbeddingComparator Class - 실제 베이스/트레이닝 모델 비교
+# ============================================================================
+
+class ModelEmbeddingComparator:
+    """Compare embeddings between base and training models using actual model loading."""
+
+    def __init__(self, base_model_path: str, training_model_path: str):
+        """Initialize with base and training model paths."""
+        self.base_model_path = base_model_path
+        self.training_model_path = training_model_path
+        self.model_manager = get_model_manager()
+
+    def generate_dual_model_embeddings(self, texts: List[str], languages: List[str]) -> Dict[str, Any]:
+        """
+        Generate embeddings using both base and training models.
+
+        Args:
+            texts: List of texts to encode
+            languages: List of language codes
+
+        Returns:
+            Dictionary containing embeddings from both models
+        """
+        print(f"   🔍 Loading base model: {self.base_model_path}")
+        try:
+            base_model, base_tokenizer = self.model_manager.load_model(self.base_model_path, 'base')
+            print(f"   ✅ Base model loaded successfully")
+        except Exception as e:
+            print(f"   ❌ Failed to load base model: {e}")
+            print(f"   🔄 Falling back to sentence transformer for base model")
+            base_embeddings = self._generate_sentence_transformer_embeddings(texts)
+        else:
+            base_embeddings = self._generate_model_embeddings(base_model, base_tokenizer, texts)
+
+        print(f"   🎯 Loading training model: {self.training_model_path}")
+        try:
+            train_model, train_tokenizer = self.model_manager.load_model(self.training_model_path, 'trained')
+            print(f"   ✅ Training model loaded successfully")
+        except Exception as e:
+            print(f"   ❌ Failed to load training model: {e}")
+            print(f"   🔄 Falling back to sentence transformer for training model")
+            train_embeddings = self._generate_sentence_transformer_embeddings(texts)
+        else:
+            train_embeddings = self._generate_model_embeddings(train_model, train_tokenizer, texts)
+
+        return {
+            'base_embeddings': base_embeddings,
+            'train_embeddings': train_embeddings,
+            'texts': texts,
+            'languages': languages,
+            'base_model_path': self.base_model_path,
+            'train_model_path': self.training_model_path
+        }
+
+    def _generate_model_embeddings(self, model, tokenizer, texts: List[str]) -> np.ndarray:
+        """Generate embeddings using a specific model."""
+        embeddings = []
+
+        with torch.no_grad():
+            for text in texts:
+                # Tokenize
+                inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
+                inputs = {k: v.to(self.model_manager.device) for k, v in inputs.items()}
+
+                # Get model output
+                outputs = model(**inputs, output_hidden_states=True)
+
+                # Use pooled output or mean of last hidden state
+                if hasattr(outputs, 'pooler_output') and outputs.pooler_output is not None:
+                    embedding = outputs.pooler_output[0].cpu().numpy()
+                else:
+                    # Mean pooling of last hidden state
+                    last_hidden = outputs.last_hidden_state[0]  # [seq_len, hidden_size]
+                    attention_mask = inputs['attention_mask'][0]  # [seq_len]
+
+                    # Apply attention mask and compute mean
+                    masked_hidden = last_hidden * attention_mask.unsqueeze(-1).float()
+                    embedding = masked_hidden.sum(0) / attention_mask.sum().float()
+                    embedding = embedding.cpu().numpy()
+
+                embeddings.append(embedding)
+
+        return np.array(embeddings)
+
+    def _generate_sentence_transformer_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Fallback to sentence transformer embeddings."""
+        sentence_transformer = self.model_manager.load_sentence_transformer()
+        embeddings = sentence_transformer.encode(texts, convert_to_tensor=False, normalize_embeddings=True)
+        return np.array(embeddings)
 
 # ============================================================================
 # 🔧 USER CONFIGURATION - 여기서 설정하세요!
@@ -118,6 +210,108 @@ def setup_korean_font():
     
     print(f"🔤 Final font family: {plt.rcParams['font.family']}")
 
+def plot_dual_model_pca_comparison(dual_embeddings: Dict[str, Any], output_path: Path) -> bool:
+    """
+    Create a PCA comparison plot showing both base and training model embeddings.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+        languages = dual_embeddings['languages']
+
+        # Combine embeddings for joint PCA
+        all_embeddings = np.vstack([base_embeddings, train_embeddings])
+
+        # Perform PCA
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2, random_state=42)
+        reduced_embeddings = pca.fit_transform(all_embeddings)
+
+        # Split back into base and training
+        n_samples = len(base_embeddings)
+        base_reduced = reduced_embeddings[:n_samples]
+        train_reduced = reduced_embeddings[n_samples:]
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, ax)
+
+        # Color mapping for languages
+        from utils.config_loader import get_language_colors
+        colors = get_language_colors()
+
+        # Plot base model embeddings
+        for lang in set(languages):
+            lang_mask = np.array(languages) == lang
+            if np.any(lang_mask):
+                base_color = colors.get(lang, '#1f77b4')
+                train_color = colors.get(lang, '#ff7f0e')
+
+                # Base model points (circles)
+                ax.scatter(
+                    base_reduced[lang_mask, 0],
+                    base_reduced[lang_mask, 1],
+                    c=base_color, marker='o', s=80, alpha=0.7,
+                    label=f'Base-{lang}', edgecolors='black', linewidth=0.5
+                )
+
+                # Training model points (triangles)
+                ax.scatter(
+                    train_reduced[lang_mask, 0],
+                    train_reduced[lang_mask, 1],
+                    c=train_color, marker='^', s=80, alpha=0.7,
+                    label=f'Train-{lang}', edgecolors='black', linewidth=0.5
+                )
+
+        # Add index labels (only indices, not full text)
+        for i in range(n_samples):
+            # Base model labels
+            ax.annotate(f'{i}', (base_reduced[i, 0], base_reduced[i, 1]),
+                       xytext=(5, 5), textcoords='offset points',
+                       fontsize=8, alpha=0.8, color='darkblue')
+
+            # Training model labels
+            ax.annotate(f'{i}', (train_reduced[i, 0], train_reduced[i, 1]),
+                       xytext=(5, 5), textcoords='offset points',
+                       fontsize=8, alpha=0.8, color='darkred')
+
+        # Set labels and title
+        ax.set_xlabel(f'PCA Component 1 ({pca.explained_variance_ratio_[0]:.1%} variance)')
+        ax.set_ylabel(f'PCA Component 2 ({pca.explained_variance_ratio_[1]:.1%} variance)')
+        ax.set_title('Base vs Training Model - PCA Comparison\n(Circles=Base, Triangles=Training)', fontsize=14, pad=20)
+
+        # Add legend
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        # Add grid
+        ax.grid(True, alpha=0.3)
+
+        # Add model information
+        model_info = f"Base: {Path(dual_embeddings['base_model_path']).name}\nTrain: {Path(dual_embeddings['train_model_path']).name}"
+        ax.text(0.02, 0.98, model_info, transform=ax.transAxes,
+               fontsize=9, verticalalignment='top',
+               bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight',
+                   facecolor='white', edgecolor='none')
+        plt.close()
+
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Dual model PCA plot failed: {e}")
+        return False
+
 def print_header():
     """Print analysis header."""
     print("🌍 Multilingual Model Comparison Analysis")
@@ -133,7 +327,7 @@ def print_header():
     print("=" * 60)
 
 def save_embedding_visualizations(results):
-    """Generate and save comprehensive 4-way embedding visualizations: Base vs Training models."""
+    """Generate and save comprehensive embedding visualizations with base vs training model comparison."""
     try:
         # Initialize Korean font manager first
         from utils.font_manager import setup_korean_fonts
@@ -143,9 +337,8 @@ def save_embedding_visualizations(results):
         output_dir = platform_dir / "outputs" / "terminal_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize embedding analyzer and visualizer
-        embedding_analyzer = SentenceEmbeddingAnalyzer()
-        visualizer = EmbeddingVisualizer()
+        # Initialize model comparator for actual base vs training comparison
+        model_comparator = ModelEmbeddingComparator(BASE_MODEL_PATH, TRAINING_MODEL_PATH)
 
         # Prepare text and language data with proper encoding
         texts = []
@@ -155,9 +348,10 @@ def save_embedding_visualizations(results):
             texts.extend([en, ko.encode('utf-8').decode('utf-8')])
             languages.extend(['en', 'ko'])
 
-        # Generate embeddings
-        embedding_result = embedding_analyzer.generate_embeddings(texts, languages)
-        embeddings = embedding_result['embeddings']
+        print(f"   📊 Generating dual-model embeddings comparison...")
+
+        # Generate embeddings from both models
+        dual_embeddings = model_comparator.generate_dual_model_embeddings(texts, languages)
 
         # Generate comprehensive visualizations
         plots_saved = 0
@@ -165,17 +359,57 @@ def save_embedding_visualizations(results):
 
         print(f"   📊 Generating comprehensive visualizations...")
 
-        # 2D Visualizations
+        # 1. Dual-model PCA comparison (NEW - shows both models)
+        total_plots += 1
+        success = plot_dual_model_pca_comparison(dual_embeddings, output_dir / "dual_model_pca_comparison.png")
+        if success:
+            plots_saved += 1
+            print(f"      ✅ Dual-model PCA comparison saved")
+
+        # 2D Visualizations using sentence transformer (for compatibility)
+        embedding_analyzer = SentenceEmbeddingAnalyzer()
+        visualizer = EmbeddingVisualizer()
+        embedding_result = embedding_analyzer.generate_embeddings(texts, languages)
+        embeddings = embedding_result['embeddings']
+
         for method in ['pca', 'tsne', 'umap']:
             total_plots += 1
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    fig = visualizer.plot_embeddings_2d(
-                        embeddings=embeddings, languages=languages, texts=texts,
-                        method=method, interactive=False,
-                        title=f"{method.upper()} - Sentence Embeddings"
-                    )
+
+                    # Create visualization with index-only labels
+                    reduced_embeddings = embedding_analyzer.reduce_dimensions(embeddings, method=method, n_components=2)
+
+                    # Create custom plot with index labels only
+                    fig, ax = plt.subplots(figsize=(12, 10))
+                    configure_plot_korean(fig, ax)
+
+                    from utils.config_loader import get_language_colors
+                    colors = get_language_colors()
+
+                    # Plot points by language with index labels only
+                    for lang in set(languages):
+                        mask = np.array(languages) == lang
+                        if np.any(mask):
+                            color = colors.get(lang, '#1f77b4')
+                            ax.scatter(
+                                reduced_embeddings[mask, 0],
+                                reduced_embeddings[mask, 1],
+                                c=color, label=lang, alpha=0.7, s=60
+                            )
+
+                    # Add index labels only (not full text)
+                    for i, (x, y) in enumerate(reduced_embeddings):
+                        ax.annotate(f'{i}', (x, y), xytext=(3, 3), textcoords='offset points',
+                                   fontsize=8, alpha=0.8)
+
+                    ax.set_xlabel(f'{method.upper()} 1')
+                    ax.set_ylabel(f'{method.upper()} 2')
+                    ax.set_title(f"{method.upper()} - Sentence Embeddings (Index Labels)", fontsize=14, pad=20)
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+
                     plt.savefig(output_dir / f"{method}_embeddings_2d.png",
                                dpi=300, bbox_inches='tight',
                                facecolor='white', edgecolor='none')

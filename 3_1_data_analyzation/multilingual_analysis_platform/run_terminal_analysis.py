@@ -314,6 +314,223 @@ def plot_dual_model_pca_comparison(dual_embeddings, output_path):
         print(f"      ⚠️ Dual model PCA plot failed: {e}")
         return False
 
+def analyze_pca_components(dual_embeddings, texts, languages):
+    """
+    Analyze what each PCA component represents linguistically.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+
+    Returns:
+        Dictionary with component analysis results
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        # Combine embeddings for joint PCA
+        all_embeddings = np.vstack([base_embeddings, train_embeddings])
+
+        # Perform PCA
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2, random_state=42)
+        reduced_embeddings = pca.fit_transform(all_embeddings)
+
+        # Split coordinates
+        n_samples = len(base_embeddings)
+        base_reduced = reduced_embeddings[:n_samples]
+        train_reduced = reduced_embeddings[n_samples:]
+
+        # Analyze PC1 and PC2
+        pc1_coords = reduced_embeddings[:n_samples, 0]  # Use base model coordinates
+        pc2_coords = reduced_embeddings[:n_samples, 1]
+
+        print(f"\n🔍 PCA Component Analysis:")
+        print(f"   PC1 explains {pca.explained_variance_ratio_[0]:.1%} of variance")
+        print(f"   PC2 explains {pca.explained_variance_ratio_[1]:.1%} of variance")
+
+        # Language-wise analysis
+        en_mask = np.array(languages) == 'en'
+        ko_mask = np.array(languages) == 'ko'
+
+        print(f"\n📊 PC1 (Language Separation):")
+        print(f"   English average: {pc1_coords[en_mask].mean():.2f}")
+        print(f"   Korean average: {pc1_coords[ko_mask].mean():.2f}")
+        print(f"   Language separation: {abs(pc1_coords[en_mask].mean() - pc1_coords[ko_mask].mean()):.2f}")
+
+        print(f"\n📊 PC2 (Content Variation):")
+        print(f"   English std: {pc2_coords[en_mask].std():.2f}")
+        print(f"   Korean std: {pc2_coords[ko_mask].std():.2f}")
+
+        # Sentence-level analysis
+        print(f"\n📝 Sentence Analysis:")
+        for i in range(0, len(texts), 2):  # Every pair (EN-KO)
+            if i+1 < len(texts):
+                en_idx = i
+                ko_idx = i + 1
+                print(f"   Pair {i//2}:")
+                print(f"     EN[{en_idx}]: PC1={pc1_coords[en_idx]:.2f}, PC2={pc2_coords[en_idx]:.2f}")
+                print(f"     KO[{ko_idx}]: PC1={pc1_coords[ko_idx]:.2f}, PC2={pc2_coords[ko_idx]:.2f}")
+                print(f"     Cross-lingual distance: {np.sqrt((pc1_coords[en_idx]-pc1_coords[ko_idx])**2 + (pc2_coords[en_idx]-pc2_coords[ko_idx])**2):.2f}")
+
+        # Model comparison analysis
+        print(f"\n🔄 Base vs Training Model Differences:")
+        base_pc1 = base_reduced[:, 0]
+        train_pc1 = train_reduced[:, 0]
+        base_pc2 = base_reduced[:, 1]
+        train_pc2 = train_reduced[:, 1]
+
+        pc1_shift = np.mean(np.abs(base_pc1 - train_pc1))
+        pc2_shift = np.mean(np.abs(base_pc2 - train_pc2))
+
+        print(f"   Average PC1 shift: {pc1_shift:.2f}")
+        print(f"   Average PC2 shift: {pc2_shift:.2f}")
+        print(f"   Training impact: {'PC1 (language)' if pc1_shift > pc2_shift else 'PC2 (content)'} more affected")
+
+        return {
+            'pca_components': pca.components_,
+            'explained_variance_ratio': pca.explained_variance_ratio_,
+            'pc1_coords': pc1_coords,
+            'pc2_coords': pc2_coords,
+            'language_separation': abs(pc1_coords[en_mask].mean() - pc1_coords[ko_mask].mean()),
+            'model_shifts': {'pc1': pc1_shift, 'pc2': pc2_shift}
+        }
+
+    except Exception as e:
+        print(f"   ❌ PCA component analysis failed: {e}")
+        return None
+
+def plot_dual_model_confidence_entropy(confidence_results, output_path):
+    """
+    Create confidence entropy comparison between base and training models.
+
+    Args:
+        confidence_results: Results from comprehensive confidence analysis
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        # Extract entropy data for both models and languages
+        def extract_entropies(results, default=0.5):
+            entropies = []
+            for result in results:
+                if 'confidence_measures' in result:
+                    # Extract entropy from confidence measures
+                    measures = result['confidence_measures']
+                    entropy = measures.get('entropy', default)
+                    entropies.append(entropy)
+                elif 'uncertainty_estimates' in result:
+                    # Use uncertainty as proxy for entropy
+                    uncertainty = result['uncertainty_estimates']['mean_uncertainty']
+                    entropies.append(uncertainty)
+                else:
+                    entropies.append(default)
+            return entropies
+
+        base_en_entropies = extract_entropies(confidence_results['base_model_en_results'], 0.5)
+        base_ko_entropies = extract_entropies(confidence_results['base_model_ko_results'], 0.6)
+        train_en_entropies = extract_entropies(confidence_results['train_model_en_results'], 0.5)
+        train_ko_entropies = extract_entropies(confidence_results['train_model_ko_results'], 0.6)
+
+        # Create comparison plot
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+
+        # 1. Model-Language Average Comparison
+        categories = ['Base_EN', 'Base_KO', 'Train_EN', 'Train_KO']
+        avg_entropies = [
+            np.mean(base_en_entropies),
+            np.mean(base_ko_entropies),
+            np.mean(train_en_entropies),
+            np.mean(train_ko_entropies)
+        ]
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+
+        bars = ax1.bar(categories, avg_entropies, color=colors, alpha=0.8)
+        ax1.set_title('Average Confidence Entropy by Model-Language', fontsize=14)
+        ax1.set_ylabel('Average Entropy')
+        ax1.tick_params(axis='x', rotation=45)
+
+        # Add value labels
+        for bar, value in zip(bars, avg_entropies):
+            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 2. Sentence-wise Entropy Comparison
+        num_pairs = len(base_en_entropies)
+        x_pos = np.arange(num_pairs)
+        width = 0.2
+
+        bars1 = ax2.bar(x_pos - 1.5*width, base_en_entropies, width, label='Base_EN', color=colors[0], alpha=0.8)
+        bars2 = ax2.bar(x_pos - 0.5*width, base_ko_entropies, width, label='Base_KO', color=colors[1], alpha=0.8)
+        bars3 = ax2.bar(x_pos + 0.5*width, train_en_entropies, width, label='Train_EN', color=colors[2], alpha=0.8)
+        bars4 = ax2.bar(x_pos + 1.5*width, train_ko_entropies, width, label='Train_KO', color=colors[3], alpha=0.8)
+
+        ax2.set_title(f'Entropy by Sentence Pair (Total: {num_pairs} pairs)', fontsize=14)
+        ax2.set_xlabel('Sentence Pair Index')
+        ax2.set_ylabel('Confidence Entropy')
+        ax2.set_xticks(x_pos)
+        ax2.set_xticklabels([f'{i}' for i in range(num_pairs)])
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3)
+
+        # 3. Distribution Comparison
+        ax3.hist(base_en_entropies, bins=10, alpha=0.7, label='Base_EN', color=colors[0])
+        ax3.hist(base_ko_entropies, bins=10, alpha=0.7, label='Base_KO', color=colors[1])
+        ax3.hist(train_en_entropies, bins=10, alpha=0.7, label='Train_EN', color=colors[2])
+        ax3.hist(train_ko_entropies, bins=10, alpha=0.7, label='Train_KO', color=colors[3])
+        ax3.set_title('Entropy Distribution Comparison', fontsize=14)
+        ax3.set_xlabel('Confidence Entropy')
+        ax3.set_ylabel('Frequency')
+        ax3.legend()
+
+        # 4. Analysis Summary
+        ax4.axis('off')
+
+        # Calculate improvements
+        en_improvement = np.mean(base_en_entropies) - np.mean(train_en_entropies)
+        ko_improvement = np.mean(base_ko_entropies) - np.mean(train_ko_entropies)
+
+        summary_text = f"""
+🔍 Confidence Entropy Analysis:
+
+📊 Dataset: {num_pairs} English-Korean sentence pairs
+📈 Method: Token-level entropy analysis
+
+🇺🇸 English Confidence:
+  • Base Model Entropy:     {np.mean(base_en_entropies):.4f}
+  • Training Model Entropy: {np.mean(train_en_entropies):.4f}
+  • Improvement:           {en_improvement:+.4f}
+
+🇰🇷 Korean Confidence:
+  • Base Model Entropy:     {np.mean(base_ko_entropies):.4f}
+  • Training Model Entropy: {np.mean(train_ko_entropies):.4f}
+  • Improvement:           {ko_improvement:+.4f}
+
+💡 Key Insights:
+  • {'English' if en_improvement > ko_improvement else 'Korean'} shows better entropy improvement
+  • Lower entropy = Higher model confidence
+  • Training {'improved' if en_improvement > 0 and ko_improvement > 0 else 'had mixed effects on'} confidence
+        """
+
+        ax4.text(0.02, 0.98, summary_text, transform=ax4.transAxes, fontsize=9,
+                verticalalignment='top', fontfamily='monospace',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightcyan', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight',
+                   facecolor='white', edgecolor='none')
+        plt.close()
+
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Dual model confidence entropy plot failed: {e}")
+        return False
+
 def plot_dual_model_comparison(dual_embeddings, output_path, method='tsne'):
     """
     Create a comparison plot showing both base and training model embeddings using specified method.
@@ -485,6 +702,9 @@ def save_embedding_visualizations(results):
         if success:
             plots_saved += 1
             print(f"      ✅ Dual-model PCA comparison saved")
+
+            # Perform PCA component analysis
+            pca_analysis = analyze_pca_components(dual_embeddings, texts, languages)
 
         # 2. t-SNE comparison
         total_plots += 1
@@ -1570,6 +1790,12 @@ def analyze_confidence_differences():
         try:
             save_confidence_visualizations(confidence_results['base_model_en_results'][0])  # Sample for compatibility
             save_comprehensive_confidence_comparison(confidence_results)
+
+            # Generate dual-model confidence entropy comparison
+            output_dir = platform_dir / "outputs" / "terminal_analysis"
+            success = plot_dual_model_confidence_entropy(confidence_results, output_dir / "dual_model_confidence_entropy.png")
+            if success:
+                print(f"   ✅ Dual-model confidence entropy comparison saved")
         except Exception as e:
             print(f"   ⚠️ Confidence visualization failed: {e}")
 

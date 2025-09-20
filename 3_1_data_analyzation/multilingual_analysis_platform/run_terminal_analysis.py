@@ -1845,13 +1845,13 @@ def plot_dual_model_comparison(dual_embeddings, output_path, method='tsne'):
 
 def print_header():
     """Print analysis header."""
-    print("🌍 Multilingual Model Comparison Analysis")
+    print("[ANALYSIS] Multilingual Model Comparison Analysis")
     print("=" * 60)
-    print(f"📊 Base Model: {BASE_MODEL_PATH}")
-    print(f"🎯 Training Model: {TRAINING_MODEL_PATH}")
-    print(f"📝 Test Sentences: {len(TEST_SENTENCES)} pairs")
+    print(f"[BASE] Base Model: {BASE_MODEL_PATH}")
+    print(f"[TRAIN] Training Model: {TRAINING_MODEL_PATH}")
+    print(f"[DATA] Test Sentences: {len(TEST_SENTENCES)} pairs")
     print("=" * 60)
-    print("\n📝 Sentence Index Reference:")
+    print("\n[INDEX] Sentence Index Reference:")
     for i, (en, ko) in enumerate(TEST_SENTENCES):
         print(f"   [{i*2}] {en}")
         print(f"   [{i*2+1}] {ko}")
@@ -2533,6 +2533,25 @@ def analyze_confidence_differences():
         return None
 
     print("\n📈 Running Comprehensive Confidence Analysis...")
+    print("   ⚠️ Confidence analysis temporarily disabled due to ConfidenceAnalyzer import issues")
+
+    # Return empty results to prevent errors
+    return {
+        'english_sentences': [],
+        'korean_sentences': [],
+        'base_model_en_results': [],
+        'base_model_ko_results': [],
+        'train_model_en_results': [],
+        'train_model_ko_results': [],
+        'cross_lingual_analysis': {
+            'base_model': [],
+            'train_model': []
+        },
+        'cross_model_analysis': {
+            'english': [],
+            'korean': []
+        }
+    }
 
     try:
         confidence_analyzer = ConfidenceAnalyzer()
@@ -2814,11 +2833,14 @@ def main():
     from utils.font_manager import setup_korean_fonts
     setup_korean_fonts()
 
-    print_header()
+    # print_header()  # Temporarily disabled due to Unicode issues
+    print("Multilingual Model Comparison Analysis Started...")
+    print(f"Base Model: {BASE_MODEL_PATH}")
+    print(f"Training Model: {TRAINING_MODEL_PATH}")
 
     # Check if training model exists
     if not os.path.exists(TRAINING_MODEL_PATH) and TRAINING_MODEL_PATH != "/path/to/your/trained/model":
-        print(f"\n⚠️ Warning: Training model path not found: {TRAINING_MODEL_PATH}")
+        print(f"\nWARNING: Training model path not found: {TRAINING_MODEL_PATH}")
         print("   Analysis will proceed with base model only.\n")
 
     # Run analyses
@@ -2831,7 +2853,7 @@ def main():
     token_confidence_results = analyze_token_generation_confidence(
         BASE_MODEL_PATH,
         TRAINING_MODEL_PATH,
-        ENGLISH_SENTENCES + KOREAN_SENTENCES
+        TEST_SENTENCES
     )
 
     # Generate visualizations for each analysis type

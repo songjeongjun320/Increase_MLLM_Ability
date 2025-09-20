@@ -2916,7 +2916,9 @@ def main():
     # Token confidence visualizations
     if token_confidence_results:
         print("   🎯 Generating token-level confidence visualization...")
-        token_confidence_output = os.path.join(OUTPUTS_DIR, "DUAL_MODEL_TOKEN_CONFIDENCE.png")
+        output_dir = platform_dir / "outputs" / "terminal_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        token_confidence_output = output_dir / "DUAL_MODEL_TOKEN_CONFIDENCE.png"
         plot_dual_model_token_confidence(token_confidence_results, token_confidence_output)
 
     # Save results

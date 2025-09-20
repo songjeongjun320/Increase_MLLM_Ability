@@ -212,6 +212,748 @@ def setup_korean_font():
     
     print(f"🔤 Final font family: {plt.rcParams['font.family']}")
 
+def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize Euclidean distances between base and training model embeddings.
+    Shows both magnitude and direction considerations with sentence pair details.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        # Calculate Euclidean distances between corresponding embeddings
+        euclidean_distances = []
+        for i in range(len(base_embeddings)):
+            distance = np.linalg.norm(base_embeddings[i] - train_embeddings[i])
+            euclidean_distances.append(distance)
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(16, 12))
+        gs = fig.add_gridspec(3, 2, height_ratios=[2, 1, 1], hspace=0.3, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. Distance heatmap with sentence pairs
+        ax1 = fig.add_subplot(gs[0, :])
+
+        # Create sentence pair mapping
+        pair_distances = []
+        pair_info = []
+        for i in range(0, len(texts), 2):  # Process EN-KO pairs
+            if i+1 < len(texts):
+                en_idx, ko_idx = i, i+1
+                en_dist = euclidean_distances[en_idx]
+                ko_dist = euclidean_distances[ko_idx]
+
+                pair_distances.append([en_dist, ko_dist])
+                pair_info.append({
+                    'pair_id': i//2,
+                    'en_text': texts[en_idx][:50] + "..." if len(texts[en_idx]) > 50 else texts[en_idx],
+                    'ko_text': texts[ko_idx][:50] + "..." if len(texts[ko_idx]) > 50 else texts[ko_idx],
+                    'en_distance': en_dist,
+                    'ko_distance': ko_dist,
+                    'pair_avg': (en_dist + ko_dist) / 2
+                })
+
+        # Plot heatmap
+        if pair_distances:
+            heatmap_data = np.array(pair_distances).T  # 2 x num_pairs
+            im = ax1.imshow(heatmap_data, aspect='auto', cmap='viridis', interpolation='nearest')
+
+            # Set labels
+            ax1.set_title('Euclidean Distance Between Base and Training Models\n(Sentence Pair Analysis)', fontsize=14, fontweight='bold')
+            ax1.set_xlabel('Sentence Pair Index')
+            ax1.set_ylabel('Language')
+            ax1.set_yticks([0, 1])
+            ax1.set_yticklabels(['English', 'Korean'])
+            ax1.set_xticks(range(len(pair_distances)))
+            ax1.set_xticklabels([f'Pair {i}' for i in range(len(pair_distances))])
+
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax1, shrink=0.6)
+            cbar.set_label('Euclidean Distance', fontsize=12)
+
+            # Add distance values on heatmap
+            for i in range(len(pair_distances)):
+                for j in range(2):
+                    distance = heatmap_data[j, i]
+                    ax1.text(i, j, f'{distance:.3f}', ha='center', va='center',
+                            color='white' if distance > np.mean(heatmap_data) else 'black',
+                            fontweight='bold', fontsize=10)
+
+        # 2. Distance distribution histogram
+        ax2 = fig.add_subplot(gs[1, 0])
+
+        en_distances = [euclidean_distances[i] for i in range(0, len(texts), 2)]
+        ko_distances = [euclidean_distances[i] for i in range(1, len(texts), 2)]
+
+        ax2.hist(en_distances, bins=15, alpha=0.7, label='English', color='#1f77b4', density=True)
+        ax2.hist(ko_distances, bins=15, alpha=0.7, label='Korean', color='#ff7f0e', density=True)
+        ax2.set_title('Distance Distribution by Language')
+        ax2.set_xlabel('Euclidean Distance')
+        ax2.set_ylabel('Density')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # Add statistics
+        en_mean, ko_mean = np.mean(en_distances), np.mean(ko_distances)
+        ax2.axvline(en_mean, color='#1f77b4', linestyle='--', alpha=0.8, label=f'EN mean: {en_mean:.3f}')
+        ax2.axvline(ko_mean, color='#ff7f0e', linestyle='--', alpha=0.8, label=f'KO mean: {ko_mean:.3f}')
+
+        # 3. Top divergent pairs analysis
+        ax3 = fig.add_subplot(gs[1, 1])
+
+        sorted_pairs = sorted(pair_info, key=lambda x: x['pair_avg'], reverse=True)
+        top_pairs = sorted_pairs[:5]  # Top 5 most divergent pairs
+
+        pair_ids = [p['pair_id'] for p in top_pairs]
+        pair_avgs = [p['pair_avg'] for p in top_pairs]
+
+        bars = ax3.bar(range(len(top_pairs)), pair_avgs, color='coral', alpha=0.8)
+        ax3.set_title('Top 5 Most Divergent Sentence Pairs')
+        ax3.set_xlabel('Pair Rank')
+        ax3.set_ylabel('Average Distance')
+        ax3.set_xticks(range(len(top_pairs)))
+        ax3.set_xticklabels([f'Pair {p}' for p in pair_ids])
+        ax3.grid(True, alpha=0.3)
+
+        # Add value labels
+        for i, (bar, value) in enumerate(zip(bars, pair_avgs)):
+            ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.001,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 4. Detailed sentence pair table
+        ax4 = fig.add_subplot(gs[2, :])
+        ax4.axis('off')
+
+        # Create table data
+        table_data = []
+        table_headers = ['Pair ID', 'English Text', 'Korean Text', 'EN Distance', 'KO Distance', 'Avg Distance']
+
+        for p in sorted_pairs[:8]:  # Show top 8 pairs
+            table_data.append([
+                f"{p['pair_id']}",
+                p['en_text'],
+                p['ko_text'],
+                f"{p['en_distance']:.4f}",
+                f"{p['ko_distance']:.4f}",
+                f"{p['pair_avg']:.4f}"
+            ])
+
+        # Create table
+        table = ax4.table(cellText=table_data, colLabels=table_headers,
+                         cellLoc='left', loc='center', bbox=[0, 0, 1, 1])
+        table.auto_set_font_size(False)
+        table.set_fontsize(8)
+        table.scale(1.2, 2)
+
+        # Style table
+        for i in range(len(table_headers)):
+            table[(0, i)].set_facecolor('#40466e')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        # Color code rows by distance
+        for i in range(1, len(table_data) + 1):
+            avg_dist = float(table_data[i-1][5])
+            if avg_dist > np.percentile([p['pair_avg'] for p in pair_info], 75):
+                color = '#ffcccc'  # Light red for high distance
+            elif avg_dist > np.percentile([p['pair_avg'] for p in pair_info], 50):
+                color = '#ffffcc'  # Light yellow for medium distance
+            else:
+                color = '#ccffcc'  # Light green for low distance
+
+            for j in range(len(table_headers)):
+                table[(i, j)].set_facecolor(color)
+
+        ax4.set_title('Sentence Pair Distance Analysis Table\n(Sorted by Average Distance, Higher = More Divergent)',
+                     fontsize=12, fontweight='bold', pad=20)
+
+        # Add summary statistics
+        total_pairs = len(pair_info)
+        overall_mean = np.mean(euclidean_distances)
+        overall_std = np.std(euclidean_distances)
+
+        summary_text = f"""
+📊 Distance Analysis Summary:
+• Total sentence pairs: {total_pairs}
+• Overall mean distance: {overall_mean:.4f}
+• Standard deviation: {overall_std:.4f}
+• English mean: {en_mean:.4f}
+• Korean mean: {ko_mean:.4f}
+• Language difference: {abs(en_mean - ko_mean):.4f}
+
+💡 Interpretation:
+• Higher distance = More divergent between models
+• Lower distance = More similar between models
+• Cross-lingual consistency: {'Good' if abs(en_mean - ko_mean) < 0.01 else 'Moderate' if abs(en_mean - ko_mean) < 0.05 else 'Poor'}
+        """
+
+        fig.text(0.02, 0.02, summary_text, fontsize=9, verticalalignment='bottom',
+                bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.8))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      📊 Euclidean distance analysis: {total_pairs} pairs, mean distance: {overall_mean:.4f}")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Euclidean distance analysis failed: {e}")
+        return False
+
+def plot_dual_model_centered_kernel_alignment(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize Centered Kernel Alignment (CKA) between base and training models.
+    CKA measures structural similarity of representations across different models.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        def compute_cka(X, Y):
+            """Compute Centered Kernel Alignment (CKA) between two sets of representations."""
+            # Center the Gram matrices
+            def center_gram_matrix(K):
+                n = K.shape[0]
+                H = np.eye(n) - np.ones((n, n)) / n
+                return H @ K @ H
+
+            # Compute Gram matrices (linear kernel)
+            K_X = X @ X.T
+            K_Y = Y @ Y.T
+
+            # Center the matrices
+            K_X_centered = center_gram_matrix(K_X)
+            K_Y_centered = center_gram_matrix(K_Y)
+
+            # Compute CKA
+            numerator = np.trace(K_X_centered @ K_Y_centered)
+            denominator = np.sqrt(np.trace(K_X_centered @ K_X_centered) * np.trace(K_Y_centered @ K_Y_centered))
+
+            if denominator == 0:
+                return 0.0
+
+            return numerator / denominator
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(16, 12))
+        gs = fig.add_gridspec(3, 2, height_ratios=[1.5, 1, 1], hspace=0.3, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. Overall CKA score
+        overall_cka = compute_cka(base_embeddings, train_embeddings)
+
+        ax1 = fig.add_subplot(gs[0, :])
+        ax1.text(0.5, 0.7, f'Overall CKA Score', fontsize=24, fontweight='bold',
+                ha='center', va='center', transform=ax1.transAxes)
+        ax1.text(0.5, 0.4, f'{overall_cka:.6f}', fontsize=48, fontweight='bold',
+                ha='center', va='center', transform=ax1.transAxes,
+                color='green' if overall_cka > 0.7 else 'orange' if overall_cka > 0.4 else 'red')
+
+        # Add interpretation
+        if overall_cka > 0.8:
+            interpretation = "Very High Similarity"
+            color = 'darkgreen'
+        elif overall_cka > 0.6:
+            interpretation = "High Similarity"
+            color = 'green'
+        elif overall_cka > 0.4:
+            interpretation = "Moderate Similarity"
+            color = 'orange'
+        elif overall_cka > 0.2:
+            interpretation = "Low Similarity"
+            color = 'red'
+        else:
+            interpretation = "Very Low Similarity"
+            color = 'darkred'
+
+        ax1.text(0.5, 0.15, interpretation, fontsize=16, fontweight='bold',
+                ha='center', va='center', transform=ax1.transAxes, color=color)
+
+        ax1.set_xlim(0, 1)
+        ax1.set_ylim(0, 1)
+        ax1.axis('off')
+
+        # Add background gradient
+        gradient = np.linspace(0, 1, 256).reshape(1, -1)
+        ax1.imshow(gradient, extent=[0, 1, 0, 1], aspect='auto', alpha=0.3, cmap='RdYlGn')
+
+        # 2. Language-wise CKA analysis
+        ax2 = fig.add_subplot(gs[1, 0])
+
+        # Separate by language
+        lang_cka_scores = {}
+        for lang in set(languages):
+            mask = np.array(languages) == lang
+            if np.sum(mask) > 1:  # Need at least 2 samples for CKA
+                lang_base = base_embeddings[mask]
+                lang_train = train_embeddings[mask]
+                lang_cka_scores[lang] = compute_cka(lang_base, lang_train)
+
+        if lang_cka_scores:
+            lang_names = list(lang_cka_scores.keys())
+            cka_values = list(lang_cka_scores.values())
+
+            bars = ax2.bar(lang_names, cka_values, color=['#1f77b4', '#ff7f0e'], alpha=0.8)
+            ax2.set_title('CKA Scores by Language')
+            ax2.set_ylabel('CKA Score')
+            ax2.set_ylim(0, 1)
+            ax2.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bar, value in zip(bars, cka_values):
+                ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold')
+
+        # 3. Sentence pair-wise CKA heatmap
+        ax3 = fig.add_subplot(gs[1, 1])
+
+        # Compute CKA for individual sentence pairs
+        pair_cka_scores = []
+        for i in range(0, len(texts), 2):  # Process EN-KO pairs
+            if i+1 < len(texts):
+                en_idx, ko_idx = i, i+1
+
+                # Create mini-batch for each pair
+                pair_base = base_embeddings[[en_idx, ko_idx]]
+                pair_train = train_embeddings[[en_idx, ko_idx]]
+
+                if pair_base.shape[0] >= 2:  # Need at least 2 samples
+                    pair_cka = compute_cka(pair_base, pair_train)
+                    pair_cka_scores.append(pair_cka)
+                else:
+                    pair_cka_scores.append(0.0)
+
+        if pair_cka_scores:
+            x_pos = range(len(pair_cka_scores))
+            bars = ax3.bar(x_pos, pair_cka_scores, color='skyblue', alpha=0.8)
+            ax3.set_title('CKA Scores by Sentence Pair')
+            ax3.set_xlabel('Sentence Pair Index')
+            ax3.set_ylabel('CKA Score')
+            ax3.set_ylim(0, 1)
+            ax3.set_xticks(x_pos)
+            ax3.set_xticklabels([f'Pair {i}' for i in range(len(pair_cka_scores))])
+            ax3.grid(True, alpha=0.3)
+
+            # Highlight best and worst pairs
+            if len(pair_cka_scores) > 0:
+                best_idx = np.argmax(pair_cka_scores)
+                worst_idx = np.argmin(pair_cka_scores)
+                bars[best_idx].set_color('green')
+                bars[worst_idx].set_color('red')
+
+        # 4. CKA interpretation and analysis table
+        ax4 = fig.add_subplot(gs[2, :])
+        ax4.axis('off')
+
+        # Create analysis table
+        analysis_data = [
+            ['Overall CKA', f'{overall_cka:.6f}', interpretation],
+            ['English CKA', f'{lang_cka_scores.get("en", 0.0):.6f}', 'Language-specific similarity'],
+            ['Korean CKA', f'{lang_cka_scores.get("ko", 0.0):.6f}', 'Language-specific similarity'],
+            ['Best Pair CKA', f'{max(pair_cka_scores) if pair_cka_scores else 0.0:.6f}', f'Pair {np.argmax(pair_cka_scores) if pair_cka_scores else "N/A"}'],
+            ['Worst Pair CKA', f'{min(pair_cka_scores) if pair_cka_scores else 0.0:.6f}', f'Pair {np.argmin(pair_cka_scores) if pair_cka_scores else "N/A"}'],
+            ['CKA Variance', f'{np.var(pair_cka_scores) if pair_cka_scores else 0.0:.6f}', 'Consistency across pairs']
+        ]
+
+        table_headers = ['Metric', 'Value', 'Interpretation']
+        table = ax4.table(cellText=analysis_data, colLabels=table_headers,
+                         cellLoc='center', loc='center', bbox=[0, 0.2, 1, 0.6])
+        table.auto_set_font_size(False)
+        table.set_fontsize(11)
+        table.scale(1, 2)
+
+        # Style table
+        for i in range(len(table_headers)):
+            table[(0, i)].set_facecolor('#40466e')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        # Color code rows by CKA value
+        for i in range(1, len(analysis_data) + 1):
+            value_str = analysis_data[i-1][1]
+            try:
+                value = float(value_str)
+                if value > 0.7:
+                    color = '#ccffcc'  # Light green
+                elif value > 0.4:
+                    color = '#ffffcc'  # Light yellow
+                else:
+                    color = '#ffcccc'  # Light red
+            except:
+                color = '#f0f0f0'  # Light gray for non-numeric
+
+            for j in range(len(table_headers)):
+                table[(i, j)].set_facecolor(color)
+
+        # Add comprehensive explanation
+        explanation_text = """
+🧬 Centered Kernel Alignment (CKA) Analysis:
+
+📚 What is CKA?
+• CKA measures structural similarity between neural representations
+• Values range from 0 (no similarity) to 1 (perfect similarity)
+• Higher values indicate models learned similar representational structures
+
+📊 Interpretation Guide:
+• CKA > 0.8: Very high structural similarity (models are very aligned)
+• CKA 0.6-0.8: High similarity (good alignment with some differences)
+• CKA 0.4-0.6: Moderate similarity (partial alignment)
+• CKA 0.2-0.4: Low similarity (different representational structures)
+• CKA < 0.2: Very low similarity (fundamentally different representations)
+
+💡 Use Cases:
+• Comparing models before/after training
+• Analyzing cross-lingual representation alignment
+• Understanding how training affects learned representations
+        """
+
+        ax4.text(0.02, 0.95, explanation_text, transform=ax4.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='lightcyan', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      🧬 CKA analysis: Overall score = {overall_cka:.6f} ({interpretation})")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ CKA analysis failed: {e}")
+        return False
+
+def plot_dual_model_singular_vector_canonical_correlation(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize SVCCA (Singular Vector Canonical Correlation Analysis) between base and training models.
+    SVCCA measures similarity between neural representations across models, layers, and languages.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        def compute_svcca(X, Y, threshold=0.99):
+            """
+            Compute SVCCA (Singular Vector Canonical Correlation Analysis).
+
+            Args:
+                X, Y: Input matrices (samples x features)
+                threshold: Threshold for selecting principal components
+
+            Returns:
+                mean_correlation: Mean canonical correlation
+                correlations: All canonical correlations
+                explained_variance: Cumulative explained variance
+            """
+            try:
+                # Step 1: SVD on both matrices to reduce dimensionality
+                def perform_svd(matrix, threshold):
+                    U, s, Vt = np.linalg.svd(matrix.T, full_matrices=False)  # Features x samples
+
+                    # Calculate explained variance
+                    explained_variance = np.cumsum(s**2) / np.sum(s**2)
+
+                    # Find number of components for threshold
+                    n_components = np.argmax(explained_variance >= threshold) + 1
+                    n_components = min(n_components, len(s), matrix.shape[0] - 1)
+                    n_components = max(n_components, 1)
+
+                    return U[:, :n_components], explained_variance[n_components-1]
+
+                # SVD for both representations
+                U1, var1 = perform_svd(X, threshold)
+                U2, var2 = perform_svd(Y, threshold)
+
+                # Step 2: Canonical Correlation Analysis
+                # Project data onto the singular vectors
+                X_proj = X @ U1  # samples x reduced_dims
+                Y_proj = Y @ U2  # samples x reduced_dims
+
+                # Ensure we have enough samples for CCA
+                min_dim = min(X_proj.shape[1], Y_proj.shape[1], X_proj.shape[0] - 1)
+                if min_dim < 1:
+                    return 0.0, [0.0], [var1, var2]
+
+                X_proj = X_proj[:, :min_dim]
+                Y_proj = Y_proj[:, :min_dim]
+
+                # Center the data
+                X_centered = X_proj - np.mean(X_proj, axis=0)
+                Y_centered = Y_proj - np.mean(Y_proj, axis=0)
+
+                # Compute covariance matrices
+                n = X_centered.shape[0]
+                if n <= 1:
+                    return 0.0, [0.0], [var1, var2]
+
+                Cxx = X_centered.T @ X_centered / (n - 1)
+                Cyy = Y_centered.T @ Y_centered / (n - 1)
+                Cxy = X_centered.T @ Y_centered / (n - 1)
+
+                # Add small regularization for numerical stability
+                reg = 1e-6
+                Cxx += reg * np.eye(Cxx.shape[0])
+                Cyy += reg * np.eye(Cyy.shape[0])
+
+                # Canonical correlation analysis
+                try:
+                    Cxx_inv_sqrt = np.linalg.inv(np.linalg.cholesky(Cxx))
+                    Cyy_inv_sqrt = np.linalg.inv(np.linalg.cholesky(Cyy))
+
+                    T = Cxx_inv_sqrt @ Cxy @ Cyy_inv_sqrt
+                    U_cca, s_cca, Vt_cca = np.linalg.svd(T, full_matrices=False)
+
+                    correlations = s_cca
+                    correlations = np.clip(correlations, 0, 1)  # Ensure correlations are in [0,1]
+
+                    return np.mean(correlations), correlations, [var1, var2]
+
+                except np.linalg.LinAlgError:
+                    # Fallback to eigenvalue decomposition
+                    try:
+                        M = np.linalg.pinv(Cxx) @ Cxy @ np.linalg.pinv(Cyy) @ Cxy.T
+                        eigenvals = np.linalg.eigvals(M)
+                        correlations = np.sqrt(np.maximum(eigenvals.real, 0))
+                        correlations = correlations[correlations > 1e-10]  # Remove near-zero correlations
+
+                        if len(correlations) == 0:
+                            return 0.0, [0.0], [var1, var2]
+
+                        return np.mean(correlations), correlations, [var1, var2]
+                    except:
+                        return 0.0, [0.0], [var1, var2]
+
+            except Exception as e:
+                print(f"SVCCA computation error: {e}")
+                return 0.0, [0.0], [0.0, 0.0]
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(16, 12))
+        gs = fig.add_gridspec(3, 2, height_ratios=[1.5, 1, 1], hspace=0.3, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. Overall SVCCA analysis
+        overall_svcca, overall_correlations, overall_vars = compute_svcca(base_embeddings, train_embeddings)
+
+        ax1 = fig.add_subplot(gs[0, :])
+        ax1.text(0.3, 0.7, f'Overall SVCCA Score', fontsize=20, fontweight='bold',
+                ha='center', va='center', transform=ax1.transAxes)
+        ax1.text(0.3, 0.4, f'{overall_svcca:.6f}', fontsize=36, fontweight='bold',
+                ha='center', va='center', transform=ax1.transAxes,
+                color='green' if overall_svcca > 0.7 else 'orange' if overall_svcca > 0.4 else 'red')
+
+        # Add interpretation
+        if overall_svcca > 0.8:
+            interpretation = "Very High Correlation"
+            color = 'darkgreen'
+        elif overall_svcca > 0.6:
+            interpretation = "High Correlation"
+            color = 'green'
+        elif overall_svcca > 0.4:
+            interpretation = "Moderate Correlation"
+            color = 'orange'
+        elif overall_svcca > 0.2:
+            interpretation = "Low Correlation"
+            color = 'red'
+        else:
+            interpretation = "Very Low Correlation"
+            color = 'darkred'
+
+        ax1.text(0.3, 0.15, interpretation, fontsize=14, fontweight='bold',
+                ha='center', va='center', transform=ax1.transAxes, color=color)
+
+        # Show canonical correlations distribution
+        ax1_right = fig.add_subplot(gs[0, :])
+        ax1_right.set_position([0.55, 0.7, 0.4, 0.25])  # [left, bottom, width, height]
+
+        if len(overall_correlations) > 1:
+            ax1_right.bar(range(len(overall_correlations)), sorted(overall_correlations, reverse=True),
+                         color='skyblue', alpha=0.8)
+            ax1_right.set_title('Canonical Correlations', fontsize=12)
+            ax1_right.set_xlabel('Component')
+            ax1_right.set_ylabel('Correlation')
+            ax1_right.set_ylim(0, 1)
+            ax1_right.grid(True, alpha=0.3)
+
+        ax1.set_xlim(0, 1)
+        ax1.set_ylim(0, 1)
+        ax1.axis('off')
+
+        # 2. Language-wise SVCCA analysis
+        ax2 = fig.add_subplot(gs[1, 0])
+
+        lang_svcca_scores = {}
+        lang_correlations = {}
+        for lang in set(languages):
+            mask = np.array(languages) == lang
+            if np.sum(mask) > 2:  # Need at least 3 samples for reliable SVCCA
+                lang_base = base_embeddings[mask]
+                lang_train = train_embeddings[mask]
+                score, corrs, _ = compute_svcca(lang_base, lang_train)
+                lang_svcca_scores[lang] = score
+                lang_correlations[lang] = corrs
+
+        if lang_svcca_scores:
+            lang_names = list(lang_svcca_scores.keys())
+            svcca_values = list(lang_svcca_scores.values())
+
+            bars = ax2.bar(lang_names, svcca_values, color=['#1f77b4', '#ff7f0e'], alpha=0.8)
+            ax2.set_title('SVCCA Scores by Language')
+            ax2.set_ylabel('Mean Canonical Correlation')
+            ax2.set_ylim(0, 1)
+            ax2.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bar, value in zip(bars, svcca_values):
+                ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold')
+
+        # 3. Cross-lingual SVCCA analysis
+        ax3 = fig.add_subplot(gs[1, 1])
+
+        # Compare English vs Korean representations within each model
+        en_mask = np.array(languages) == 'en'
+        ko_mask = np.array(languages) == 'ko'
+
+        cross_lingual_scores = {}
+        if np.sum(en_mask) > 2 and np.sum(ko_mask) > 2:
+            # Base model: EN vs KO
+            base_cross_svcca, _, _ = compute_svcca(base_embeddings[en_mask], base_embeddings[ko_mask])
+            cross_lingual_scores['Base Model'] = base_cross_svcca
+
+            # Training model: EN vs KO
+            train_cross_svcca, _, _ = compute_svcca(train_embeddings[en_mask], train_embeddings[ko_mask])
+            cross_lingual_scores['Training Model'] = train_cross_svcca
+
+        if cross_lingual_scores:
+            model_names = list(cross_lingual_scores.keys())
+            cross_values = list(cross_lingual_scores.values())
+
+            bars = ax3.bar(model_names, cross_values, color=['lightcoral', 'lightgreen'], alpha=0.8)
+            ax3.set_title('Cross-lingual SVCCA\n(English ↔ Korean)')
+            ax3.set_ylabel('SVCCA Score')
+            ax3.set_ylim(0, 1)
+            ax3.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bar, value in zip(bars, cross_values):
+                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold')
+
+        # 4. SVCCA interpretation and analysis table
+        ax4 = fig.add_subplot(gs[2, :])
+        ax4.axis('off')
+
+        # Create comprehensive analysis table
+        analysis_data = [
+            ['Overall SVCCA', f'{overall_svcca:.6f}', interpretation],
+            ['Number of Canonical Correlations', f'{len(overall_correlations)}', 'Effective dimensionality'],
+            ['Highest Canonical Correlation', f'{max(overall_correlations) if overall_correlations else 0.0:.6f}', 'Best aligned component'],
+            ['Lowest Canonical Correlation', f'{min(overall_correlations) if overall_correlations else 0.0:.6f}', 'Least aligned component'],
+            ['English SVCCA', f'{lang_svcca_scores.get("en", 0.0):.6f}', 'Language-specific correlation'],
+            ['Korean SVCCA', f'{lang_svcca_scores.get("ko", 0.0):.6f}', 'Language-specific correlation'],
+            ['Base Cross-lingual', f'{cross_lingual_scores.get("Base Model", 0.0):.6f}', 'EN-KO alignment in base'],
+            ['Training Cross-lingual', f'{cross_lingual_scores.get("Training Model", 0.0):.6f}', 'EN-KO alignment in training']
+        ]
+
+        table_headers = ['Metric', 'Value', 'Interpretation']
+        table = ax4.table(cellText=analysis_data, colLabels=table_headers,
+                         cellLoc='center', loc='center', bbox=[0, 0.2, 1, 0.6])
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.8)
+
+        # Style table
+        for i in range(len(table_headers)):
+            table[(0, i)].set_facecolor('#40466e')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        # Color code rows by SVCCA value
+        for i in range(1, len(analysis_data) + 1):
+            value_str = analysis_data[i-1][1]
+            try:
+                value = float(value_str)
+                if value > 0.7:
+                    color = '#ccffcc'  # Light green
+                elif value > 0.4:
+                    color = '#ffffcc'  # Light yellow
+                else:
+                    color = '#ffcccc'  # Light red
+            except:
+                color = '#f0f0f0'  # Light gray for non-numeric
+
+            for j in range(len(table_headers)):
+                table[(i, j)].set_facecolor(color)
+
+        # Add comprehensive explanation
+        explanation_text = """
+🔬 Singular Vector Canonical Correlation Analysis (SVCCA):
+
+📚 What is SVCCA?
+• SVCCA combines SVD and CCA to measure similarity between neural representations
+• Step 1: SVD reduces dimensionality while preserving important variance
+• Step 2: CCA finds maximally correlated linear combinations
+• Values range from 0 (no correlation) to 1 (perfect correlation)
+
+📊 Interpretation Guide:
+• SVCCA > 0.8: Very high representational similarity (models learned similar patterns)
+• SVCCA 0.6-0.8: High similarity (good alignment with some differences)
+• SVCCA 0.4-0.6: Moderate similarity (partial representational overlap)
+• SVCCA 0.2-0.4: Low similarity (different representational strategies)
+• SVCCA < 0.2: Very low similarity (fundamentally different representations)
+
+💡 Applications:
+• Analyzing training effects on learned representations
+• Comparing cross-lingual representational alignment
+• Understanding how models encode different languages
+• Measuring representational similarity across model architectures
+        """
+
+        ax4.text(0.02, 0.95, explanation_text, transform=ax4.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='lightsteelblue', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      🔬 SVCCA analysis: Overall score = {overall_svcca:.6f} ({interpretation})")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ SVCCA analysis failed: {e}")
+        return False
+
 def plot_dual_model_pca_comparison(dual_embeddings, output_path):
     """
     Create a PCA comparison plot showing both base and training model embeddings.
@@ -389,13 +1131,76 @@ def analyze_pca_components(dual_embeddings, texts, languages):
         print(f"   Average PC2 shift: {pc2_shift:.2f}")
         print(f"   Training impact: {'PC1 (language)' if pc1_shift > pc2_shift else 'PC2 (content)'} more affected")
 
+        # 🆕 Detailed PCA vector component analysis
+        print(f"\n🧬 PCA Vector Analysis (Component Directions):")
+
+        # Get the principal component vectors
+        pc1_vector = pca.components_[0]  # Shape: (embedding_dim,)
+        pc2_vector = pca.components_[1]  # Shape: (embedding_dim,)
+
+        print(f"   Embedding dimension: {len(pc1_vector)}")
+        print(f"   PC1 vector norm: {np.linalg.norm(pc1_vector):.6f}")
+        print(f"   PC2 vector norm: {np.linalg.norm(pc2_vector):.6f}")
+        print(f"   PC1-PC2 orthogonality: {np.abs(np.dot(pc1_vector, pc2_vector)):.8f} (should be ~0)")
+
+        # Find top contributing dimensions for each PC
+        print(f"\n🎯 Top Contributing Embedding Dimensions:")
+
+        # PC1 analysis - dimensions that contribute most to language separation
+        pc1_abs = np.abs(pc1_vector)
+        top_pc1_indices = np.argsort(pc1_abs)[-10:][::-1]  # Top 10
+        print(f"   PC1 (Language Axis) - Top contributing dimensions:")
+        for i, dim_idx in enumerate(top_pc1_indices[:5]):
+            weight = pc1_vector[dim_idx]
+            abs_weight = pc1_abs[dim_idx]
+            print(f"     Dimension {dim_idx:3d}: {weight:+.6f} (magnitude: {abs_weight:.6f})")
+
+        # PC2 analysis - dimensions that contribute most to content variation
+        pc2_abs = np.abs(pc2_vector)
+        top_pc2_indices = np.argsort(pc2_abs)[-10:][::-1]  # Top 10
+        print(f"   PC2 (Content Axis) - Top contributing dimensions:")
+        for i, dim_idx in enumerate(top_pc2_indices[:5]):
+            weight = pc2_vector[dim_idx]
+            abs_weight = pc2_abs[dim_idx]
+            print(f"     Dimension {dim_idx:3d}: {weight:+.6f} (magnitude: {abs_weight:.6f})")
+
+        # Vector interpretation
+        print(f"\n🎨 Vector Interpretation:")
+        pc1_mean_lang = pc1_coords[ko_mask].mean() - pc1_coords[en_mask].mean()
+        print(f"   PC1 direction: {'Korean→English' if pc1_mean_lang < 0 else 'English→Korean'}")
+        print(f"   PC1 strength: {abs(pc1_mean_lang):.3f} (higher = better language separation)")
+
+        # Content diversity comparison
+        en_pc2_range = pc2_coords[en_mask].max() - pc2_coords[en_mask].min()
+        ko_pc2_range = pc2_coords[ko_mask].max() - pc2_coords[ko_mask].min()
+        print(f"   PC2 English content range: {en_pc2_range:.3f}")
+        print(f"   PC2 Korean content range: {ko_pc2_range:.3f}")
+        print(f"   Content diversity: {'English' if en_pc2_range > ko_pc2_range else 'Korean'} shows more variation")
+
+        # Semantic insight: which embedding dimensions are most important for what
+        print(f"\n🔍 Semantic Insights:")
+        print(f"   Language-critical dimensions (PC1): {list(top_pc1_indices[:3])}")
+        print(f"   Content-critical dimensions (PC2): {list(top_pc2_indices[:3])}")
+
+        # Check if same dimensions are important for both PCs (would be unusual)
+        overlap = set(top_pc1_indices[:5]) & set(top_pc2_indices[:5])
+        if overlap:
+            print(f"   ⚠️  Overlapping important dims: {list(overlap)} (unusual - same dims affect both language and content)")
+        else:
+            print(f"   ✅ No overlap in top dimensions (good - language and content use different features)")
+
         return {
             'pca_components': pca.components_,
             'explained_variance_ratio': pca.explained_variance_ratio_,
             'pc1_coords': pc1_coords,
             'pc2_coords': pc2_coords,
             'language_separation': abs(pc1_coords[en_mask].mean() - pc1_coords[ko_mask].mean()),
-            'model_shifts': {'pc1': pc1_shift, 'pc2': pc2_shift}
+            'model_shifts': {'pc1': pc1_shift, 'pc2': pc2_shift},
+            'pc1_vector': pc1_vector,
+            'pc2_vector': pc2_vector,
+            'top_pc1_dims': top_pc1_indices,
+            'top_pc2_dims': top_pc2_indices,
+            'dimension_overlap': list(set(top_pc1_indices[:5]) & set(top_pc2_indices[:5]))
         }
 
     except Exception as e:
@@ -787,35 +1592,67 @@ def save_embedding_visualizations(results):
         except Exception as e:
             print(f"      ⚠️ Language distance plot failed: {e}")
 
-        # Embedding statistics
+        # 🆕 Dual-model embedding statistics
         total_plots += 1
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
 
-                # Plot embedding statistics
-                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
+                # Plot dual-model embedding statistics
+                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
 
-                # 1. Embedding magnitude by language
-                lang_magnitudes = {}
+                # Extract base and training embeddings
+                base_embeddings = dual_embeddings['base_embeddings']
+                train_embeddings = dual_embeddings['train_embeddings']
+
+                # 1. Dual-model embedding magnitude comparison by language
+                lang_magnitudes_base = {}
+                lang_magnitudes_train = {}
                 for lang in set(languages):
                     mask = np.array(languages) == lang
                     if np.any(mask):
-                        lang_magnitudes[lang] = np.linalg.norm(embeddings[mask], axis=1)
+                        lang_magnitudes_base[lang] = np.linalg.norm(base_embeddings[mask], axis=1)
+                        lang_magnitudes_train[lang] = np.linalg.norm(train_embeddings[mask], axis=1)
 
-                lang_names = list(lang_magnitudes.keys())
-                lang_data = [lang_magnitudes[lang] for lang in lang_names]
-                ax1.boxplot(lang_data, labels=lang_names)
-                ax1.set_title("Embedding Magnitude by Language")
-                ax1.set_ylabel("L2 Norm")
+                lang_names = list(lang_magnitudes_base.keys())
+                x_pos = np.arange(len(lang_names))
+                width = 0.35
 
-                # 2. Embedding variance
-                lang_variances = [np.var(data) for data in lang_data]
-                ax2.bar(lang_names, lang_variances)
-                ax2.set_title("Embedding Variance by Language")
+                base_means = [np.mean(lang_magnitudes_base[lang]) for lang in lang_names]
+                train_means = [np.mean(lang_magnitudes_train[lang]) for lang in lang_names]
+
+                bars1 = ax1.bar(x_pos - width/2, base_means, width, label='Base Model', alpha=0.8, color='#1f77b4')
+                bars2 = ax1.bar(x_pos + width/2, train_means, width, label='Training Model', alpha=0.8, color='#ff7f0e')
+
+                ax1.set_title("Dual-Model Embedding Magnitude Comparison")
+                ax1.set_ylabel("Average L2 Norm")
+                ax1.set_xticks(x_pos)
+                ax1.set_xticklabels(lang_names)
+                ax1.legend()
+                ax1.grid(True, alpha=0.3)
+
+                # Add improvement indicators
+                for i, (base_val, train_val) in enumerate(zip(base_means, train_means)):
+                    improvement = train_val - base_val
+                    ax1.text(i, max(base_val, train_val) + 0.01, f'{improvement:+.3f}',
+                            ha='center', va='bottom', fontsize=9,
+                            color='green' if improvement > 0 else 'red', fontweight='bold')
+
+                # 2. Embedding variance comparison
+                base_variances = [np.var(lang_magnitudes_base[lang]) for lang in lang_names]
+                train_variances = [np.var(lang_magnitudes_train[lang]) for lang in lang_names]
+
+                bars3 = ax2.bar(x_pos - width/2, base_variances, width, label='Base Model', alpha=0.8, color='#1f77b4')
+                bars4 = ax2.bar(x_pos + width/2, train_variances, width, label='Training Model', alpha=0.8, color='#ff7f0e')
+
+                ax2.set_title("Dual-Model Embedding Variance Comparison")
                 ax2.set_ylabel("Variance")
+                ax2.set_xticks(x_pos)
+                ax2.set_xticklabels(lang_names)
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
 
-                # 3. Sentence length distribution
+                # 3. Sentence length distribution (language-agnostic)
                 sentence_lengths = [len(text.split()) for text in texts]
                 lang_lengths = {}
                 for i, lang in enumerate(languages):
@@ -825,24 +1662,72 @@ def save_embedding_visualizations(results):
 
                 length_data = [lang_lengths[lang] for lang in lang_names]
                 ax3.boxplot(length_data, labels=lang_names)
-                ax3.set_title("Sentence Length by Language")
+                ax3.set_title("Sentence Length Distribution by Language")
                 ax3.set_ylabel("Word Count")
+                ax3.grid(True, alpha=0.3)
 
-                # 4. Similarity statistics
-                similarity_matrix = cosine_similarity(embeddings)
-                ax4.hist(similarity_matrix.flatten(), bins=50, alpha=0.7)
-                ax4.set_title("Similarity Distribution")
+                # 4. Dual-model similarity distribution comparison
+                base_similarity_matrix = cosine_similarity(base_embeddings)
+                train_similarity_matrix = cosine_similarity(train_embeddings)
+
+                ax4.hist(base_similarity_matrix.flatten(), bins=30, alpha=0.6,
+                        label='Base Model', color='#1f77b4', density=True)
+                ax4.hist(train_similarity_matrix.flatten(), bins=30, alpha=0.6,
+                        label='Training Model', color='#ff7f0e', density=True)
+                ax4.set_title("Dual-Model Similarity Distribution")
                 ax4.set_xlabel("Cosine Similarity")
-                ax4.set_ylabel("Frequency")
+                ax4.set_ylabel("Density")
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+
+                # Add statistical comparison
+                base_mean_sim = np.mean(base_similarity_matrix.flatten())
+                train_mean_sim = np.mean(train_similarity_matrix.flatten())
+                sim_improvement = train_mean_sim - base_mean_sim
+                ax4.text(0.02, 0.98, f'Mean Similarity:\nBase: {base_mean_sim:.3f}\nTrain: {train_mean_sim:.3f}\nΔ: {sim_improvement:+.3f}',
+                        transform=ax4.transAxes, verticalalignment='top',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8),
+                        fontsize=9)
 
                 plt.tight_layout()
-                plt.savefig(output_dir / "embedding_statistics.png",
+                plt.savefig(output_dir / "dual_model_embedding_statistics.png",
                            dpi=300, bbox_inches='tight',
                            facecolor='white', edgecolor='none')
                 plt.close()
                 plots_saved += 1
+                print(f"      ✅ Dual-model embedding statistics saved")
         except Exception as e:
             print(f"      ⚠️ Embedding statistics plot failed: {e}")
+
+        # 🆕 Dual-model Euclidean distance analysis
+        total_plots += 1
+        try:
+            success = plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output_dir / "dual_model_euclidean_distance.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model Euclidean distance analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ Euclidean distance analysis failed: {e}")
+
+        # 🆕 CKA (Centered Kernel Alignment) analysis
+        total_plots += 1
+        try:
+            success = plot_dual_model_centered_kernel_alignment(dual_embeddings, texts, languages, output_dir / "dual_model_centered_kernel_alignment.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model CKA analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ CKA analysis failed: {e}")
+
+        # 🆕 SVCCA (Singular Vector Canonical Correlation Analysis)
+        total_plots += 1
+        try:
+            success = plot_dual_model_singular_vector_canonical_correlation(dual_embeddings, texts, languages, output_dir / "dual_model_singular_vector_canonical_correlation.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model SVCCA analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ SVCCA analysis failed: {e}")
 
         print(f"   ✅ Saved {plots_saved}/{total_plots} visualizations")
 
@@ -858,18 +1743,9 @@ def save_confidence_visualizations(confidence_result):
 
         visualizer = ConfidenceVisualizer()
 
-        # Generate entropy by position plot (original single sentence)
-        try:
-            fig = visualizer.plot_entropy_by_position(
-                confidence_result=confidence_result,
-                interactive=False,
-                title="Token-wise Confidence Analysis - Sample Sentence"
-            )
-            plt.savefig(output_dir / "confidence_entropy.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            print(f"   ✅ Single sentence confidence plot saved")
-        except Exception as e:
-            print(f"   ⚠️ Entropy plot failed: {e}")
+        # Note: Single-model confidence_entropy.png removed - using dual-model version instead
+        # The dual-model confidence entropy is generated by plot_dual_model_confidence_entropy()
+        print(f"   ℹ️ Using dual-model confidence entropy analysis instead of single-model")
 
     except Exception as e:
         print(f"   ❌ Confidence visualization failed: {e}")
@@ -1019,337 +1895,9 @@ def save_multilingual_confidence_comparison(confidence_results):
     except Exception as e:
         print(f"   ⚠️ Multilingual confidence comparison failed: {e}")
 
-def save_comprehensive_confidence_comparison(confidence_results):
-    """Generate comprehensive 4-way confidence comparison visualizations: Base_EN, Base_KO, Train_EN, Train_KO."""
-    try:
-        output_dir = platform_dir / "outputs" / "terminal_analysis"
-        output_dir.mkdir(parents=True, exist_ok=True)
+# Removed: save_comprehensive_confidence_comparison function (comprehensive 4way comparison not needed)
 
-        # Initialize Korean font manager
-        from utils.font_manager import setup_korean_fonts
-        setup_korean_fonts()
-
-        # Extract uncertainty scores from 4-way analysis
-        def extract_uncertainties(results, default=0.5):
-            uncertainties = []
-            for result in results:
-                if 'confidence_measures' in result:
-                    measures = result['confidence_measures']
-                    avg_confidence = measures.get('average_confidence', default)
-                    uncertainties.append(1.0 - avg_confidence)
-                elif 'uncertainty_estimates' in result:
-                    uncertainties.append(result['uncertainty_estimates']['mean_uncertainty'])
-                else:
-                    uncertainties.append(default)
-            return uncertainties
-
-        base_en_uncertainties = extract_uncertainties(confidence_results['base_model_en_results'], 0.5)
-        base_ko_uncertainties = extract_uncertainties(confidence_results['base_model_ko_results'], 0.6)
-        train_en_uncertainties = extract_uncertainties(confidence_results['train_model_en_results'], 0.5)
-        train_ko_uncertainties = extract_uncertainties(confidence_results['train_model_ko_results'], 0.6)
-
-        # Create comprehensive 4-way comparison plot
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-
-        # 1. 4-way Model-Language Average Comparison
-        categories = ['Base_EN', 'Base_KO', 'Train_EN', 'Train_KO']
-        avg_uncertainties = [
-            np.mean(base_en_uncertainties),
-            np.mean(base_ko_uncertainties),
-            np.mean(train_en_uncertainties),
-            np.mean(train_ko_uncertainties)
-        ]
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-
-        bars = ax1.bar(categories, avg_uncertainties, color=colors, alpha=0.8)
-        ax1.set_title('4-Way Model-Language Uncertainty Comparison', fontsize=14)
-        ax1.set_ylabel('Average Uncertainty Score')
-        ax1.set_ylim(0, 1)
-        ax1.tick_params(axis='x', rotation=45)
-
-        # Add value labels and improvement indicators
-        for i, (bar, value) in enumerate(zip(bars, avg_uncertainties)):
-            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
-
-            # Add improvement indicators
-            if i == 2:  # Train_EN vs Base_EN
-                improvement = base_en_uncertainties[0] - value if base_en_uncertainties else 0
-                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
-                        f'Δ{improvement:+.3f}', ha='center', va='bottom', fontsize=10, color='green' if improvement > 0 else 'red')
-            elif i == 3:  # Train_KO vs Base_KO
-                improvement = base_ko_uncertainties[0] - value if base_ko_uncertainties else 0
-                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
-                        f'Δ{improvement:+.3f}', ha='center', va='bottom', fontsize=10, color='green' if improvement > 0 else 'red')
-
-        # 2. Sentence-wise 4-way Comparison
-        num_pairs = len(base_en_uncertainties)
-        x_pos = np.arange(num_pairs)
-        width = 0.2
-
-        bars1 = ax2.bar(x_pos - 1.5*width, base_en_uncertainties, width, label='Base_EN', color=colors[0], alpha=0.8)
-        bars2 = ax2.bar(x_pos - 0.5*width, base_ko_uncertainties, width, label='Base_KO', color=colors[1], alpha=0.8)
-        bars3 = ax2.bar(x_pos + 0.5*width, train_en_uncertainties, width, label='Train_EN', color=colors[2], alpha=0.8)
-        bars4 = ax2.bar(x_pos + 1.5*width, train_ko_uncertainties, width, label='Train_KO', color=colors[3], alpha=0.8)
-
-        ax2.set_title(f'4-Way Uncertainty by Sentence Pair (Total: {num_pairs} pairs)', fontsize=14)
-        ax2.set_xlabel('Sentence Pair Index')
-        ax2.set_ylabel('Uncertainty Score')
-        ax2.set_xticks(x_pos)
-        ax2.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
-        ax2.legend(loc='upper right')
-        ax2.grid(True, alpha=0.3)
-
-        # 3. Cross-lingual and Cross-model Improvement Analysis
-        cross_lingual_base = [abs(en - ko) for en, ko in zip(base_en_uncertainties, base_ko_uncertainties)]
-        cross_lingual_train = [abs(en - ko) for en, ko in zip(train_en_uncertainties, train_ko_uncertainties)]
-        cross_model_en = [abs(base - train) for base, train in zip(base_en_uncertainties, train_en_uncertainties)]
-        cross_model_ko = [abs(base - train) for base, train in zip(base_ko_uncertainties, train_ko_uncertainties)]
-
-        improvement_categories = ['Cross-lingual\n(Base)', 'Cross-lingual\n(Train)', 'Cross-model\n(English)', 'Cross-model\n(Korean)']
-        avg_improvements = [
-            np.mean(cross_lingual_base),
-            np.mean(cross_lingual_train),
-            np.mean(cross_model_en),
-            np.mean(cross_model_ko)
-        ]
-
-        bars = ax3.bar(improvement_categories, avg_improvements, color=['lightcoral', 'lightgreen', 'lightblue', 'lightyellow'], alpha=0.8)
-        ax3.set_title('Cross-dimensional Analysis', fontsize=14)
-        ax3.set_ylabel('Average Difference Score')
-        ax3.tick_params(axis='x', rotation=0)
-
-        # Add improvement indicator for cross-lingual comparison
-        cross_lingual_improvement = np.mean(cross_lingual_base) - np.mean(cross_lingual_train)
-        ax3.text(1, max(avg_improvements) * 0.9, f'Improvement: {cross_lingual_improvement:+.3f}',
-                ha='center', va='center', fontweight='bold',
-                color='green' if cross_lingual_improvement > 0 else 'red',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
-
-        for bar, value in zip(bars, avg_improvements):
-            ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.005,
-                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
-
-        # 4. Comprehensive Analysis Summary
-        ax4.axis('off')
-
-        # Calculate comprehensive statistics
-        base_en_avg = np.mean(base_en_uncertainties)
-        base_ko_avg = np.mean(base_ko_uncertainties)
-        train_en_avg = np.mean(train_en_uncertainties)
-        train_ko_avg = np.mean(train_ko_uncertainties)
-
-        en_improvement = base_en_avg - train_en_avg
-        ko_improvement = base_ko_avg - train_ko_avg
-        cross_lingual_base_avg = np.mean(cross_lingual_base)
-        cross_lingual_train_avg = np.mean(cross_lingual_train)
-
-        # Count improvements
-        en_improved_pairs = sum(1 for base, train in zip(base_en_uncertainties, train_en_uncertainties) if base > train)
-        ko_improved_pairs = sum(1 for base, train in zip(base_ko_uncertainties, train_ko_uncertainties) if base > train)
-
-        summary_text = f"""
-🔍 Comprehensive 4-Way Confidence Analysis:
-
-📊 Dataset: {num_pairs} English-Korean sentence pairs
-📈 Analysis: Base vs Training Model comparison
-
-🇺🇸 English Performance:
-  • Base Model Uncertainty:     {base_en_avg:.4f}
-  • Training Model Uncertainty: {train_en_avg:.4f}
-  • Improvement:               {en_improvement:+.4f} ({en_improved_pairs}/{num_pairs} pairs)
-
-🇰🇷 Korean Performance:
-  • Base Model Uncertainty:     {base_ko_avg:.4f}
-  • Training Model Uncertainty: {train_ko_avg:.4f}
-  • Improvement:               {ko_improvement:+.4f} ({ko_improved_pairs}/{num_pairs} pairs)
-
-🌍 Cross-lingual Analysis:
-  • Base Model EN-KO Difference:  {cross_lingual_base_avg:.4f}
-  • Train Model EN-KO Difference: {cross_lingual_train_avg:.4f}
-  • Cross-lingual Improvement:    {cross_lingual_improvement:+.4f}
-
-💡 Key Insights:
-  • {'English' if en_improvement > ko_improvement else 'Korean'} shows better training improvement
-  • Cross-lingual consistency {'improved' if cross_lingual_improvement > 0 else 'decreased'} by {abs(cross_lingual_improvement):.3f}
-  • Language bias: {'Reduced' if cross_lingual_improvement > 0.01 else 'Minimal change'}
-
-🎯 Lower uncertainty = Better model confidence
-        """
-
-        ax4.text(0.02, 0.98, summary_text, transform=ax4.transAxes, fontsize=9,
-                verticalalignment='top', fontfamily='monospace',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgreen', alpha=0.9))
-
-        plt.tight_layout()
-        plt.savefig(output_dir / "comprehensive_confidence_4way_comparison.png",
-                   dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-        plt.close()
-
-        print(f"   ✅ Comprehensive 4-way confidence comparison saved")
-
-    except Exception as e:
-        print(f"   ⚠️ Comprehensive confidence comparison failed: {e}")
-
-def save_attention_visualizations(attention_results):
-    """Generate comprehensive 4-way attention analysis visualizations: Base_EN, Base_KO, Train_EN, Train_KO."""
-    try:
-        output_dir = platform_dir / "outputs" / "terminal_analysis"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Initialize Korean font manager
-        from utils.font_manager import setup_korean_fonts
-        setup_korean_fonts()
-
-        if not attention_results or 'cross_lingual_comparisons' not in attention_results:
-            print(f"   ⚠️ No attention results to visualize")
-            return
-
-        # Extract similarity data from 4-way analysis
-        base_cross_lingual = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_lingual_comparisons']['base_model']]
-        train_cross_lingual = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_lingual_comparisons']['train_model']]
-        en_cross_model = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_model_comparisons']['english']]
-        ko_cross_model = [comp.get('overall_similarity', 0.0) for comp in attention_results['cross_model_comparisons']['korean']]
-
-        if not (base_cross_lingual and train_cross_lingual):
-            print(f"   ⚠️ No valid attention similarities found")
-            return
-
-        # Create comprehensive 4-way attention analysis plot
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-
-        # 1. Cross-lingual Attention Similarity Comparison (Base vs Training)
-        num_pairs = len(base_cross_lingual)
-        x_pos = np.arange(num_pairs)
-        width = 0.35
-
-        bars1 = ax1.bar(x_pos - width/2, base_cross_lingual, width, label='Base Model (EN-KO)', color='#1f77b4', alpha=0.8)
-        bars2 = ax1.bar(x_pos + width/2, train_cross_lingual, width, label='Training Model (EN-KO)', color='#ff7f0e', alpha=0.8)
-
-        ax1.set_title(f'Cross-lingual Attention Similarity Comparison (Total: {num_pairs} pairs)', fontsize=14)
-        ax1.set_xlabel('Sentence Pair Index')
-        ax1.set_ylabel('EN-KO Attention Similarity')
-        ax1.set_xticks(x_pos)
-        ax1.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        ax1.set_ylim(0, 1)
-
-        # Add improvement indicators
-        for i, (base_val, train_val) in enumerate(zip(base_cross_lingual, train_cross_lingual)):
-            improvement = train_val - base_val
-            if abs(improvement) > 0.05:  # Only show significant changes
-                ax1.annotate(f'{improvement:+.2f}', xy=(i, max(base_val, train_val) + 0.02),
-                           ha='center', va='bottom', fontsize=8,
-                           color='green' if improvement > 0 else 'red', fontweight='bold')
-
-        # 2. Cross-model Consistency Analysis (English vs Korean)
-        if en_cross_model and ko_cross_model:
-            bars3 = ax2.bar(x_pos - width/2, en_cross_model, width, label='English (Base-Train)', color='#2ca02c', alpha=0.8)
-            bars4 = ax2.bar(x_pos + width/2, ko_cross_model, width, label='Korean (Base-Train)', color='#d62728', alpha=0.8)
-
-            ax2.set_title(f'Cross-model Consistency by Language', fontsize=14)
-            ax2.set_xlabel('Sentence Pair Index')
-            ax2.set_ylabel('Base-Train Attention Similarity')
-            ax2.set_xticks(x_pos)
-            ax2.set_xticklabels([f'{i+1}' for i in range(num_pairs)])
-            ax2.legend()
-            ax2.grid(True, alpha=0.3)
-            ax2.set_ylim(0, 1)
-        else:
-            ax2.text(0.5, 0.5, 'Cross-model data not available', ha='center', va='center', transform=ax2.transAxes)
-
-        # 3. Comprehensive Performance Metrics
-        categories = ['Base\n(EN-KO)', 'Train\n(EN-KO)', 'English\n(Base-Train)', 'Korean\n(Base-Train)']
-        avg_similarities = [
-            np.mean(base_cross_lingual),
-            np.mean(train_cross_lingual),
-            np.mean(en_cross_model) if en_cross_model else 0,
-            np.mean(ko_cross_model) if ko_cross_model else 0
-        ]
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-
-        bars = ax3.bar(categories, avg_similarities, color=colors, alpha=0.8)
-        ax3.set_title('Average Attention Similarity by Category', fontsize=14)
-        ax3.set_ylabel('Average Similarity Score')
-        ax3.set_ylim(0, 1)
-        ax3.tick_params(axis='x', rotation=0)
-
-        # Add value labels and improvement indicators
-        for i, (bar, value) in enumerate(zip(bars, avg_similarities)):
-            ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
-
-            # Add improvement indicator for training model
-            if i == 1:  # Training model cross-lingual
-                improvement = avg_similarities[1] - avg_similarities[0]
-                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
-                        f'Δ{improvement:+.3f}', ha='center', va='bottom', fontsize=10,
-                        color='green' if improvement > 0 else 'red', fontweight='bold')
-
-        # 4. Comprehensive Analysis Summary
-        ax4.axis('off')
-
-        # Calculate comprehensive statistics
-        base_avg = np.mean(base_cross_lingual)
-        train_avg = np.mean(train_cross_lingual)
-        cross_lingual_improvement = train_avg - base_avg
-
-        en_avg = np.mean(en_cross_model) if en_cross_model else 0
-        ko_avg = np.mean(ko_cross_model) if ko_cross_model else 0
-
-        # Count improvements
-        improved_pairs = sum(1 for base, train in zip(base_cross_lingual, train_cross_lingual) if train > base)
-        degraded_pairs = sum(1 for base, train in zip(base_cross_lingual, train_cross_lingual) if train < base)
-
-        # Find best and worst performing pairs
-        improvements = [train - base for base, train in zip(base_cross_lingual, train_cross_lingual)]
-        max_improvement_idx = improvements.index(max(improvements))
-        min_improvement_idx = improvements.index(min(improvements))
-
-        summary_text = f"""
-🔍 Comprehensive 4-Way Attention Analysis:
-
-📊 Dataset: {num_pairs} English-Korean sentence pairs
-📈 Analysis: Base vs Training Model attention patterns
-
-🌍 Cross-lingual Performance (EN-KO similarity):
-  • Base Model Average:     {base_avg:.4f}
-  • Training Model Average: {train_avg:.4f}
-  • Improvement:           {cross_lingual_improvement:+.4f} ({improved_pairs}/{num_pairs} pairs improved)
-
-🔄 Cross-model Consistency:
-  • English (Base-Train):   {en_avg:.4f}
-  • Korean (Base-Train):    {ko_avg:.4f}
-  • Language Bias: {'Korean' if ko_avg > en_avg else 'English'} shows {'higher' if abs(ko_avg - en_avg) > 0.05 else 'similar'} consistency
-
-📈 Training Impact:
-  • Improved Pairs: {improved_pairs}/{num_pairs} ({improved_pairs/num_pairs*100:.1f}%)
-  • Degraded Pairs: {degraded_pairs}/{num_pairs} ({degraded_pairs/num_pairs*100:.1f}%)
-  • Biggest Improvement: Pair {max_improvement_idx + 1} ({max(improvements):+.3f})
-  • Biggest Degradation: Pair {min_improvement_idx + 1} ({min(improvements):+.3f})
-
-💡 Key Insights:
-  • Cross-lingual ability {'improved' if cross_lingual_improvement > 0.01 else 'showed minimal change' if abs(cross_lingual_improvement) <= 0.01 else 'degraded'}
-  • Training {'enhanced' if improved_pairs > degraded_pairs else 'had mixed effects on'} attention alignment
-  • {'Consistent' if abs(en_avg - ko_avg) < 0.05 else 'Language-specific'} attention pattern changes
-
-🎯 Higher similarity = Better cross-lingual attention alignment
-        """
-
-        ax4.text(0.02, 0.98, summary_text, transform=ax4.transAxes, fontsize=9,
-                verticalalignment='top', fontfamily='monospace',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightcyan', alpha=0.9))
-
-        plt.tight_layout()
-        plt.savefig(output_dir / "comprehensive_attention_4way_comparison.png",
-                   dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-        plt.close()
-
-        print(f"   ✅ Comprehensive 4-way attention analysis saved")
-
-    except Exception as e:
-        print(f"   ⚠️ Comprehensive attention visualization failed: {e}")
+# Removed: save_attention_visualizations function (comprehensive 4way attention analysis not needed)
 
 def save_confidence_comparison(base_result, train_result):
     """Generate and save confidence comparison visualizations."""
@@ -1789,7 +2337,7 @@ def analyze_confidence_differences():
         # Generate enhanced visualizations
         try:
             save_confidence_visualizations(confidence_results['base_model_en_results'][0])  # Sample for compatibility
-            save_comprehensive_confidence_comparison(confidence_results)
+            # Removed: save_comprehensive_confidence_comparison(confidence_results) - not needed
 
             # Generate dual-model confidence entropy comparison
             output_dir = platform_dir / "outputs" / "terminal_analysis"
@@ -1896,7 +2444,8 @@ def main():
 
     # Attention visualizations (all sentence pairs)
     if attention_results and ENABLE_ATTENTION_ANALYSIS:
-        save_attention_visualizations(attention_results)
+        # Removed: save_attention_visualizations(attention_results) - comprehensive 4way analysis not needed
+        pass
 
     # Confidence visualizations are already called within analyze_confidence_differences()
 

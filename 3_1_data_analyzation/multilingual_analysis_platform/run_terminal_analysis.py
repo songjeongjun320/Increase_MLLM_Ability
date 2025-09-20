@@ -971,7 +971,8 @@ def plot_dual_model_singular_vector_canonical_correlation(dual_embeddings, texts
 
 def analyze_token_generation_confidence(base_model_path, training_model_path, test_sentences):
     """
-    Analyze token-by-token generation confidence for both base and training models.
+    Analyze token-by-token autoregressive generation confidence for both base and training models.
+    For each sentence, perform autoregressive generation and track confidence for each generated token.
 
     Args:
         base_model_path: Path to base model
@@ -979,14 +980,14 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
         test_sentences: List of (english, korean) sentence pairs
 
     Returns:
-        Dictionary containing confidence analysis results
+        Dictionary containing confidence analysis results for all 32 analyses (16 sentences × 2 models)
     """
     try:
         from transformers import AutoTokenizer, AutoModelForCausalLM
         import torch
         import torch.nn.functional as F
 
-        print(f"   🔍 Analyzing token-level generation confidence...")
+        print(f"   🔍 Analyzing autoregressive token generation confidence...")
 
         # Load models and tokenizers
         print(f"   📥 Loading base model: {base_model_path}")
@@ -1009,54 +1010,79 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
             print(f"   ⚠️ Failed to load training model: {e}")
             return None
 
-        def get_token_confidences(model, tokenizer, text, max_length=100):
-            """Extract token-by-token generation confidences."""
+        def get_autoregressive_confidences(model, tokenizer, target_text, prompt="", max_length=50):
+            """Extract token-by-token autoregressive generation confidences."""
             try:
                 model.eval()
                 device = next(model.parameters()).device
 
-                # Tokenize input
-                inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=max_length)
-                input_ids = inputs["input_ids"].to(device)
-                attention_mask = inputs["attention_mask"].to(device)
+                # If no prompt, create a simple start
+                if not prompt:
+                    prompt = ""
+
+                # Tokenize the target text to know what we're trying to generate
+                target_tokens = tokenizer(target_text, return_tensors="pt", add_special_tokens=False)["input_ids"][0]
+
+                # Start with prompt (or empty)
+                if prompt:
+                    current_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"][0]
+                else:
+                    current_ids = torch.tensor([], dtype=torch.long)
 
                 confidences = []
                 tokens = []
-                probabilities = []
+                generated_text = prompt
 
                 with torch.no_grad():
-                    # Get logits for all positions
-                    outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-                    logits = outputs.logits[0]  # [seq_len, vocab_size]
+                    # Generate each token of the target text autoregressively
+                    for target_token_idx in range(len(target_tokens)):
+                        target_token_id = target_tokens[target_token_idx].item()
 
-                    # Calculate probabilities and confidences for each position
-                    for i in range(logits.shape[0]):
-                        probs = F.softmax(logits[i], dim=-1)
+                        # Prepare input for current generation step
+                        if len(current_ids) > 0:
+                            input_ids = current_ids.unsqueeze(0).to(device)
+                        else:
+                            # If no current context, start generation
+                            input_ids = torch.tensor([[]], dtype=torch.long).to(device)
 
-                        # Get the actual token at this position
-                        if i < input_ids.shape[1]:
-                            actual_token_id = input_ids[0][i].item()
-                            actual_token = tokenizer.decode([actual_token_id])
+                        # Get model predictions for next token
+                        if input_ids.shape[1] > 0:
+                            outputs = model(input_ids=input_ids)
+                            next_token_logits = outputs.logits[0, -1, :]  # Last position logits
+                        else:
+                            # For first token with no context, use model's initial predictions
+                            dummy_input = torch.tensor([[tokenizer.bos_token_id if tokenizer.bos_token_id else 1]]).to(device)
+                            outputs = model(input_ids=dummy_input)
+                            next_token_logits = outputs.logits[0, -1, :]
 
-                            # Confidence = probability of the actual token
-                            confidence = probs[actual_token_id].item()
+                        # Get probabilities
+                        probs = F.softmax(next_token_logits, dim=-1)
 
-                            # Top probability (for comparison)
-                            top_prob = torch.max(probs).item()
+                        # Get confidence for the target token
+                        target_token_confidence = probs[target_token_id].item()
+                        target_token_text = tokenizer.decode([target_token_id])
 
-                            tokens.append(actual_token)
-                            confidences.append(confidence)
-                            probabilities.append(top_prob)
+                        confidences.append(target_token_confidence)
+                        tokens.append(target_token_text)
+
+                        # Add the target token to current sequence for next iteration
+                        if len(current_ids) > 0:
+                            current_ids = torch.cat([current_ids, torch.tensor([target_token_id])])
+                        else:
+                            current_ids = torch.tensor([target_token_id])
+
+                        generated_text += target_token_text
 
                 return {
                     'tokens': tokens,
                     'confidences': confidences,
-                    'top_probabilities': probabilities,
-                    'text': text
+                    'target_text': target_text,
+                    'generated_text': generated_text,
+                    'prompt': prompt
                 }
 
             except Exception as e:
-                print(f"      ⚠️ Token confidence extraction failed for text: {text[:50]}... Error: {e}")
+                print(f"      ⚠️ Autoregressive confidence extraction failed for text: {target_text[:50]}... Error: {e}")
                 return None
 
         # Analyze all test sentences
@@ -1080,10 +1106,10 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
                 'korean': ko_text
             })
 
-            # Process English sentence
+            # Process English sentence with autoregressive generation
             print(f"      🇺🇸 English: {en_text[:50]}...")
-            base_en_conf = get_token_confidences(base_model, base_tokenizer, en_text)
-            train_en_conf = get_token_confidences(train_model, train_tokenizer, en_text)
+            base_en_conf = get_autoregressive_confidences(base_model, base_tokenizer, en_text)
+            train_en_conf = get_autoregressive_confidences(train_model, train_tokenizer, en_text)
 
             if base_en_conf and train_en_conf:
                 results['base_model_results'].append({
@@ -1101,10 +1127,10 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
                 results['languages'].extend(['en'])
                 processed += 1
 
-            # Process Korean sentence
+            # Process Korean sentence with autoregressive generation
             print(f"      🇰🇷 Korean: {ko_text[:50]}...")
-            base_ko_conf = get_token_confidences(base_model, base_tokenizer, ko_text)
-            train_ko_conf = get_token_confidences(train_model, train_tokenizer, ko_text)
+            base_ko_conf = get_autoregressive_confidences(base_model, base_tokenizer, ko_text)
+            train_ko_conf = get_autoregressive_confidences(train_model, train_tokenizer, ko_text)
 
             if base_ko_conf and train_ko_conf:
                 results['base_model_results'].append({
@@ -1136,7 +1162,8 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
 def plot_dual_model_token_confidence(confidence_results, output_path):
     """
-    Create comprehensive token-level confidence visualization for dual models.
+    Create comprehensive autoregressive token confidence visualization.
+    Shows 32 analyses: 16 sentences (8 EN + 8 KO) × 2 models = 32 confidence plots.
 
     Args:
         confidence_results: Results from analyze_token_generation_confidence
@@ -1150,9 +1177,8 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
             print(f"      ⚠️ No confidence results to visualize")
             return False
 
-        # Create comprehensive visualization
-        fig = plt.figure(figsize=(20, 16))
-        gs = fig.add_gridspec(4, 2, height_ratios=[2, 1.5, 1, 1], hspace=0.4, wspace=0.3)
+        # Create large visualization for 32 analyses (16 sentences × 2 models)
+        fig = plt.figure(figsize=(24, 20))
 
         # Configure Korean fonts
         configure_plot_korean(fig, None)
@@ -1160,200 +1186,158 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
         base_results = confidence_results['base_model_results']
         train_results = confidence_results['training_model_results']
 
-        # 1. Token-by-token confidence heatmap comparison
-        ax1 = fig.add_subplot(gs[0, :])
+        print(f"      📊 Creating visualization for {len(base_results)} base + {len(train_results)} training = {len(base_results) + len(train_results)} analyses")
 
-        # Prepare data for heatmap
-        max_tokens = max(len(result['tokens']) for result in base_results + train_results)
-        num_sentences = len(base_results)
+        # Create main grid: Top for individual token plots, bottom for summaries
+        gs_main = fig.add_gridspec(3, 1, height_ratios=[3, 1, 1], hspace=0.3)
 
-        # Create matrices for base and training models
-        base_confidence_matrix = np.full((num_sentences, max_tokens), np.nan)
-        train_confidence_matrix = np.full((num_sentences, max_tokens), np.nan)
-        sentence_labels = []
+        # 1. Individual sentence token confidence plots (32 subplots)
+        # Arrange in 8 rows × 4 columns (2 models × 2 languages per pair)
+        gs_plots = gs_main[0].subgridspec(8, 4, hspace=0.6, wspace=0.4)
 
-        for i, (base_result, train_result) in enumerate(zip(base_results, train_results)):
-            # Base model confidences
-            base_confs = base_result['confidences'][:max_tokens]
-            base_confidence_matrix[i, :len(base_confs)] = base_confs
+        max_tokens = 0
+        all_confidences = []
 
-            # Training model confidences
-            train_confs = train_result['confidences'][:max_tokens]
-            train_confidence_matrix[i, :len(train_confs)] = train_confs
+        # Plot each sentence's token confidence
+        for pair_idx in range(8):  # 8 sentence pairs
+            row = pair_idx
 
-            # Create sentence labels
-            lang_flag = "🇺🇸" if base_result['language'] == 'en' else "🇰🇷"
-            text_preview = base_result['text'][:30] + "..." if len(base_result['text']) > 30 else base_result['text']
-            sentence_labels.append(f"{lang_flag} P{base_result['pair_id']}: {text_preview}")
+            # Find corresponding results for this pair
+            base_en = next((r for r in base_results if r['pair_id'] == pair_idx and r['language'] == 'en'), None)
+            base_ko = next((r for r in base_results if r['pair_id'] == pair_idx and r['language'] == 'ko'), None)
+            train_en = next((r for r in train_results if r['pair_id'] == pair_idx and r['language'] == 'en'), None)
+            train_ko = next((r for r in train_results if r['pair_id'] == pair_idx and r['language'] == 'ko'), None)
 
-        # Create side-by-side heatmaps
-        ax1_left = plt.subplot2grid((4, 4), (0, 0), colspan=2, rowspan=2, fig=fig)
-        ax1_right = plt.subplot2grid((4, 4), (0, 2), colspan=2, rowspan=2, fig=fig)
+            # Plot base English (column 0)
+            if base_en:
+                ax = fig.add_subplot(gs_plots[row, 0])
+                tokens = base_en['tokens']
+                confidences = base_en['confidences']
+                ax.plot(range(len(confidences)), confidences, 'b-', linewidth=2, alpha=0.8)
+                ax.set_ylim(0, 1)
+                ax.set_title(f'P{pair_idx} Base-EN', fontsize=8)
+                ax.grid(True, alpha=0.3)
+                if row == 7:  # Only bottom row gets x-label
+                    ax.set_xlabel('Token Position', fontsize=8)
+                max_tokens = max(max_tokens, len(confidences))
+                all_confidences.extend(confidences)
 
-        # Base model heatmap
-        im1 = ax1_left.imshow(base_confidence_matrix, aspect='auto', cmap='RdYlGn',
-                             vmin=0, vmax=1, interpolation='nearest')
-        ax1_left.set_title('Base Model - Token Confidence', fontsize=14, fontweight='bold')
-        ax1_left.set_xlabel('Token Position')
-        ax1_left.set_ylabel('Sentence Index')
-        ax1_left.set_yticks(range(len(sentence_labels)))
-        ax1_left.set_yticklabels(sentence_labels, fontsize=8)
+            # Plot base Korean (column 1)
+            if base_ko:
+                ax = fig.add_subplot(gs_plots[row, 1])
+                tokens = base_ko['tokens']
+                confidences = base_ko['confidences']
+                ax.plot(range(len(confidences)), confidences, 'g-', linewidth=2, alpha=0.8)
+                ax.set_ylim(0, 1)
+                ax.set_title(f'P{pair_idx} Base-KO', fontsize=8)
+                ax.grid(True, alpha=0.3)
+                if row == 7:
+                    ax.set_xlabel('Token Position', fontsize=8)
+                max_tokens = max(max_tokens, len(confidences))
+                all_confidences.extend(confidences)
 
-        # Training model heatmap
-        im2 = ax1_right.imshow(train_confidence_matrix, aspect='auto', cmap='RdYlGn',
-                              vmin=0, vmax=1, interpolation='nearest')
-        ax1_right.set_title('Training Model - Token Confidence', fontsize=14, fontweight='bold')
-        ax1_right.set_xlabel('Token Position')
-        ax1_right.set_ylabel('Sentence Index')
-        ax1_right.set_yticks(range(len(sentence_labels)))
-        ax1_right.set_yticklabels(sentence_labels, fontsize=8)
+            # Plot training English (column 2)
+            if train_en:
+                ax = fig.add_subplot(gs_plots[row, 2])
+                tokens = train_en['tokens']
+                confidences = train_en['confidences']
+                ax.plot(range(len(confidences)), confidences, 'r-', linewidth=2, alpha=0.8)
+                ax.set_ylim(0, 1)
+                ax.set_title(f'P{pair_idx} Train-EN', fontsize=8)
+                ax.grid(True, alpha=0.3)
+                if row == 7:
+                    ax.set_xlabel('Token Position', fontsize=8)
+                max_tokens = max(max_tokens, len(confidences))
+                all_confidences.extend(confidences)
 
-        # Add shared colorbar
-        cbar_ax = fig.add_axes([0.92, 0.55, 0.02, 0.35])
-        cbar = fig.colorbar(im1, cax=cbar_ax)
-        cbar.set_label('Token Confidence', fontsize=12)
+            # Plot training Korean (column 3)
+            if train_ko:
+                ax = fig.add_subplot(gs_plots[row, 3])
+                tokens = train_ko['tokens']
+                confidences = train_ko['confidences']
+                ax.plot(range(len(confidences)), confidences, 'orange', linewidth=2, alpha=0.8)
+                ax.set_ylim(0, 1)
+                ax.set_title(f'P{pair_idx} Train-KO', fontsize=8)
+                ax.grid(True, alpha=0.3)
+                if row == 7:
+                    ax.set_xlabel('Token Position', fontsize=8)
+                max_tokens = max(max_tokens, len(confidences))
+                all_confidences.extend(confidences)
 
-        # 2. Average confidence comparison by language
-        ax2 = fig.add_subplot(gs[1, 0])
+        # 2. Summary statistics (bottom left)
+        ax_summary = fig.add_subplot(gs_main[1])
 
-        # Calculate average confidences by language
-        lang_base_confs = {'en': [], 'ko': []}
-        lang_train_confs = {'en': [], 'ko': []}
+        # Calculate language and model averages
+        base_en_avg = np.mean([np.mean(r['confidences']) for r in base_results if r['language'] == 'en'])
+        base_ko_avg = np.mean([np.mean(r['confidences']) for r in base_results if r['language'] == 'ko'])
+        train_en_avg = np.mean([np.mean(r['confidences']) for r in train_results if r['language'] == 'en'])
+        train_ko_avg = np.mean([np.mean(r['confidences']) for r in train_results if r['language'] == 'ko'])
 
-        for base_result, train_result in zip(base_results, train_results):
-            lang = base_result['language']
-            lang_base_confs[lang].extend(base_result['confidences'])
-            lang_train_confs[lang].extend(train_result['confidences'])
+        categories = ['Base-EN', 'Base-KO', 'Train-EN', 'Train-KO']
+        averages = [base_en_avg, base_ko_avg, train_en_avg, train_ko_avg]
+        colors = ['blue', 'green', 'red', 'orange']
 
-        languages = ['en', 'ko']
-        lang_names = ['English', 'Korean']
-        x_pos = np.arange(len(languages))
-        width = 0.35
+        bars = ax_summary.bar(categories, averages, color=colors, alpha=0.7)
+        ax_summary.set_title('Average Token Confidence by Model-Language', fontsize=12, fontweight='bold')
+        ax_summary.set_ylabel('Average Confidence')
+        ax_summary.set_ylim(0, 1)
+        ax_summary.grid(True, alpha=0.3)
 
-        base_means = [np.mean(lang_base_confs[lang]) if lang_base_confs[lang] else 0 for lang in languages]
-        train_means = [np.mean(lang_train_confs[lang]) if lang_train_confs[lang] else 0 for lang in languages]
+        # Add value labels on bars
+        for bar, avg in zip(bars, averages):
+            ax_summary.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                          f'{avg:.3f}', ha='center', va='bottom', fontweight='bold')
 
-        bars1 = ax2.bar(x_pos - width/2, base_means, width, label='Base Model',
-                       color='#1f77b4', alpha=0.8)
-        bars2 = ax2.bar(x_pos + width/2, train_means, width, label='Training Model',
-                       color='#ff7f0e', alpha=0.8)
+        # 3. Analysis summary (bottom right)
+        ax_info = fig.add_subplot(gs_main[2])
+        ax_info.axis('off')
 
-        ax2.set_title('Average Token Confidence by Language')
-        ax2.set_ylabel('Average Confidence')
-        ax2.set_xticks(x_pos)
-        ax2.set_xticklabels(lang_names)
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        ax2.set_ylim(0, 1)
+        # Calculate improvements
+        en_improvement = train_en_avg - base_en_avg
+        ko_improvement = train_ko_avg - base_ko_avg
+        overall_improvement = (en_improvement + ko_improvement) / 2
 
-        # Add value labels
-        for bars in [bars1, bars2]:
-            for bar in bars:
-                height = bar.get_height()
-                ax2.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                        f'{height:.3f}', ha='center', va='bottom', fontweight='bold')
+        summary_text = f"""
+📊 Autoregressive Token Confidence Analysis Summary:
 
-        # 3. Confidence distribution comparison
-        ax3 = fig.add_subplot(gs[1, 1])
+🔢 Analysis Scope:
+  • Total analyses: {len(base_results) + len(train_results)} (16 sentences × 2 models)
+  • English sentences: 8 × 2 models = 16 analyses
+  • Korean sentences: 8 × 2 models = 16 analyses
+  • Max tokens per sentence: {max_tokens}
 
-        all_base_confs = [conf for result in base_results for conf in result['confidences']]
-        all_train_confs = [conf for result in train_results for conf in result['confidences']]
+📈 Model Performance:
+  • Base Model - English: {base_en_avg:.4f}
+  • Base Model - Korean: {base_ko_avg:.4f}
+  • Training Model - English: {train_en_avg:.4f}
+  • Training Model - Korean: {train_ko_avg:.4f}
 
-        ax3.hist(all_base_confs, bins=30, alpha=0.6, label='Base Model',
-                color='#1f77b4', density=True)
-        ax3.hist(all_train_confs, bins=30, alpha=0.6, label='Training Model',
-                color='#ff7f0e', density=True)
-        ax3.set_title('Token Confidence Distribution')
-        ax3.set_xlabel('Confidence Score')
-        ax3.set_ylabel('Density')
-        ax3.legend()
-        ax3.grid(True, alpha=0.3)
+🎯 Training Impact:
+  • English improvement: {en_improvement:+.4f}
+  • Korean improvement: {ko_improvement:+.4f}
+  • Overall improvement: {overall_improvement:+.4f}
+  • Better language: {'English' if en_improvement > ko_improvement else 'Korean' if ko_improvement > en_improvement else 'Equal'}
 
-        # Add statistics
-        base_mean = np.mean(all_base_confs)
-        train_mean = np.mean(all_train_confs)
-        ax3.axvline(base_mean, color='#1f77b4', linestyle='--', alpha=0.8)
-        ax3.axvline(train_mean, color='#ff7f0e', linestyle='--', alpha=0.8)
-        ax3.text(0.02, 0.95, f'Base Mean: {base_mean:.3f}\nTrain Mean: {train_mean:.3f}\nImprovement: {train_mean-base_mean:+.3f}',
-                transform=ax3.transAxes, verticalalignment='top',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
+💡 Interpretation:
+  • Higher confidence = Better autoregressive generation certainty
+  • Each plot shows token-by-token confidence during generation
+  • Training {'improved' if overall_improvement > 0 else 'decreased' if overall_improvement < 0 else 'maintained'} generation confidence
+        """
 
-        # 4. Sample token-level analysis for first few sentences
-        ax4 = fig.add_subplot(gs[2, :])
+        ax_info.text(0.02, 0.98, summary_text, transform=ax_info.transAxes, fontsize=10,
+                    verticalalignment='top', fontfamily='monospace',
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.9))
 
-        # Show detailed token analysis for first 3 sentences
-        sample_results = list(zip(base_results[:3], train_results[:3]))
-
-        for i, (base_result, train_result) in enumerate(sample_results):
-            tokens = base_result['tokens'][:15]  # First 15 tokens
-            base_confs = base_result['confidences'][:15]
-            train_confs = train_result['confidences'][:15]
-
-            x_positions = np.arange(len(tokens)) + i * (len(tokens) + 2)
-
-            ax4.bar(x_positions - 0.2, base_confs, width=0.4,
-                   color='#1f77b4', alpha=0.7, label='Base' if i == 0 else "")
-            ax4.bar(x_positions + 0.2, train_confs, width=0.4,
-                   color='#ff7f0e', alpha=0.7, label='Training' if i == 0 else "")
-
-            # Add token labels
-            for j, token in enumerate(tokens):
-                ax4.text(x_positions[j], -0.05, token, rotation=45, ha='right', va='top', fontsize=8)
-
-        ax4.set_title('Sample Token-Level Confidence Analysis (First 3 Sentences)')
-        ax4.set_ylabel('Confidence')
-        ax4.set_ylim(0, 1.1)
-        ax4.legend()
-        ax4.grid(True, alpha=0.3)
-        ax4.set_xticks([])
-
-        # 5. Summary statistics table
-        ax5 = fig.add_subplot(gs[3, :])
-        ax5.axis('off')
-
-        # Calculate comprehensive statistics
-        total_tokens = len(all_base_confs)
-        base_high_conf = sum(1 for c in all_base_confs if c > 0.8) / total_tokens * 100
-        train_high_conf = sum(1 for c in all_train_confs if c > 0.8) / total_tokens * 100
-        base_low_conf = sum(1 for c in all_base_confs if c < 0.3) / total_tokens * 100
-        train_low_conf = sum(1 for c in all_train_confs if c < 0.3) / total_tokens * 100
-
-        stats_data = [
-            ['Total Tokens Analyzed', f'{total_tokens}', 'Across all sentences'],
-            ['Base Model Avg Confidence', f'{base_mean:.4f}', 'Overall average'],
-            ['Training Model Avg Confidence', f'{train_mean:.4f}', 'Overall average'],
-            ['Confidence Improvement', f'{train_mean-base_mean:+.4f}', 'Training - Base'],
-            ['Base High Confidence (>0.8)', f'{base_high_conf:.1f}%', 'Percentage of tokens'],
-            ['Training High Confidence (>0.8)', f'{train_high_conf:.1f}%', 'Percentage of tokens'],
-            ['Base Low Confidence (<0.3)', f'{base_low_conf:.1f}%', 'Percentage of tokens'],
-            ['Training Low Confidence (<0.3)', f'{train_low_conf:.1f}%', 'Percentage of tokens']
-        ]
-
-        table_headers = ['Metric', 'Value', 'Description']
-        table = ax5.table(cellText=stats_data, colLabels=table_headers,
-                         cellLoc='center', loc='center', bbox=[0, 0, 1, 1])
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 1.5)
-
-        # Style table
-        for i in range(len(table_headers)):
-            table[(0, i)].set_facecolor('#40466e')
-            table[(0, i)].set_text_props(weight='bold', color='white')
-
-        # Color code improvement rows
-        for i in range(1, len(stats_data) + 1):
-            if 'Improvement' in stats_data[i-1][0]:
-                improvement = float(stats_data[i-1][1].replace('+', ''))
-                color = '#ccffcc' if improvement > 0 else '#ffcccc'
-                for j in range(len(table_headers)):
-                    table[(i, j)].set_facecolor(color)
+        # Main title
+        fig.suptitle('Autoregressive Token Generation Confidence Analysis\n'
+                    f'32 Analyses: 8 Sentence Pairs × 2 Languages × 2 Models',
+                    fontsize=16, fontweight='bold', y=0.98)
 
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
         plt.close()
 
-        print(f"      📊 Token confidence analysis: {total_tokens} tokens, improvement: {train_mean-base_mean:+.4f}")
+        print(f"      📊 Token confidence analysis: {len(all_confidences)} total tokens, overall avg: {np.mean(all_confidences):.4f}")
         return True
 
     except Exception as e:

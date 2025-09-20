@@ -22,6 +22,8 @@ import matplotlib.font_manager as fm
 import warnings
 import logging
 import os
+import torch
+from typing import List, Dict, Any
 
 # Suppress warnings and logs
 warnings.filterwarnings('ignore')
@@ -50,13 +52,13 @@ from models.model_manager import get_model_manager
 class ModelEmbeddingComparator:
     """Compare embeddings between base and training models using actual model loading."""
 
-    def __init__(self, base_model_path: str, training_model_path: str):
+    def __init__(self, base_model_path, training_model_path):
         """Initialize with base and training model paths."""
         self.base_model_path = base_model_path
         self.training_model_path = training_model_path
         self.model_manager = get_model_manager()
 
-    def generate_dual_model_embeddings(self, texts: List[str], languages: List[str]) -> Dict[str, Any]:
+    def generate_dual_model_embeddings(self, texts, languages):
         """
         Generate embeddings using both base and training models.
 
@@ -98,7 +100,7 @@ class ModelEmbeddingComparator:
             'train_model_path': self.training_model_path
         }
 
-    def _generate_model_embeddings(self, model, tokenizer, texts: List[str]) -> np.ndarray:
+    def _generate_model_embeddings(self, model, tokenizer, texts):
         """Generate embeddings using a specific model."""
         embeddings = []
 
@@ -128,7 +130,7 @@ class ModelEmbeddingComparator:
 
         return np.array(embeddings)
 
-    def _generate_sentence_transformer_embeddings(self, texts: List[str]) -> np.ndarray:
+    def _generate_sentence_transformer_embeddings(self, texts):
         """Fallback to sentence transformer embeddings."""
         sentence_transformer = self.model_manager.load_sentence_transformer()
         embeddings = sentence_transformer.encode(texts, convert_to_tensor=False, normalize_embeddings=True)
@@ -210,7 +212,7 @@ def setup_korean_font():
     
     print(f"🔤 Final font family: {plt.rcParams['font.family']}")
 
-def plot_dual_model_pca_comparison(dual_embeddings: Dict[str, Any], output_path: Path) -> bool:
+def plot_dual_model_pca_comparison(dual_embeddings, output_path):
     """
     Create a PCA comparison plot showing both base and training model embeddings.
 

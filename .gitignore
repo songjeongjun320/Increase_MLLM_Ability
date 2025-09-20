@@ -9,6 +9,8 @@ venv/
 *.jsonl
 *.log
 *.txt
+*.png
+
 kakaobrain-kornli
 Ko-StrategyQA
 kosentences

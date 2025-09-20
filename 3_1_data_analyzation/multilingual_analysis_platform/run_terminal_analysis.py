@@ -230,7 +230,24 @@ def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output
         base_embeddings = dual_embeddings['base_embeddings']
         train_embeddings = dual_embeddings['train_embeddings']
 
-        # Calculate Euclidean distances between corresponding embeddings
+        # Calculate Euclidean distances between cross-lingual pairs within same model
+        # Instead of comparing base vs training for same language,
+        # we compare EN vs KO within same model (base and training separately)
+
+        cross_lingual_distances = {'base': [], 'training': []}
+
+        # Process EN-KO pairs for both models
+        for i in range(0, len(base_embeddings), 2):  # Every pair: i=EN, i+1=KO
+            if i+1 < len(base_embeddings):
+                # Base model: EN vs KO distance
+                base_en_ko_distance = np.linalg.norm(base_embeddings[i] - base_embeddings[i+1])
+                cross_lingual_distances['base'].append(base_en_ko_distance)
+
+                # Training model: EN vs KO distance
+                train_en_ko_distance = np.linalg.norm(train_embeddings[i] - train_embeddings[i+1])
+                cross_lingual_distances['training'].append(train_en_ko_distance)
+
+        # For backward compatibility, also calculate the old distances
         euclidean_distances = []
         for i in range(len(base_embeddings)):
             distance = np.linalg.norm(base_embeddings[i] - train_embeddings[i])
@@ -246,23 +263,21 @@ def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output
         # 1. Distance heatmap with sentence pairs
         ax1 = fig.add_subplot(gs[0, :])
 
-        # Create sentence pair mapping
+        # Create cross-lingual distance mapping
         pair_distances = []
         pair_info = []
-        for i in range(0, len(texts), 2):  # Process EN-KO pairs
-            if i+1 < len(texts):
-                en_idx, ko_idx = i, i+1
-                en_dist = euclidean_distances[en_idx]
-                ko_dist = euclidean_distances[ko_idx]
-
-                pair_distances.append([en_dist, ko_dist])
+        for pair_idx, (base_dist, train_dist) in enumerate(zip(cross_lingual_distances['base'], cross_lingual_distances['training'])):
+            # Get the corresponding texts for this pair
+            en_idx, ko_idx = pair_idx * 2, pair_idx * 2 + 1
+            if ko_idx < len(texts):
+                pair_distances.append([base_dist, train_dist])
                 pair_info.append({
-                    'pair_id': i//2,
+                    'pair_id': pair_idx,
                     'en_text': texts[en_idx][:50] + "..." if len(texts[en_idx]) > 50 else texts[en_idx],
                     'ko_text': texts[ko_idx][:50] + "..." if len(texts[ko_idx]) > 50 else texts[ko_idx],
-                    'en_distance': en_dist,
-                    'ko_distance': ko_dist,
-                    'pair_avg': (en_dist + ko_dist) / 2
+                    'base_distance': base_dist,
+                    'training_distance': train_dist,
+                    'pair_avg': (base_dist + train_dist) / 2
                 })
 
         # Plot heatmap
@@ -271,11 +286,11 @@ def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output
             im = ax1.imshow(heatmap_data, aspect='auto', cmap='viridis', interpolation='nearest')
 
             # Set labels
-            ax1.set_title('Euclidean Distance Between Base and Training Models\n(Sentence Pair Analysis)', fontsize=14, fontweight='bold')
-            ax1.set_xlabel('Sentence Pair Index')
-            ax1.set_ylabel('Language')
+            ax1.set_title('Cross-Lingual Euclidean Distance (EN-KO pairs within same model)\n(Base Model vs Training Model Comparison)', fontsize=14, fontweight='bold')
+            ax1.set_xlabel('Translation Pair Index')
+            ax1.set_ylabel('Model Type')
             ax1.set_yticks([0, 1])
-            ax1.set_yticklabels(['English', 'Korean'])
+            ax1.set_yticklabels(['Base Model', 'Training Model'])
             ax1.set_xticks(range(len(pair_distances)))
             ax1.set_xticklabels([f'Pair {i}' for i in range(len(pair_distances))])
 
@@ -294,21 +309,21 @@ def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output
         # 2. Distance distribution histogram
         ax2 = fig.add_subplot(gs[1, 0])
 
-        en_distances = [euclidean_distances[i] for i in range(0, len(texts), 2)]
-        ko_distances = [euclidean_distances[i] for i in range(1, len(texts), 2)]
+        base_distances = cross_lingual_distances['base']
+        train_distances = cross_lingual_distances['training']
 
-        ax2.hist(en_distances, bins=15, alpha=0.7, label='English', color='#1f77b4', density=True)
-        ax2.hist(ko_distances, bins=15, alpha=0.7, label='Korean', color='#ff7f0e', density=True)
-        ax2.set_title('Distance Distribution by Language')
-        ax2.set_xlabel('Euclidean Distance')
+        ax2.hist(base_distances, bins=15, alpha=0.7, label='Base Model', color='#1f77b4', density=True)
+        ax2.hist(train_distances, bins=15, alpha=0.7, label='Training Model', color='#ff7f0e', density=True)
+        ax2.set_title('Cross-Lingual Distance Distribution by Model')
+        ax2.set_xlabel('Cross-Lingual Euclidean Distance (EN-KO)')
         ax2.set_ylabel('Density')
         ax2.legend()
         ax2.grid(True, alpha=0.3)
 
         # Add statistics
-        en_mean, ko_mean = np.mean(en_distances), np.mean(ko_distances)
-        ax2.axvline(en_mean, color='#1f77b4', linestyle='--', alpha=0.8, label=f'EN mean: {en_mean:.3f}')
-        ax2.axvline(ko_mean, color='#ff7f0e', linestyle='--', alpha=0.8, label=f'KO mean: {ko_mean:.3f}')
+        base_mean, train_mean = np.mean(base_distances), np.mean(train_distances)
+        ax2.axvline(base_mean, color='#1f77b4', linestyle='--', alpha=0.8, label=f'Base mean: {base_mean:.3f}')
+        ax2.axvline(train_mean, color='#ff7f0e', linestyle='--', alpha=0.8, label=f'Train mean: {train_mean:.3f}')
 
         # 3. Top divergent pairs analysis
         ax3 = fig.add_subplot(gs[1, 1])
@@ -338,15 +353,15 @@ def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output
 
         # Create table data
         table_data = []
-        table_headers = ['Pair ID', 'English Text', 'Korean Text', 'EN Distance', 'KO Distance', 'Avg Distance']
+        table_headers = ['Pair ID', 'English Text', 'Korean Text', 'Base EN-KO Dist', 'Train EN-KO Dist', 'Avg Distance']
 
         for p in sorted_pairs[:8]:  # Show top 8 pairs
             table_data.append([
                 f"{p['pair_id']}",
                 p['en_text'],
                 p['ko_text'],
-                f"{p['en_distance']:.4f}",
-                f"{p['ko_distance']:.4f}",
+                f"{p['base_distance']:.4f}",
+                f"{p['training_distance']:.4f}",
                 f"{p['pair_avg']:.4f}"
             ])
 
@@ -375,27 +390,27 @@ def plot_dual_model_euclidean_distance(dual_embeddings, texts, languages, output
             for j in range(len(table_headers)):
                 table[(i, j)].set_facecolor(color)
 
-        ax4.set_title('Sentence Pair Distance Analysis Table\n(Sorted by Average Distance, Higher = More Divergent)',
+        ax4.set_title('Cross-Lingual Distance Analysis Table\n(EN-KO pairs within models, sorted by average distance)',
                      fontsize=12, fontweight='bold', pad=20)
 
         # Add summary statistics
         total_pairs = len(pair_info)
-        overall_mean = np.mean(euclidean_distances)
-        overall_std = np.std(euclidean_distances)
+        all_cross_distances = base_distances + train_distances
+        overall_mean = np.mean(all_cross_distances)
+        overall_std = np.std(all_cross_distances)
 
         summary_text = f"""
-📊 Distance Analysis Summary:
-• Total sentence pairs: {total_pairs}
-• Overall mean distance: {overall_mean:.4f}
-• Standard deviation: {overall_std:.4f}
-• English mean: {en_mean:.4f}
-• Korean mean: {ko_mean:.4f}
-• Language difference: {abs(en_mean - ko_mean):.4f}
+📊 Cross-Lingual Distance Analysis Summary:
+• Total translation pairs: {total_pairs}
+• Base model mean EN-KO distance: {base_mean:.4f}
+• Training model mean EN-KO distance: {train_mean:.4f}
+• Overall standard deviation: {overall_std:.4f}
+• Model difference: {abs(base_mean - train_mean):.4f}
 
 💡 Interpretation:
-• Higher distance = More divergent between models
-• Lower distance = More similar between models
-• Cross-lingual consistency: {'Good' if abs(en_mean - ko_mean) < 0.01 else 'Moderate' if abs(en_mean - ko_mean) < 0.05 else 'Poor'}
+• Distance = Euclidean distance between EN and KO embeddings within same model
+• Lower distance = Better cross-lingual alignment
+• Model comparison: {'Training improved' if train_mean < base_mean else 'Base better' if base_mean < train_mean else 'Similar'} cross-lingual alignment
         """
 
         fig.text(0.02, 0.02, summary_text, fontsize=9, verticalalignment='bottom',
@@ -1407,6 +1422,20 @@ def plot_dual_model_pca_comparison(dual_embeddings, output_path):
                     label=f'Train-{lang}', edgecolors='black', linewidth=0.5
                 )
 
+        # Add translation pair connection lines
+        # Connect EN-KO pairs within same model (base: 0↔1, 2↔3, 4↔5, etc.)
+        for i in range(0, n_samples, 2):  # Process pairs: (0,1), (2,3), (4,5), etc.
+            if i+1 < n_samples:
+                # Base model connections (thin blue lines)
+                ax.plot([base_reduced[i, 0], base_reduced[i+1, 0]],
+                       [base_reduced[i, 1], base_reduced[i+1, 1]],
+                       'b-', alpha=0.4, linewidth=1, zorder=1)
+
+                # Training model connections (thin red lines)
+                ax.plot([train_reduced[i, 0], train_reduced[i+1, 0]],
+                       [train_reduced[i, 1], train_reduced[i+1, 1]],
+                       'r-', alpha=0.4, linewidth=1, zorder=1)
+
         # Add index labels (only indices, not full text)
         for i in range(n_samples):
             # Base model labels
@@ -1422,7 +1451,7 @@ def plot_dual_model_pca_comparison(dual_embeddings, output_path):
         # Set labels and title
         ax.set_xlabel(f'PCA Component 1 ({pca.explained_variance_ratio_[0]:.1%} variance)')
         ax.set_ylabel(f'PCA Component 2 ({pca.explained_variance_ratio_[1]:.1%} variance)')
-        ax.set_title('Base vs Training Model - PCA Comparison\n(Circles=Base, Triangles=Training)', fontsize=14, pad=20)
+        ax.set_title('Base vs Training Model - PCA Comparison\n(Circles=Base, Triangles=Training, Lines=Translation Pairs)', fontsize=14, pad=20)
 
         # Add legend
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -1803,6 +1832,20 @@ def plot_dual_model_comparison(dual_embeddings, output_path, method='tsne'):
                     label=f'Train-{lang}', edgecolors='black', linewidth=0.5
                 )
 
+        # Add translation pair connection lines
+        # Connect EN-KO pairs within same model (base: 0↔1, 2↔3, 4↔5, etc.)
+        for i in range(0, n_samples, 2):  # Process pairs: (0,1), (2,3), (4,5), etc.
+            if i+1 < n_samples:
+                # Base model connections (thin blue lines)
+                ax.plot([base_reduced[i, 0], base_reduced[i+1, 0]],
+                       [base_reduced[i, 1], base_reduced[i+1, 1]],
+                       'b-', alpha=0.4, linewidth=1, zorder=1)
+
+                # Training model connections (thin red lines)
+                ax.plot([train_reduced[i, 0], train_reduced[i+1, 0]],
+                       [train_reduced[i, 1], train_reduced[i+1, 1]],
+                       'r-', alpha=0.4, linewidth=1, zorder=1)
+
         # Add index labels (only indices, not full text)
         for i in range(n_samples):
             # Base model labels
@@ -1818,7 +1861,7 @@ def plot_dual_model_comparison(dual_embeddings, output_path, method='tsne'):
         # Set labels and title
         ax.set_xlabel(f'{method_name} Component 1')
         ax.set_ylabel(f'{method_name} Component 2')
-        ax.set_title(f'Base vs Training Model - {method_name} Comparison\n(Circles=Base, Triangles=Training)', fontsize=14, pad=20)
+        ax.set_title(f'Base vs Training Model - {method_name} Comparison\n(Circles=Base, Triangles=Training, Lines=Translation Pairs)', fontsize=14, pad=20)
 
         # Add legend
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')

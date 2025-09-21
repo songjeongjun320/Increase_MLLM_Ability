@@ -37,6 +37,19 @@ def load_olmo_model():
     logger.info(f"  - UNK: {tokenizer.unk_token} (ID: {tokenizer.unk_token_id})")
     logger.info(f"  - Padding side: {tokenizer.padding_side}")
     
+    # 의심스러운 고ID 토큰들 확인
+    logger.info("🔍 고ID 토큰들 샘플 확인:")
+    suspicious_ids = [94788, 53271, 62891, 25971, 84009, 65287, 77081, 88270]
+    for token_id in suspicious_ids:
+        if token_id < len(tokenizer):
+            try:
+                token_text = tokenizer.decode([token_id])
+                logger.info(f"  ID {token_id} → '{token_text}' (valid)")
+            except:
+                logger.error(f"  ID {token_id} → decode failed")
+        else:
+            logger.error(f"  ID {token_id} → out of vocab range ({len(tokenizer)})")
+    
     # 기본 토크나이저 테스트
     logger.info("🧪 STEP 2: 기본 토크나이저 테스트")
     test_text = "Hello world"
@@ -170,36 +183,64 @@ def interactive_chat(model, tokenizer):
     print("🔧 각 단계별로 다른 설정을 테스트합니다")
     print("="*60)
     
+    # 문제 토큰들을 강력하게 차단
+    bad_words = [
+        "setattr", "PrivateKey", "TestCase", "ForcedSuppressWarnings", 
+        "komm", "aight", "ılı", "dernier", "cplusplus", "yscale", 
+        "ış", "DLL", "paged", "RI", "despre", "empire", "FLICT"
+    ]
+    bad_words_ids = []
+    for word in bad_words:
+        try:
+            word_ids = tokenizer.encode(word, add_special_tokens=False)
+            if len(word_ids) > 0:
+                bad_words_ids.append(word_ids)
+        except:
+            continue
+    
+    # 고ID 토큰들 직접 차단 (90000 이상)
+    high_id_tokens = []
+    for token_id in range(90000, len(tokenizer)):
+        high_id_tokens.append([token_id])
+    
+    all_bad_ids = bad_words_ids + high_id_tokens
+    logger.info(f"🚫 차단할 토큰: {len(bad_words_ids)}개 단어 + {len(high_id_tokens)}개 고ID 토큰")
+
     test_configs = [
         {
-            "name": "1️⃣ 최소 설정 (Greedy)",
+            "name": "1️⃣ 강력 필터링 (Greedy)",
             "params": {
                 "max_new_tokens": 20,
                 "do_sample": False,
                 "pad_token_id": tokenizer.pad_token_id,
                 "eos_token_id": tokenizer.eos_token_id,
+                "bad_words_ids": all_bad_ids,
             }
         },
         {
-            "name": "2️⃣ 기본 샘플링",
+            "name": "2️⃣ 보수적 샘플링",
             "params": {
                 "max_new_tokens": 30,
                 "do_sample": True,
-                "temperature": 1.0,
+                "temperature": 0.5,  # 낮은 온도
+                "top_k": 20,         # 상위 20개만
                 "pad_token_id": tokenizer.pad_token_id,
                 "eos_token_id": tokenizer.eos_token_id,
+                "bad_words_ids": all_bad_ids,
             }
         },
         {
-            "name": "3️⃣ 안전한 샘플링",
+            "name": "3️⃣ 극보수 설정",
             "params": {
-                "max_new_tokens": 50,
+                "max_new_tokens": 15,
                 "do_sample": True,
-                "temperature": 0.8,
-                "top_p": 0.95,
-                "repetition_penalty": 1.05,
+                "temperature": 0.3,   # 매우 낮은 온도
+                "top_k": 10,          # 상위 10개만
+                "top_p": 0.8,         # 낮은 top_p
+                "repetition_penalty": 1.2,  # 강한 반복 방지
                 "pad_token_id": tokenizer.pad_token_id,
                 "eos_token_id": tokenizer.eos_token_id,
+                "bad_words_ids": all_bad_ids,
             }
         }
     ]

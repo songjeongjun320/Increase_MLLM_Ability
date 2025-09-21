@@ -295,7 +295,7 @@ def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False,
     return final_prompt
 
 
-def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
+def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
     """
     Process a single prompt with retry logic for answer extraction failures
     Only retries when answer extraction fails (not on genuine model errors)
@@ -312,18 +312,24 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
             with torch.inference_mode():
                 # OLMo 모델 전용 생성 파라미터 (단일 샘플)
                 if "olmo" in config.name.lower():
+                    # OLMo 모델 디버깅 정보
+                    logger.info(f"OLMo 디버깅: PAD={tokenizer.pad_token_id}, EOS={tokenizer.eos_token_id}, BOS={getattr(tokenizer, 'bos_token_id', None)}")
+                    logger.info(f"OLMo 디버깅: Input shape={inputs['input_ids'].shape}")
+                    
                     generation_kwargs = {
                         "max_new_tokens": 512,
+                        "min_new_tokens": 10,        # 최소 10토큰은 생성하도록 강제
                         "do_sample": True,           # OLMo 필수: 샘플링 활성화
-                        "temperature": 0.3,          # 더 보수적인 온도 설정
-                        "top_p": 0.9,               # nucleus sampling
-                        "top_k": 40,                # top-k sampling
+                        "temperature": 0.7,          # 온도를 다시 올려서 생성 활성화
+                        "top_p": 0.95,              # nucleus sampling 범위 확대
+                        "top_k": 50,                # top-k 범위 확대
                         "pad_token_id": tokenizer.pad_token_id,
                         "eos_token_id": tokenizer.eos_token_id,
                         "use_cache": True,
-                        "repetition_penalty": 1.1,  # 반복 방지 강화
-                        "length_penalty": 1.0       # 길이 패널티 추가
+                        "repetition_penalty": 1.05,  # 반복 방지 완화
+                        "length_penalty": 0.8       # 길이 패널티 완화 (더 긴 생성 유도)
                     }
+                    logger.info(f"OLMo 생성 파라미터: {generation_kwargs}")
                 else:
                     # 다른 모델들은 기존 파라미터 유지
                     generation_kwargs = {
@@ -342,6 +348,11 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
             output_only_tokens = outputs[:, input_lengths:]
             generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
             last_generated_text = generated_text  # Always store the actual generated text
+            
+            # OLMo 디버깅: 생성 결과 확인
+            if "olmo" in config.name.lower():
+                logger.info(f"OLMo 디버깅: Output shape={outputs.shape}, Generated tokens={output_only_tokens.shape}")
+                logger.info(f"OLMo 디버깅: Generated text length={len(generated_text)}, Text preview='{generated_text[:100]}'")
             
             # Try to extract answer
             extracted_answer = extract_answer_robust(generated_text)
@@ -721,17 +732,18 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             if "olmo" in config.name.lower():
                                 generation_kwargs = {
                                     "max_new_tokens": 512,
+                                    "min_new_tokens": 10,        # 최소 10토큰은 생성하도록 강제
                                     "do_sample": True,           # OLMo 필수: 샘플링 활성화
-                                    "temperature": 0.3,          # 더 보수적인 온도 설정
-                                    "top_p": 0.9,               # nucleus sampling
-                                    "top_k": 40,                # top-k sampling
+                                    "temperature": 0.7,          # 온도를 다시 올려서 생성 활성화
+                                    "top_p": 0.95,              # nucleus sampling 범위 확대
+                                    "top_k": 50,                # top-k 범위 확대
                                     "pad_token_id": tokenizer.pad_token_id,
                                     "eos_token_id": tokenizer.eos_token_id,
                                     "use_cache": True,
-                                    "repetition_penalty": 1.1,  # 반복 방지 강화
-                                    "length_penalty": 1.0       # 길이 패널티 추가
+                                    "repetition_penalty": 1.05,  # 반복 방지 완화
+                                    "length_penalty": 0.8       # 길이 패널티 완화 (더 긴 생성 유도)
                                 }
-                                logger.debug("OLMo 전용 생성 파라미터 사용 (보수적 설정)")
+                                logger.debug("OLMo 전용 생성 파라미터 사용 (생성 활성화 설정)")
                             else:
                                 # 다른 모델들은 기존 파라미터 유지
                                 generation_kwargs = {
@@ -785,7 +797,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                 prompt = create_3shot_prompt(item, examples_to_use, dataset_type, 
                                                             add_bos_token=add_bos_for_olmo, 
                                                             bos_token=tokenizer.bos_token if add_bos_for_olmo else "")
-                                retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
+                                retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt, config)
                             
                                 if retry_answer is not None:
                                     generated_text_log = retry_text

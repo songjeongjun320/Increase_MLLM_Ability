@@ -305,8 +305,8 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
     """
     last_generated_text = None  # Store the last generated text for debugging
     
-    # Always try at least once, even if max_retries is 0
-    total_attempts = max(1, max_retries + 1)  # At least 1 attempt
+    # max_retries=0: 1번만 시도, max_retries>0: retry 포함
+    total_attempts = max_retries + 1
     
     for attempt in range(total_attempts):
         try:
@@ -344,7 +344,12 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
             
             input_lengths = inputs['input_ids'].shape[1]
             output_only_tokens = outputs[:, input_lengths:]
-            generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+            # OLMo의 경우 special tokens을 포함해서 디코딩 시도
+            if "olmo" in config.name.lower():
+                generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=False).strip()
+                logger.info(f"OLMo 디버깅: Special tokens 포함 디코딩")
+            else:
+                generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
             last_generated_text = generated_text  # Always store the actual generated text
             
             # OLMo 디버깅: 생성 결과 확인
@@ -529,6 +534,16 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             test_tokens = tokenizer.encode(test_text)
             test_decoded = tokenizer.decode(test_tokens)
             logger.info(f"OLMo 토크나이저 테스트 - 원본: '{test_text}' -> 디코딩: '{test_decoded}'")
+            logger.info(f"OLMo 토크나이저 테스트 - 토큰 IDs: {test_tokens}")
+            
+            # 문제가 있는 토큰들 개별 테스트
+            problem_tokens = [88270, 77081, 22301, 73971]
+            for token_id in problem_tokens:
+                try:
+                    decoded_token = tokenizer.decode([token_id])
+                    logger.info(f"OLMo 문제 토큰 {token_id} -> '{decoded_token}'")
+                except Exception as e:
+                    logger.error(f"OLMo 토큰 {token_id} 디코딩 실패: {e}")
 
         # === TOKENIZER VERIFICATION ===
         tokenizer_status = check_tow_tokens_for_eval(
@@ -646,6 +661,23 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
 
         model.eval()
         logger.info("Model and tokenizer loaded successfully.")
+        
+        # OLMo 모델 상세 정보 확인
+        if "olmo" in config.name.lower():
+            model_embed_size = model.get_input_embeddings().weight.shape[0]
+            tokenizer_vocab_size = len(tokenizer)
+            logger.info(f"OLMo 모델 임베딩 크기: {model_embed_size}")
+            logger.info(f"OLMo 토크나이저 vocab 크기: {tokenizer_vocab_size}")
+            
+            if model_embed_size != tokenizer_vocab_size:
+                logger.error(f"❌ OLMo 크기 불일치: 모델 {model_embed_size} vs 토크나이저 {tokenizer_vocab_size}")
+            else:
+                logger.info("✅ OLMo 모델과 토크나이저 크기 일치")
+                
+            # 모델 설정 정보
+            logger.info(f"OLMo 모델 설정: {model.config}")
+            logger.info(f"OLMo 모델 dtype: {model.dtype}")
+            logger.info(f"OLMo 모델 device: {next(model.parameters()).device}")
 
         # Gemma 모델에서만 컴파일 비활성화
         if "gemma" in config.name.lower():

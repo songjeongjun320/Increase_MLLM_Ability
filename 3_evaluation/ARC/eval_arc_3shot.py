@@ -332,7 +332,7 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
                     
                     # OLMo under-trained tokens 문제 해결
                     generation_kwargs = {
-                        "max_new_tokens": 256,      # 토큰 수 줄이기
+                        "max_new_tokens": 512,      # 원래 토큰 수 유지
                         "do_sample": True,          # 샘플링 활성화
                         "temperature": 0.7,         # 온도 설정
                         "top_p": 0.9,              # Top-p 샘플링
@@ -797,7 +797,7 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                         continue
                                 
                                 generation_kwargs = {
-                                    "max_new_tokens": 256,      # 토큰 수 줄이기
+                                    "max_new_tokens": 512,      # 원래 토큰 수 유지
                                     "do_sample": True,          # 샘플링 활성화
                                     "temperature": 0.7,         # 온도 설정
                                     "top_p": 0.9,              # Top-p 샘플링

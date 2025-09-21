@@ -237,11 +237,12 @@ KO_ARC_5SHOT_EXAMPLES = [
 ]
 
 # --- Helper Functions for 3-shot ARC Evaluation ---
-def create_3shot_prompt(item, examples, dataset_type="arc"):
+def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False, bos_token=""):
     """
     (최종 개선 버전)
     딕셔셔너리 리스트 형태의 고품질 3-shot 예제를 사용하여
     ARC / Ko-ARC 평가 프롬프트를 동적으로 생성합니다.
+    OLMo 모델의 경우 BOS 토큰을 시작에 추가합니다.
     """
     if dataset_type == "arc":
         prompt_parts = ["The following are multiple choice questions about science and reasoning. You MUST choose one of the option A~D.\n"]
@@ -285,7 +286,13 @@ def create_3shot_prompt(item, examples, dataset_type="arc"):
     # 3. 모델의 추론을 유도하는 깔끔한 시작 신호로 프롬프트를 마무리합니다.
     prompt_parts.append(f"{response_header} {cot_trigger}")
     
-    return "\n".join(prompt_parts)
+    final_prompt = "\n".join(prompt_parts)
+    
+    # OLMo 모델의 경우 BOS 토큰을 시작에 추가
+    if add_bos_token and bos_token:
+        final_prompt = bos_token + final_prompt
+    
+    return final_prompt
 
 
 def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
@@ -305,13 +312,14 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
                     generation_kwargs = {
                         "max_new_tokens": 512,
                         "do_sample": True,           # OLMo 필수: 샘플링 활성화
-                        "temperature": 0.7,          # 적절한 randomness
-                        "top_p": 0.95,              # nucleus sampling
-                        "top_k": 50,                # top-k sampling
+                        "temperature": 0.3,          # 더 보수적인 온도 설정
+                        "top_p": 0.9,               # nucleus sampling
+                        "top_k": 40,                # top-k sampling
                         "pad_token_id": tokenizer.pad_token_id,
                         "eos_token_id": tokenizer.eos_token_id,
                         "use_cache": True,
-                        "repetition_penalty": 1.05   # 반복 방지
+                        "repetition_penalty": 1.1,  # 반복 방지 강화
+                        "length_penalty": 1.0       # 길이 패널티 추가
                     }
                 else:
                     # 다른 모델들은 기존 파라미터 유지
@@ -470,20 +478,36 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
 
         # OLMo 전용 토크나이저 설정
         if "olmo" in config.name.lower():
-            # OLMo는 EOS를 PAD로 사용하면 생성이 중단되므로 UNK 토큰 사용
-            if tokenizer.unk_token:
-                tokenizer.pad_token = tokenizer.unk_token
-                logger.info(f"OLMo 모델 감지: pad_token을 unk_token으로 설정 ({tokenizer.unk_token})")
+            logger.info("OLMo 모델 감지: 특별한 토크나이저 설정 적용")
+            
+            # OLMo는 GPTNeoXTokenizerFast를 사용하며 BOS 토큰 설정이 중요함
+            if hasattr(tokenizer, '__class__') and 'GPTNeoX' in tokenizer.__class__.__name__:
+                if tokenizer.bos_token is None:
+                    tokenizer.bos_token = tokenizer.eos_token
+                    logger.info(f"OLMo GPTNeoX 토크나이저: bos_token을 eos_token으로 설정 ({tokenizer.eos_token})")
+                
+                # PAD 토큰 설정 - OLMo는 특별한 패드 토큰 사용
+                if tokenizer.pad_token is None:
+                    # OLMo는 EOS를 PAD로 사용하면 생성이 중단되므로 UNK 토큰 사용
+                    if tokenizer.unk_token:
+                        tokenizer.pad_token = tokenizer.unk_token
+                        logger.info(f"OLMo 모델: pad_token을 unk_token으로 설정 ({tokenizer.unk_token})")
+                    else:
+                        # UNK 토큰이 없는 경우 전용 패드 토큰 추가
+                        tokenizer.add_special_tokens({'pad_token': '<pad>'})
+                        logger.info("OLMo 모델: 전용 <pad> 토큰 추가")
+            
             else:
-                # UNK 토큰이 없는 경우 전용 패드 토큰 추가
-                tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-                logger.info("OLMo 모델 감지: 전용 [PAD] 토큰 추가")
+                logger.warning(f"OLMo 모델이지만 예상과 다른 토크나이저 타입: {tokenizer.__class__.__name__}")
+                # 기본 설정 적용
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
 
             # OLMo vocab size 확인
             if hasattr(tokenizer, 'vocab_size') and tokenizer.vocab_size != 50304:
                 logger.warning(f"OLMo 토크나이저 vocab size 불일치: {tokenizer.vocab_size} != 50304")
 
-            logger.info("OLMo 전용 토크나이저 설정 완료")
+            logger.info(f"OLMo 토크나이저 설정 완료 - BOS: {tokenizer.bos_token}, EOS: {tokenizer.eos_token}, PAD: {tokenizer.pad_token}")
 
         # === TOKENIZER VERIFICATION ===
         tokenizer_status = check_tow_tokens_for_eval(
@@ -635,6 +659,12 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             else:  # "ko-arc"
                 examples_to_use = KO_ARC_5SHOT_EXAMPLES
 
+            # OLMo 모델의 경우 BOS 토큰 설정 확인
+            is_olmo_model = "olmo" in config.name.lower()
+            add_bos_for_olmo = is_olmo_model and tokenizer.bos_token is not None
+            if add_bos_for_olmo:
+                logger.info(f"OLMo 모델 감지: BOS 토큰 '{tokenizer.bos_token}'을 프롬프트 시작에 추가합니다.")
+
             correct_predictions = 0
             total_predictions = 0
             errors_or_skipped = 0
@@ -670,7 +700,9 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             # Log skipped item if needed
                             continue
 
-                        prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
+                        prompt = create_3shot_prompt(item, examples_to_use, dataset_type, 
+                                                    add_bos_token=add_bos_for_olmo, 
+                                                    bos_token=tokenizer.bos_token if add_bos_for_olmo else "")
                         prompts.append(prompt)
                         ground_truths.append(ground_truth)
                         valid_items_in_batch.append(item)
@@ -687,15 +719,16 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                 generation_kwargs = {
                                     "max_new_tokens": 512,
                                     "do_sample": True,           # OLMo 필수: 샘플링 활성화
-                                    "temperature": 0.7,          # 적절한 randomness
-                                    "top_p": 0.95,              # nucleus sampling
-                                    "top_k": 50,                # top-k sampling
+                                    "temperature": 0.3,          # 더 보수적인 온도 설정
+                                    "top_p": 0.9,               # nucleus sampling
+                                    "top_k": 40,                # top-k sampling
                                     "pad_token_id": tokenizer.pad_token_id,
                                     "eos_token_id": tokenizer.eos_token_id,
                                     "use_cache": True,
-                                    "repetition_penalty": 1.05   # 반복 방지
+                                    "repetition_penalty": 1.1,  # 반복 방지 강화
+                                    "length_penalty": 1.0       # 길이 패널티 추가
                                 }
-                                logger.debug("OLMo 전용 생성 파라미터 사용")
+                                logger.debug("OLMo 전용 생성 파라미터 사용 (보수적 설정)")
                             else:
                                 # 다른 모델들은 기존 파라미터 유지
                                 generation_kwargs = {
@@ -746,7 +779,9 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             else:
                                 # Batch extraction failed, try individual retry for this item
                                 logger.warning(f"Batch extraction failed for item {batch_start + j}, attempting individual retry...")
-                                prompt = create_3shot_prompt(item, examples_to_use, dataset_type)
+                                prompt = create_3shot_prompt(item, examples_to_use, dataset_type, 
+                                                            add_bos_token=add_bos_for_olmo, 
+                                                            bos_token=tokenizer.bos_token if add_bos_for_olmo else "")
                                 retry_text, retry_answer = process_single_with_retry(model, tokenizer, prompt)
                             
                                 if retry_answer is not None:

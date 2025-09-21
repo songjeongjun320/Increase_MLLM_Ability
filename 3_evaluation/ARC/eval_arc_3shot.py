@@ -377,6 +377,15 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
                 logger.info(f"OLMo 디버깅: Output shape={outputs.shape}, Generated tokens={output_only_tokens.shape}")
                 logger.info(f"OLMo 디버깅: Generated text length={len(generated_text)}, Text preview='{generated_text[:100]}'")
                 logger.info(f"OLMo 디버깅: Raw token IDs={output_only_tokens[0][:20].tolist()}")  # 처음 20개 토큰 ID
+                
+                # 개별 토큰 디버깅
+                logger.info("OLMo 개별 토큰 분석:")
+                for i, token_id in enumerate(output_only_tokens[0][:20].tolist()):
+                    try:
+                        token_text = tokenizer.decode([token_id])
+                        logger.info(f"Token {i}: ID={token_id}, Text='{token_text}'")
+                    except Exception as e:
+                        logger.error(f"Token {i}: ID={token_id}, Decode error: {e}")
             
             # Try to extract answer
             extracted_answer = extract_answer_robust(generated_text)

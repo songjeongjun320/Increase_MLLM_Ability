@@ -22,7 +22,7 @@ import matplotlib.font_manager as fm
 import warnings
 import logging
 import os
-# import torch  # Commented out to avoid dependency
+import torch
 from typing import List, Dict, Any
 
 # Suppress warnings and logs
@@ -102,6 +102,7 @@ class ModelEmbeddingComparator:
 
     def _generate_model_embeddings(self, model, tokenizer, texts):
         """Generate embeddings using a specific model."""
+        import torch
         embeddings = []
 
         with torch.no_grad():

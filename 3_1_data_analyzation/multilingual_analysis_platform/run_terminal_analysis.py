@@ -1025,7 +1025,11 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
         def get_autoregressive_confidences(model, tokenizer, target_text, prompt="", max_length=50):
             """Extract token-by-token autoregressive generation confidences."""
+            import time
+            from tqdm import tqdm
+            
             try:
+                start_time = time.time()
                 model.eval()
                 device = next(model.parameters()).device
 
@@ -1035,6 +1039,10 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
                 # Tokenize the target text to know what we're trying to generate
                 target_tokens = tokenizer(target_text, return_tensors="pt", add_special_tokens=False)["input_ids"][0]
+                
+                # Show token count
+                total_tokens = len(target_tokens)
+                print(f"         📏 Processing {total_tokens} tokens...")
 
                 # Start with prompt (or empty)
                 if prompt:
@@ -1047,8 +1055,17 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
                 generated_text = prompt
 
                 with torch.no_grad():
+                    # Create progress bar for token processing
+                    progress_bar = tqdm(
+                        range(len(target_tokens)), 
+                        desc="         🔄 Tokens", 
+                        unit="tok",
+                        ncols=80,
+                        bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
+                    )
+                    
                     # Generate each token of the target text autoregressively
-                    for target_token_idx in range(len(target_tokens)):
+                    for target_token_idx in progress_bar:
                         target_token_id = target_tokens[target_token_idx].item()
 
                         # Prepare input for current generation step
@@ -1085,13 +1102,26 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
                             current_ids = torch.tensor([target_token_id])
 
                         generated_text += target_token_text
+                        
+                        # Update progress bar description with current token
+                        if len(target_token_text.strip()) > 0:
+                            progress_bar.set_description(f"         🔄 Token: '{target_token_text.strip()[:10]}'")
+                    
+                    progress_bar.close()
+
+                total_time = time.time() - start_time
+                print(f"         ✅ Completed in {total_time:.1f}s ({len(confidences)} tokens processed)")
 
                 return {
                     'tokens': tokens,
                     'confidences': confidences,
                     'target_text': target_text,
                     'generated_text': generated_text,
-                    'prompt': prompt
+                    'prompt': prompt,
+                    'truncated': False,  # No truncation applied
+                    'original_length': total_tokens,
+                    'processing_time': total_time,
+                    'tokens_processed': len(confidences)
                 }
 
             except Exception as e:

@@ -168,9 +168,7 @@ TEST_SENTENCES = [
     ("A container is filled with a mixture of sand and an unknown substance. What should a student do to determine whether iron particles are in the mixture? A. heat the mixture. B. filter the mixture. C. pour water into the mixture. D. pull a magnet through the mixture.", "용기에 모래와 알 수 없는 물질의 혼합물이 채워져 있습니다. 혼합물에 철 입자가 있는지 확인하려면 학생은 무엇을 해야 하나요? A. 혼합물을 가열합니다. B. 혼합물을 거릅니다. C. 혼합물에 물을 붓습니다. D. 혼합물에 자석을 통과시킵니다."),
     ("Why does the Sun appear to be the largest star when there are stars that are much larger than the Sun? A. Stars have the same temperature as the Sun. B. Stars usually appear in groups called clusters. C. The Sun is closer to Earth than other stars. D. The Sun is younger than most other stars.", "태양보다 훨씬 더 큰 별들이 있는데 왜 태양이 가장 큰 별처럼 보일까요? A. 별들이 태양과 같은 온도를 가지고 있기 때문입니다. B.별들은 보통 성단의 형태로 무리를 지어 나타나기 때문입니다. C. 태양이 다른 별들보다 지구에 더 가깝기 때문입니다. D. 태양이 대부분의 다른 별보다 젊기 때문입니다."),
     ("Which of these is an environmental benefit of converting to solar energy? A. a decrease in air pollution. B. an increase in the cost of energy. C. an increase in the use of fossil fuels. D. a decrease in electrical energy production.", "다음 중 태양 에너지로 전환하는 것의 환경적 이점은 무엇인가요? A. 대기 오염 감소. B. 에너지 비용 증가. C. 화석 연료 사용 증가. D. 전기 에너지 생산량 감소."),
-    ("Which statement best describes a structural adaptation that helps an organism survive in a desert? A. A bird builds its nest in a cactus. B. A rattlesnake shakes its tail when threatened. C. A lizard crawls under a rock for shelter. D. The ears of a jackrabbit release heat.", "다음 중 생명체가 사막에서 생존하는 데 도움이 되는 구조적 적응을 가장 잘 설명하는 것은? A. 새가 선인장에 둥지를 짓습니다. B. 방울뱀이 위협을 받을 때 꼬리를 흔듭니다. C. 도마뱀이 바위 밑으로 기어가 은신처를 찾습니다. D. 토끼의 귀가 열을 방출합니다."),
-
-
+    ("Which statement best describes a structural adaptation that helps an organism survive in a desert? A. A bird builds its nest in a cactus. B. A rattlesnake shakes its tail when threatened. C. A lizard crawls under a rock for shelter. D. The ears of a jackrabbit release heat.", "다음 중 생명체가 사막에서 생존하는 데 도움이 되는 구조적 적응을 가장 잘 설명하는 것은? A. 새가 선인장에 둥지를 짓습니다. B. 방울뱀이 위협을 받을 때 꼬리를 흔듭니다. C. 도마뱀이 바위 밑으로 기어가 은신처를 찾습니다. D. 토끼의 귀가 열을 방출합니다.")
 ]
 
 # 분석 옵션

@@ -667,20 +667,25 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                 logger.error(f"Failed to load LoRA adapter from {absolute_adapter_path}: {e}")
                 raise e
         else:
-            # 베이스 모델인 경우 기존 로직 사용
-            # OLMo 모델은 임베딩 리사이즈 생략 (이미 최적화된 크기)
+            # 모델-토크나이저 호환성 확인 및 조정
+            model_embed_size = model.get_input_embeddings().weight.shape[0]
+            tokenizer_vocab_size = len(tokenizer)
+            
             if "olmo" in config.name.lower():
-                current_embed_size = model.get_input_embeddings().weight.shape[0]
-                tokenizer_size = len(tokenizer)
-                logger.info(f"OLMo 모델: 임베딩 크기 {current_embed_size}, 토크나이저 크기 {tokenizer_size}")
-                if current_embed_size != tokenizer_size:
-                    logger.warning(f"OLMo 모델: 임베딩 리사이즈 생략 (모델 무결성 보호)")
+                logger.info(f"OLMo 모델 임베딩 크기: {model_embed_size}")
+                logger.info(f"OLMo 토크나이저 vocab 크기: {tokenizer_vocab_size}")
+                
+                if model_embed_size != tokenizer_vocab_size:
+                    logger.error(f"❌ OLMo 크기 불일치 발견! 모델: {model_embed_size}, 토크나이저: {tokenizer_vocab_size}")
+                    logger.info("🔧 OLMo 토큰 임베딩 크기 조정 중... (이것이 corrupted output의 주요 원인일 가능성 높음)")
+                    model.resize_token_embeddings(len(tokenizer))
+                    logger.info("✅ OLMo 토큰 임베딩 크기 조정 완료")
                 else:
-                    logger.info("OLMo 모델: 임베딩 크기 일치, 리사이즈 불필요")
+                    logger.info("✅ OLMo 모델과 토크나이저 크기 일치")
             else:
                 # 다른 모델들은 기존 로직 사용
-                if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-                    logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+                if model_embed_size != tokenizer_vocab_size:
+                    logger.info(f"Resizing model token embeddings from {model_embed_size} to {tokenizer_vocab_size}")
                     model.resize_token_embeddings(len(tokenizer))
             logger.info("No LoRA adapter path specified. Using the base model directly.")
 

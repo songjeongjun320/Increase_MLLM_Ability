@@ -2,7 +2,7 @@ import os
 import torch
 import warnings
 import transformers
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
 
 # 경고 및 로깅 설정
@@ -10,7 +10,6 @@ os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 transformers.logging.set_verbosity_error()
 warnings.filterwarnings("ignore")
 
-# 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -19,321 +18,177 @@ MODEL_PATH = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 
-def load_olmo_model():
-    """OLMo 모델과 토크나이저 로드"""
+def load_olmo_model_fixed():
+    """수정된 OLMo 모델 로드 함수"""
     logger.info(f"Loading OLMo model from: {MODEL_PATH}")
     
-    # 토크나이저 로드 - 기본 설정으로 시도
-    logger.info("🔧 STEP 1: 기본 토크나이저 로드")
+    # 토크나이저 로드
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, cache_dir=CACHE_DIR)
     
-    # 토크나이저 기본 정보 확인
-    logger.info(f"📊 원본 토크나이저 정보:")
-    logger.info(f"  - Class: {tokenizer.__class__.__name__}")
-    logger.info(f"  - Vocab size: {len(tokenizer)}")
-    logger.info(f"  - PAD: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
-    logger.info(f"  - EOS: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
-    logger.info(f"  - BOS: {tokenizer.bos_token} (ID: {tokenizer.bos_token_id})")
-    logger.info(f"  - UNK: {tokenizer.unk_token} (ID: {tokenizer.unk_token_id})")
-    logger.info(f"  - Padding side: {tokenizer.padding_side}")
-    
-    # 의심스러운 고ID 토큰들 확인
-    logger.info("🔍 고ID 토큰들 샘플 확인:")
-    suspicious_ids = [94788, 53271, 62891, 25971, 84009, 65287, 77081, 88270]
-    for token_id in suspicious_ids:
-        if token_id < len(tokenizer):
-            try:
-                token_text = tokenizer.decode([token_id])
-                logger.info(f"  ID {token_id} → '{token_text}' (valid)")
-            except:
-                logger.error(f"  ID {token_id} → decode failed")
-        else:
-            logger.error(f"  ID {token_id} → out of vocab range ({len(tokenizer)})")
-    
-    # 기본 토크나이저 테스트
-    logger.info("🧪 STEP 2: 기본 토크나이저 테스트")
-    test_text = "Hello world"
-    test_tokens = tokenizer.encode(test_text)
-    test_decoded = tokenizer.decode(test_tokens)
-    logger.info(f"  Test encode/decode: '{test_text}' -> {test_tokens} -> '{test_decoded}'")
-    
-    # 문제 토큰들 확인
-    logger.info("🚨 STEP 3: 문제 토큰들 확인")
-    problem_words = ["setattr", "PrivateKey", "TestCase", "ForcedSuppressWarnings"]
-    for word in problem_words:
-        try:
-            word_tokens = tokenizer.encode(word, add_special_tokens=False)
-            word_decoded = tokenizer.decode(word_tokens)
-            logger.info(f"  '{word}' -> {word_tokens} -> '{word_decoded}'")
-        except Exception as e:
-            logger.error(f"  '{word}' -> ERROR: {e}")
-    
-    # 최소한의 토크나이저 설정만 적용
-    logger.info("⚙️ STEP 4: 최소한의 토크나이저 설정")
+    # PAD 토큰 설정
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-        logger.info(f"  PAD token set to EOS: {tokenizer.eos_token}")
     
-    # padding_side는 기본값 유지 (right)
-    logger.info(f"  Padding side: {tokenizer.padding_side} (기본값 유지)")
-    
-    # 모델 로드 - 양자화 없이
-    logger.info("🤖 STEP 5: 모델 로드 (양자화 없음)")
+    # 모델 로드
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_PATH,
-        torch_dtype=torch.float16,  # bfloat16 대신 float16 사용
+        torch_dtype=torch.float16,
         device_map=DEVICE,
         trust_remote_code=True,
         cache_dir=CACHE_DIR,
         low_cpu_mem_usage=True
     )
     
+    # 임베딩 크기 동기화 - 토크나이저 크기에 맞춤
+    model.resize_token_embeddings(len(tokenizer))
     model.eval()
-    logger.info("✅ Model loaded successfully")
     
-    # 모델-토크나이저 호환성 확인
-    logger.info("🔍 STEP 6: 모델-토크나이저 호환성 확인")
-    model_embed_size = model.get_input_embeddings().weight.shape[0]
-    tokenizer_vocab_size = len(tokenizer)
-    logger.info(f"  Model embedding size: {model_embed_size}")
-    logger.info(f"  Tokenizer vocab size: {tokenizer_vocab_size}")
-    
-    if model_embed_size != tokenizer_vocab_size:
-        logger.error(f"❌ 크기 불일치! 모델: {model_embed_size}, 토크나이저: {tokenizer_vocab_size}")
-        logger.info("🔧 토큰 임베딩 크기 조정 시도...")
-        model.resize_token_embeddings(len(tokenizer))
-        logger.info("✅ 토큰 임베딩 크기 조정 완료")
-    else:
-        logger.info("✅ 모델과 토크나이저 크기 일치")
-    
-    logger.info(f"  Model dtype: {model.dtype}")
-    logger.info(f"  Model device: {next(model.parameters()).device}")
+    logger.info(f"✅ Model loaded with embedding size: {model.get_input_embeddings().weight.shape[0]}")
     
     return model, tokenizer
 
-def test_simple_generation(model, tokenizer, prompt, test_name):
-    """간단한 생성 테스트"""
-    logger.info(f"\n=== {test_name} ===")
-    logger.info(f"Input prompt: '{prompt}'")
+def create_token_filter(tokenizer, max_vocab_size=50000):
+    """
+    안전한 토큰만 사용하도록 필터 생성
+    - 낮은 ID의 잘 훈련된 토큰만 허용
+    - 문제가 되는 고ID 토큰 차단
+    """
+    # 차단할 특정 단어들
+    blocked_words = [
+        "setattr", "PrivateKey", "TestCase", "ForcedSuppressWarnings",
+        "komm", "aight", "ılı", "dernier", "cplusplus", "yscale",
+        "GLOSS", "VERTISE", "obao", "iyor", "Mey"
+    ]
     
-    # 토크나이저 테스트
-    inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
-    logger.info(f"Input shape: {inputs['input_ids'].shape}")
-    logger.info(f"Input tokens: {inputs['input_ids'][0].tolist()}")
+    # 차단할 토큰 ID 수집
+    blocked_ids = set()
     
-    # Bad words 필터 (under-trained tokens 차단)
-    bad_words = ["setattr", "ForcedSuppressWarnings", "RI", "kommsetattr", "despre", "empire", "FLICT", "PrivateKey", "TestCase"]
-    bad_words_ids = []
-    for word in bad_words:
+    # 특정 단어들의 ID 수집
+    for word in blocked_words:
         try:
-            word_ids = tokenizer.encode(word, add_special_tokens=False)
-            if len(word_ids) > 0:
-                bad_words_ids.append(word_ids)
+            ids = tokenizer.encode(word, add_special_tokens=False)
+            blocked_ids.update(ids)
         except:
-            continue
+            pass
     
-    # 생성 파라미터
-    generation_kwargs = {
-        "max_new_tokens": 100,
+    # 고ID 토큰 차단 (50000 이상)
+    for i in range(max_vocab_size, len(tokenizer)):
+        blocked_ids.add(i)
+    
+    return list(blocked_ids)
+
+def safe_generate(model, tokenizer, prompt, max_new_tokens=50):
+    """
+    안전한 생성 함수
+    - Top-k 필터링으로 고품질 토큰만 선택
+    - 문제 토큰 차단
+    - 보수적인 샘플링 파라미터
+    """
+    inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
+    
+    # 차단할 토큰 ID 리스트 생성
+    bad_words_ids = create_token_filter(tokenizer)
+    
+    # 보수적인 생성 파라미터
+    generation_config = {
+        "max_new_tokens": max_new_tokens,
         "do_sample": True,
-        "temperature": 0.7,
+        "temperature": 0.3,  # 매우 낮은 온도
+        "top_k": 50,  # 상위 50개 토큰만 고려
         "top_p": 0.9,
-        "repetition_penalty": 1.1,
+        "repetition_penalty": 1.2,
         "pad_token_id": tokenizer.pad_token_id,
         "eos_token_id": tokenizer.eos_token_id,
-        "use_cache": True,
+        "bad_words_ids": [[id] for id in bad_words_ids[:1000]],  # 처음 1000개만 (메모리 제한)
+        "min_length": inputs['input_ids'].shape[1] + 5,  # 최소 5개 토큰은 생성
     }
     
-    if bad_words_ids:
-        generation_kwargs["bad_words_ids"] = bad_words_ids
-        logger.info(f"Bad words filter applied: {len(bad_words_ids)} words")
-    
-    logger.info(f"Generation parameters: {generation_kwargs}")
-    
-    # 생성
     with torch.inference_mode():
-        outputs = model.generate(**inputs, **generation_kwargs)
+        outputs = model.generate(**inputs, **generation_config)
     
-    # 결과 분석
-    input_length = inputs['input_ids'].shape[1]
-    output_only_tokens = outputs[:, input_length:]
-    generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+    # 입력 부분 제외하고 생성된 부분만 디코딩
+    generated_ids = outputs[:, inputs['input_ids'].shape[1]:]
+    generated_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
     
-    logger.info(f"Output shape: {outputs.shape}")
-    logger.info(f"Generated tokens: {output_only_tokens.shape}")
-    logger.info(f"Generated token IDs: {output_only_tokens[0].tolist()}")
-    logger.info(f"Generated text: '{generated_text}'")
-    
-    # 개별 토큰 분석
-    logger.info("Individual token analysis:")
-    for i, token_id in enumerate(output_only_tokens[0].tolist()):
-        try:
-            token_text = tokenizer.decode([token_id])
-            logger.info(f"  Token {i}: ID={token_id}, Text='{token_text}'")
-        except Exception as e:
-            logger.error(f"  Token {i}: ID={token_id}, Decode error: {e}")
+    # 후처리: 이상한 문자 제거
+    import re
+    generated_text = re.sub(r'[^\w\s\.\,\!\?\-\']', ' ', generated_text)
+    generated_text = ' '.join(generated_text.split())  # 중복 공백 제거
     
     return generated_text
 
-def interactive_chat(model, tokenizer):
-    """대화형 채팅 함수"""
+def interactive_chat_fixed(model, tokenizer):
+    """개선된 대화형 채팅"""
     print("\n" + "="*60)
-    print("🤖 OLMo 진단 모드 - 단계별 테스트")
-    print("💡 질문을 입력하세요 (종료: 'quit', 'exit', 'q')")
-    print("🔧 각 단계별로 다른 설정을 테스트합니다")
+    print("🤖 수정된 OLMo 채팅 모드")
+    print("💡 안전한 토큰만 사용하도록 필터링됨")
+    print("📝 종료: 'quit', 'exit', 'q'")
     print("="*60)
-    
-    # 문제 토큰들을 강력하게 차단
-    bad_words = [
-        "setattr", "PrivateKey", "TestCase", "ForcedSuppressWarnings", 
-        "komm", "aight", "ılı", "dernier", "cplusplus", "yscale", 
-        "ış", "DLL", "paged", "RI", "despre", "empire", "FLICT"
-    ]
-    bad_words_ids = []
-    for word in bad_words:
-        try:
-            word_ids = tokenizer.encode(word, add_special_tokens=False)
-            if len(word_ids) > 0:
-                bad_words_ids.append(word_ids)
-        except:
-            continue
-    
-    # 고ID 토큰들 직접 차단 (90000 이상)
-    high_id_tokens = []
-    for token_id in range(90000, len(tokenizer)):
-        high_id_tokens.append([token_id])
-    
-    all_bad_ids = bad_words_ids + high_id_tokens
-    logger.info(f"🚫 차단할 토큰: {len(bad_words_ids)}개 단어 + {len(high_id_tokens)}개 고ID 토큰")
-
-    test_configs = [
-        {
-            "name": "1️⃣ 강력 필터링 (Greedy)",
-            "params": {
-                "max_new_tokens": 20,
-                "do_sample": False,
-                "pad_token_id": tokenizer.pad_token_id,
-                "eos_token_id": tokenizer.eos_token_id,
-                "bad_words_ids": all_bad_ids,
-            }
-        },
-        {
-            "name": "2️⃣ 보수적 샘플링",
-            "params": {
-                "max_new_tokens": 30,
-                "do_sample": True,
-                "temperature": 0.5,  # 낮은 온도
-                "top_k": 20,         # 상위 20개만
-                "pad_token_id": tokenizer.pad_token_id,
-                "eos_token_id": tokenizer.eos_token_id,
-                "bad_words_ids": all_bad_ids,
-            }
-        },
-        {
-            "name": "3️⃣ 극보수 설정",
-            "params": {
-                "max_new_tokens": 15,
-                "do_sample": True,
-                "temperature": 0.3,   # 매우 낮은 온도
-                "top_k": 10,          # 상위 10개만
-                "top_p": 0.8,         # 낮은 top_p
-                "repetition_penalty": 1.2,  # 강한 반복 방지
-                "pad_token_id": tokenizer.pad_token_id,
-                "eos_token_id": tokenizer.eos_token_id,
-                "bad_words_ids": all_bad_ids,
-            }
-        }
-    ]
-    
-    current_config = 0
     
     while True:
         try:
-            # 사용자 입력 받기
-            user_input = input(f"\n👤 사용자 [{test_configs[current_config]['name']}]: ").strip()
+            user_input = input("\n👤 사용자: ").strip()
             
-            # 종료 조건
-            if user_input.lower() in ['quit', 'exit', 'q', '종료']:
-                print("👋 대화를 종료합니다!")
+            if user_input.lower() in ['quit', 'exit', 'q']:
+                print("👋 종료합니다!")
                 break
             
-            # 설정 변경
-            if user_input.lower() in ['next', 'n', '다음']:
-                current_config = (current_config + 1) % len(test_configs)
-                print(f"🔄 설정 변경: {test_configs[current_config]['name']}")
-                continue
-            
-            if user_input.lower() in ['prev', 'p', '이전']:
-                current_config = (current_config - 1) % len(test_configs)
-                print(f"🔄 설정 변경: {test_configs[current_config]['name']}")
-                continue
-            
             if not user_input:
-                print("❓ 질문을 입력하세요 (next/prev로 설정 변경)")
                 continue
             
-            print(f"\n🧪 테스트 중: {test_configs[current_config]['name']}")
+            print("🤔 생성 중...")
             
-            # 토크나이저 처리
-            inputs = tokenizer(user_input, return_tensors="pt").to(DEVICE)
-            print(f"📥 입력 토큰 수: {inputs['input_ids'].shape[1]}")
-            print(f"📥 입력 토큰 IDs: {inputs['input_ids'][0].tolist()}")
+            # 안전한 생성 함수 사용
+            response = safe_generate(model, tokenizer, user_input)
             
-            # 현재 설정으로 생성
-            generation_kwargs = test_configs[current_config]["params"].copy()
-            print(f"⚙️ 생성 설정: {generation_kwargs}")
+            print(f"🤖 OLMo: {response}")
             
-            # 생성
-            with torch.inference_mode():
-                outputs = model.generate(**inputs, **generation_kwargs)
-            
-            # 결과 추출
-            input_length = inputs['input_ids'].shape[1]
-            output_only_tokens = outputs[:, input_length:]
-            
-            print(f"📤 출력 토큰 수: {output_only_tokens.shape[1]}")
-            print(f"📤 출력 토큰 IDs: {output_only_tokens[0].tolist()}")
-            
-            # 각 토큰을 개별적으로 디코딩해서 확인
-            print("🔍 개별 토큰 분석:")
-            for j, token_id in enumerate(output_only_tokens[0].tolist()):
-                try:
-                    token_text = tokenizer.decode([token_id])
-                    print(f"   Token {j}: ID={token_id} → '{token_text}'")
-                except Exception as e:
-                    print(f"   Token {j}: ID={token_id} → 디코딩 오류: {e}")
-            
-            # 전체 텍스트 디코딩
-            generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
-            print(f"\n🤖 OLMo 전체 답변: '{generated_text}'")
-            
-            # 다음 설정으로 자동 변경
-            if len(generated_text) > 100 or "setattr" in generated_text.lower():
-                print("⚠️ 문제가 있는 출력 감지됨")
-            else:
-                print("✅ 정상적인 출력으로 보임")
+            # 품질 체크
+            if len(response) < 10 or any(bad in response.lower() for bad in ['setattr', 'gloss', 'vertise']):
+                print("⚠️ 출력 품질이 낮습니다. 모델 재조정이 필요할 수 있습니다.")
         
         except KeyboardInterrupt:
-            print("\n\n👋 Ctrl+C로 대화를 종료합니다!")
+            print("\n\n👋 종료합니다!")
             break
         except Exception as e:
-            print(f"❌ 오류 발생: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ 오류: {e}")
             continue
+
+def test_model_quality(model, tokenizer):
+    """모델 품질 테스트"""
+    test_prompts = [
+        "The capital of France is",
+        "1 + 1 equals",
+        "Hello, my name is",
+        "The sun rises in the",
+        "Water freezes at"
+    ]
+    
+    print("\n🧪 모델 품질 테스트:")
+    print("="*60)
+    
+    for prompt in test_prompts:
+        response = safe_generate(model, tokenizer, prompt, max_new_tokens=10)
+        print(f"입력: '{prompt}'")
+        print(f"출력: '{response}'")
+        print("-"*40)
 
 def main():
     """메인 함수"""
     try:
-        # 모델 로드
-        model, tokenizer = load_olmo_model()
+        # 수정된 모델 로드
+        model, tokenizer = load_olmo_model_fixed()
         
-        # 대화형 채팅 시작
-        interactive_chat(model, tokenizer)
+        # 품질 테스트
+        test_model_quality(model, tokenizer)
+        
+        # 대화형 채팅
+        interactive_chat_fixed(model, tokenizer)
         
     except Exception as e:
         logger.error(f"Critical error: {e}")
-        print(f"❌ 치명적 오류: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()

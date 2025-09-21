@@ -319,19 +319,33 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
                     logger.info(f"OLMo 디버깅: PAD={tokenizer.pad_token_id}, EOS={tokenizer.eos_token_id}, BOS={getattr(tokenizer, 'bos_token_id', None)}")
                     logger.info(f"OLMo 디버깅: Input shape={inputs['input_ids'].shape}")
                     
-                    # OLMo 모델의 반복 토큰 문제 해결 시도
+                    # OLMo 문제 토큰들 차단
+                    bad_words = ["setattr", "ForcedSuppressWarnings", "RI", "kommsetattr", "despre", "empire", "FLICT", "PrivateKey", "TestCase"]
+                    bad_words_ids = []
+                    for word in bad_words:
+                        try:
+                            word_ids = tokenizer.encode(word, add_special_tokens=False)
+                            if len(word_ids) > 0:
+                                bad_words_ids.append(word_ids)
+                        except:
+                            continue
+                    
+                    # OLMo under-trained tokens 문제 해결
                     generation_kwargs = {
-                        "max_new_tokens": 512,
-                        "do_sample": True,           # 샘플링 다시 활성화
-                        "temperature": 1.0,          # 높은 온도로 다양성 증가
-                        "top_p": 0.9,               
-                        "top_k": 40,
-                        "repetition_penalty": 1.2,  # 반복 방지 강화
-                        "no_repeat_ngram_size": 3,   # 3-gram 반복 방지
+                        "max_new_tokens": 256,      # 토큰 수 줄이기
+                        "do_sample": True,          # 샘플링 활성화
+                        "temperature": 0.7,         # 온도 설정
+                        "top_p": 0.9,              # Top-p 샘플링
+                        "repetition_penalty": 1.1, # 반복 방지
                         "pad_token_id": tokenizer.pad_token_id,
                         "eos_token_id": tokenizer.eos_token_id,
                         "use_cache": True,
                     }
+                    
+                    # Bad words 필터 추가
+                    if bad_words_ids:
+                        generation_kwargs["bad_words_ids"] = bad_words_ids
+                        logger.info(f"OLMo Bad words 필터 적용: {len(bad_words_ids)}개 단어")
                     logger.info("OLMo 임시 설정: 반복 방지 파라미터 적용")
                     logger.info(f"OLMo 생성 파라미터: {generation_kwargs}")
                 else:
@@ -350,10 +364,10 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
             
             input_lengths = inputs['input_ids'].shape[1]
             output_only_tokens = outputs[:, input_lengths:]
-            # OLMo의 경우 special tokens을 포함해서 디코딩 시도
+            # OLMo의 경우 special tokens을 제거해서 디코딩 (under-trained tokens 문제 해결)
             if "olmo" in config.name.lower():
-                generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=False).strip()
-                logger.info(f"OLMo 디버깅: Special tokens 포함 디코딩")
+                generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+                logger.info(f"OLMo 디버깅: Special tokens 제거 디코딩")
             else:
                 generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
             last_generated_text = generated_text  # Always store the actual generated text
@@ -500,32 +514,28 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
-        # OLMo 전용 토크나이저 설정
+        # OLMo 전용 토크나이저 설정 개선 (under-trained tokens 문제 해결)
         if "olmo" in config.name.lower():
-            logger.info("OLMo 모델 감지: 특별한 토크나이저 설정 적용")
+            logger.info("OLMo 모델 감지: under-trained tokens 문제 해결을 위한 토크나이저 설정")
             
-            # OLMo는 GPTNeoXTokenizerFast를 사용하며 BOS 토큰 설정이 중요함
-            if hasattr(tokenizer, '__class__') and 'GPTNeoX' in tokenizer.__class__.__name__:
-                if tokenizer.bos_token is None:
-                    tokenizer.bos_token = tokenizer.eos_token
-                    logger.info(f"OLMo GPTNeoX 토크나이저: bos_token을 eos_token으로 설정 ({tokenizer.eos_token})")
-                
-                # PAD 토큰 설정 - OLMo는 특별한 패드 토큰 사용
-                if tokenizer.pad_token is None:
-                    # OLMo는 EOS를 PAD로 사용하면 생성이 중단되므로 UNK 토큰 사용
-                    if tokenizer.unk_token:
-                        tokenizer.pad_token = tokenizer.unk_token
-                        logger.info(f"OLMo 모델: pad_token을 unk_token으로 설정 ({tokenizer.unk_token})")
-                    else:
-                        # UNK 토큰이 없는 경우 전용 패드 토큰 추가
-                        tokenizer.add_special_tokens({'pad_token': '<pad>'})
-                        logger.info("OLMo 모델: 전용 <pad> 토큰 추가")
-            
-            else:
-                logger.warning(f"OLMo 모델이지만 예상과 다른 토크나이저 타입: {tokenizer.__class__.__name__}")
-                # 기본 설정 적용
-                if tokenizer.pad_token is None:
+            # 기본 특수 토큰 설정
+            if tokenizer.pad_token is None:
+                if tokenizer.unk_token:
+                    tokenizer.pad_token = tokenizer.unk_token
+                    logger.info(f"OLMo PAD 토큰: UNK 토큰 사용 ({tokenizer.unk_token})")
+                else:
+                    # 기존 vocab에서 사용되지 않는 토큰으로 설정
                     tokenizer.pad_token = tokenizer.eos_token
+                    logger.info(f"OLMo PAD 토큰: EOS 토큰 사용 ({tokenizer.eos_token})")
+            
+            # BOS 토큰 설정 개선
+            if tokenizer.bos_token is None:
+                tokenizer.bos_token = tokenizer.eos_token
+                logger.info(f"OLMo BOS 토큰: EOS 토큰 사용 ({tokenizer.eos_token})")
+            
+            # 토크나이저 패딩 방향 설정
+            tokenizer.padding_side = 'left'
+            logger.info("OLMo 토크나이저: left padding 설정")
 
             # OLMo vocab size 확인
             if hasattr(tokenizer, 'vocab_size') and tokenizer.vocab_size != 50304:
@@ -718,11 +728,11 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
             else:  # "ko-arc"
                 examples_to_use = KO_ARC_5SHOT_EXAMPLES
 
-            # OLMo 모델의 경우 BOS 토큰 설정 확인
+            # OLMo 모델의 경우 BOS 토큰 추가 비활성화 (under-trained tokens 문제 해결)
             is_olmo_model = "olmo" in config.name.lower()
-            add_bos_for_olmo = is_olmo_model and tokenizer.bos_token is not None
-            if add_bos_for_olmo:
-                logger.info(f"OLMo 모델 감지: BOS 토큰 '{tokenizer.bos_token}'을 프롬프트 시작에 추가합니다.")
+            add_bos_for_olmo = False  # OLMo는 BOS 토큰 추가하지 않음
+            if is_olmo_model:
+                logger.info("OLMo 모델 감지: BOS 토큰 추가 비활성화 (under-trained tokens 문제 해결)")
 
             correct_predictions = 0
             total_predictions = 0
@@ -775,19 +785,33 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         with torch.inference_mode():
                             # OLMo 모델 전용 생성 파라미터
                             if "olmo" in config.name.lower():
+                                # OLMo 문제 토큰들 차단
+                                bad_words = ["setattr", "ForcedSuppressWarnings", "RI", "kommsetattr", "despre", "empire", "FLICT", "PrivateKey", "TestCase"]
+                                bad_words_ids = []
+                                for word in bad_words:
+                                    try:
+                                        word_ids = tokenizer.encode(word, add_special_tokens=False)
+                                        if len(word_ids) > 0:
+                                            bad_words_ids.append(word_ids)
+                                    except:
+                                        continue
+                                
                                 generation_kwargs = {
-                                    "max_new_tokens": 512,
-                                    "do_sample": True,           # 샘플링 다시 활성화
-                                    "temperature": 1.0,          # 높은 온도로 다양성 증가
-                                    "top_p": 0.9,               
-                                    "top_k": 40,
-                                    "repetition_penalty": 1.2,  # 반복 방지 강화
-                                    "no_repeat_ngram_size": 3,   # 3-gram 반복 방지
+                                    "max_new_tokens": 256,      # 토큰 수 줄이기
+                                    "do_sample": True,          # 샘플링 활성화
+                                    "temperature": 0.7,         # 온도 설정
+                                    "top_p": 0.9,              # Top-p 샘플링
+                                    "repetition_penalty": 1.1, # 반복 방지
                                     "pad_token_id": tokenizer.pad_token_id,
                                     "eos_token_id": tokenizer.eos_token_id,
                                     "use_cache": True,
                                 }
-                                logger.debug("OLMo 임시 설정: 반복 방지 파라미터 적용")
+                                
+                                # Bad words 필터 추가
+                                if bad_words_ids:
+                                    generation_kwargs["bad_words_ids"] = bad_words_ids
+                                
+                                logger.debug("OLMo 배치: under-trained tokens 문제 해결 파라미터 적용")
                             else:
                                 # 다른 모델들은 기존 파라미터 유지
                                 generation_kwargs = {

@@ -288,9 +288,12 @@ def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False,
     
     final_prompt = "\n".join(prompt_parts)
     
-    # OLMo 모델의 경우 BOS 토큰을 시작에 추가
+    # OLMo 모델의 경우 BOS 토큰을 시작에 추가 (문제 발생 시 비활성화)
     if add_bos_token and bos_token:
-        final_prompt = bos_token + final_prompt
+        # 임시로 BOS 토큰 추가를 비활성화하여 테스트
+        # final_prompt = bos_token + final_prompt
+        logger.warning("OLMo BOS 토큰 추가 임시 비활성화 (디버깅용)")
+        pass
     
     return final_prompt
 
@@ -317,18 +320,13 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
                     logger.info(f"OLMo 디버깅: Input shape={inputs['input_ids'].shape}")
                     
                     generation_kwargs = {
-                        "max_new_tokens": 512,
-                        "min_new_tokens": 10,        # 최소 10토큰은 생성하도록 강제
-                        "do_sample": True,           # OLMo 필수: 샘플링 활성화
-                        "temperature": 0.7,          # 온도를 다시 올려서 생성 활성화
-                        "top_p": 0.95,              # nucleus sampling 범위 확대
-                        "top_k": 50,                # top-k 범위 확대
+                        "max_new_tokens": 512,       # 원래 토큰 수 유지
+                        "do_sample": False,          # 임시로 greedy decoding 사용
                         "pad_token_id": tokenizer.pad_token_id,
                         "eos_token_id": tokenizer.eos_token_id,
                         "use_cache": True,
-                        "repetition_penalty": 1.05,  # 반복 방지 완화
-                        "length_penalty": 0.8       # 길이 패널티 완화 (더 긴 생성 유도)
                     }
+                    logger.info("OLMo 임시 설정: Greedy decoding으로 테스트")
                     logger.info(f"OLMo 생성 파라미터: {generation_kwargs}")
                 else:
                     # 다른 모델들은 기존 파라미터 유지
@@ -353,6 +351,7 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
             if "olmo" in config.name.lower():
                 logger.info(f"OLMo 디버깅: Output shape={outputs.shape}, Generated tokens={output_only_tokens.shape}")
                 logger.info(f"OLMo 디버깅: Generated text length={len(generated_text)}, Text preview='{generated_text[:100]}'")
+                logger.info(f"OLMo 디버깅: Raw token IDs={output_only_tokens[0][:20].tolist()}")  # 처음 20개 토큰 ID
             
             # Try to extract answer
             extracted_answer = extract_answer_robust(generated_text)
@@ -522,6 +521,14 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                 logger.warning(f"OLMo 토크나이저 vocab size 불일치: {tokenizer.vocab_size} != 50304")
 
             logger.info(f"OLMo 토크나이저 설정 완료 - BOS: {tokenizer.bos_token}, EOS: {tokenizer.eos_token}, PAD: {tokenizer.pad_token}")
+            logger.info(f"OLMo 토크나이저 상세 정보 - 클래스: {tokenizer.__class__.__name__}, vocab_size: {len(tokenizer)}")
+            logger.info(f"OLMo 토크나이저 ID - BOS: {tokenizer.bos_token_id}, EOS: {tokenizer.eos_token_id}, PAD: {tokenizer.pad_token_id}")
+            
+            # 간단한 토크나이저 테스트
+            test_text = "Hello, this is a test."
+            test_tokens = tokenizer.encode(test_text)
+            test_decoded = tokenizer.decode(test_tokens)
+            logger.info(f"OLMo 토크나이저 테스트 - 원본: '{test_text}' -> 디코딩: '{test_decoded}'")
 
         # === TOKENIZER VERIFICATION ===
         tokenizer_status = check_tow_tokens_for_eval(
@@ -731,19 +738,13 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             # OLMo 모델 전용 생성 파라미터
                             if "olmo" in config.name.lower():
                                 generation_kwargs = {
-                                    "max_new_tokens": 512,
-                                    "min_new_tokens": 10,        # 최소 10토큰은 생성하도록 강제
-                                    "do_sample": True,           # OLMo 필수: 샘플링 활성화
-                                    "temperature": 0.7,          # 온도를 다시 올려서 생성 활성화
-                                    "top_p": 0.95,              # nucleus sampling 범위 확대
-                                    "top_k": 50,                # top-k 범위 확대
+                                    "max_new_tokens": 512,       # 원래 토큰 수 유지
+                                    "do_sample": False,          # 임시로 greedy decoding 사용
                                     "pad_token_id": tokenizer.pad_token_id,
                                     "eos_token_id": tokenizer.eos_token_id,
                                     "use_cache": True,
-                                    "repetition_penalty": 1.05,  # 반복 방지 완화
-                                    "length_penalty": 0.8       # 길이 패널티 완화 (더 긴 생성 유도)
                                 }
-                                logger.debug("OLMo 전용 생성 파라미터 사용 (생성 활성화 설정)")
+                                logger.debug("OLMo 임시 설정: Greedy decoding으로 테스트")
                             else:
                                 # 다른 모델들은 기존 파라미터 유지
                                 generation_kwargs = {

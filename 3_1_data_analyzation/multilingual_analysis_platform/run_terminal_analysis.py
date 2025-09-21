@@ -1002,22 +1002,45 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
         print(f"   🔍 Analyzing autoregressive token generation confidence...")
 
-        # Check CUDA availability and set device
+        # Optimize for A100 GPU
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"   🖥️ Using device: {device}")
-        if torch.cuda.is_available():
-            print(f"   🚀 CUDA GPU: {torch.cuda.get_device_name(0)}")
-            print(f"   💾 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
         
-        # Load models and tokenizers
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            print(f"   🚀 CUDA GPU: {gpu_name}")
+            print(f"   💾 GPU Memory: {gpu_memory:.1f} GB")
+            
+            # A100 specific optimizations
+            if "A100" in gpu_name:
+                print(f"   ⚡ A100 detected! Applying A100 optimizations...")
+                # Enable tensor core optimizations
+                torch.backends.cudnn.benchmark = True
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                print(f"   ✅ TensorCore optimizations enabled (TF32)")
+        
+        # Load models and tokenizers with A100 optimizations
         print(f"   📥 Loading base model: {base_model_path}")
         try:
             base_tokenizer = AutoTokenizer.from_pretrained(base_model_path)
-            base_model = AutoModelForCausalLM.from_pretrained(
-                base_model_path, 
-                torch_dtype=torch.float16,
-                device_map="auto" if torch.cuda.is_available() else None
-            )
+            
+            # A100 optimized loading
+            load_kwargs = {
+                "torch_dtype": torch.float16,
+                "device_map": "auto" if torch.cuda.is_available() else None,
+                "low_cpu_mem_usage": True,  # Memory efficient loading
+            }
+            
+            # Use bfloat16 for A100 if available (better precision than float16)
+            if torch.cuda.is_available() and "A100" in torch.cuda.get_device_name(0):
+                if hasattr(torch, 'bfloat16'):
+                    load_kwargs["torch_dtype"] = torch.bfloat16
+                    print(f"   🎯 Using bfloat16 for A100 (better precision)")
+            
+            base_model = AutoModelForCausalLM.from_pretrained(base_model_path, **load_kwargs)
+            
             if not torch.cuda.is_available():
                 base_model = base_model.to(device)
             if base_tokenizer.pad_token is None:
@@ -1030,11 +1053,10 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
         print(f"   📥 Loading training model: {training_model_path}")
         try:
             train_tokenizer = AutoTokenizer.from_pretrained(training_model_path)
-            train_model = AutoModelForCausalLM.from_pretrained(
-                training_model_path, 
-                torch_dtype=torch.float16,
-                device_map="auto" if torch.cuda.is_available() else None
-            )
+            
+            # Same A100 optimized loading for training model
+            train_model = AutoModelForCausalLM.from_pretrained(training_model_path, **load_kwargs)
+            
             if not torch.cuda.is_available():
                 train_model = train_model.to(device)
             if train_tokenizer.pad_token is None:
@@ -1075,14 +1097,22 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
                 tokens = []
                 generated_text = prompt
 
+                # A100 optimized inference
                 with torch.no_grad():
+                    # Enable A100 optimizations for inference
+                    if torch.cuda.is_available() and "A100" in torch.cuda.get_device_name(0):
+                        with torch.cuda.amp.autocast(dtype=torch.bfloat16 if hasattr(torch, 'bfloat16') else torch.float16):
+                            inference_optimized = True
+                    else:
+                        inference_optimized = False
+                    
                     # Create progress bar for token processing
                     progress_bar = tqdm(
                         range(len(target_tokens)), 
                         desc="         🔄 Tokens", 
                         unit="tok",
                         ncols=80,
-                        bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
+                        bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {rate_fmt}'
                     )
                     
                     # Generate each token of the target text autoregressively
@@ -1096,15 +1126,24 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
                             # If no current context, start generation
                             input_ids = torch.tensor([[]], dtype=torch.long).to(device)
 
-                        # Get model predictions for next token
-                        if input_ids.shape[1] > 0:
-                            outputs = model(input_ids=input_ids)
-                            next_token_logits = outputs.logits[0, -1, :]  # Last position logits
+                        # Get model predictions for next token (with A100 optimization)
+                        if inference_optimized:
+                            with torch.cuda.amp.autocast(dtype=torch.bfloat16 if hasattr(torch, 'bfloat16') else torch.float16):
+                                if input_ids.shape[1] > 0:
+                                    outputs = model(input_ids=input_ids)
+                                    next_token_logits = outputs.logits[0, -1, :].float()  # Convert to float32 for softmax
+                                else:
+                                    dummy_input = torch.tensor([[tokenizer.bos_token_id if tokenizer.bos_token_id else 1]]).to(device)
+                                    outputs = model(input_ids=dummy_input)
+                                    next_token_logits = outputs.logits[0, -1, :].float()
                         else:
-                            # For first token with no context, use model's initial predictions
-                            dummy_input = torch.tensor([[tokenizer.bos_token_id if tokenizer.bos_token_id else 1]]).to(device)
-                            outputs = model(input_ids=dummy_input)
-                            next_token_logits = outputs.logits[0, -1, :]
+                            if input_ids.shape[1] > 0:
+                                outputs = model(input_ids=input_ids)
+                                next_token_logits = outputs.logits[0, -1, :]
+                            else:
+                                dummy_input = torch.tensor([[tokenizer.bos_token_id if tokenizer.bos_token_id else 1]]).to(device)
+                                outputs = model(input_ids=dummy_input)
+                                next_token_logits = outputs.logits[0, -1, :]
 
                         # Get probabilities
                         probs = F.softmax(next_token_logits, dim=-1)
@@ -1118,15 +1157,15 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
                         # Add the target token to current sequence for next iteration
                         if len(current_ids) > 0:
-                            current_ids = torch.cat([current_ids, torch.tensor([target_token_id])])
+                            current_ids = torch.cat([current_ids, torch.tensor([target_token_id]).to(device)])
                         else:
-                            current_ids = torch.tensor([target_token_id])
+                            current_ids = torch.tensor([target_token_id]).to(device)
 
                         generated_text += target_token_text
                         
-                        # Update progress bar description with current token
+                        # Update progress bar with token info and speed
                         if len(target_token_text.strip()) > 0:
-                            progress_bar.set_description(f"         🔄 Token: '{target_token_text.strip()[:10]}'")
+                            progress_bar.set_description(f"         🔄 Token: '{target_token_text.strip()[:8]}'")
                     
                     progress_bar.close()
 
@@ -1214,9 +1253,16 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
         print(f"   ✅ Token confidence analysis complete: {processed}/{total_sentences} sentences processed")
 
-        # Clean up models to free memory
+        # Clean up models to free A100 memory efficiently
+        print(f"   🧹 Cleaning up GPU memory...")
         del base_model, train_model
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()  # Ensure all operations are complete
+            if "A100" in torch.cuda.get_device_name(0):
+                # A100 specific memory cleanup
+                torch.cuda.reset_peak_memory_stats()
+                print(f"   ✅ A100 memory cleaned and reset")
 
         return results
 

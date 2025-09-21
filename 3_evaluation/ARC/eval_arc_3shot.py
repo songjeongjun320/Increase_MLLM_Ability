@@ -319,14 +319,20 @@ def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
                     logger.info(f"OLMo 디버깅: PAD={tokenizer.pad_token_id}, EOS={tokenizer.eos_token_id}, BOS={getattr(tokenizer, 'bos_token_id', None)}")
                     logger.info(f"OLMo 디버깅: Input shape={inputs['input_ids'].shape}")
                     
+                    # OLMo 모델의 반복 토큰 문제 해결 시도
                     generation_kwargs = {
-                        "max_new_tokens": 512,       # 원래 토큰 수 유지
-                        "do_sample": False,          # 임시로 greedy decoding 사용
+                        "max_new_tokens": 512,
+                        "do_sample": True,           # 샘플링 다시 활성화
+                        "temperature": 1.0,          # 높은 온도로 다양성 증가
+                        "top_p": 0.9,               
+                        "top_k": 40,
+                        "repetition_penalty": 1.2,  # 반복 방지 강화
+                        "no_repeat_ngram_size": 3,   # 3-gram 반복 방지
                         "pad_token_id": tokenizer.pad_token_id,
                         "eos_token_id": tokenizer.eos_token_id,
                         "use_cache": True,
                     }
-                    logger.info("OLMo 임시 설정: Greedy decoding으로 테스트")
+                    logger.info("OLMo 임시 설정: 반복 방지 파라미터 적용")
                     logger.info(f"OLMo 생성 파라미터: {generation_kwargs}")
                 else:
                     # 다른 모델들은 기존 파라미터 유지
@@ -770,13 +776,18 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             # OLMo 모델 전용 생성 파라미터
                             if "olmo" in config.name.lower():
                                 generation_kwargs = {
-                                    "max_new_tokens": 512,       # 원래 토큰 수 유지
-                                    "do_sample": False,          # 임시로 greedy decoding 사용
+                                    "max_new_tokens": 512,
+                                    "do_sample": True,           # 샘플링 다시 활성화
+                                    "temperature": 1.0,          # 높은 온도로 다양성 증가
+                                    "top_p": 0.9,               
+                                    "top_k": 40,
+                                    "repetition_penalty": 1.2,  # 반복 방지 강화
+                                    "no_repeat_ngram_size": 3,   # 3-gram 반복 방지
                                     "pad_token_id": tokenizer.pad_token_id,
                                     "eos_token_id": tokenizer.eos_token_id,
                                     "use_cache": True,
                                 }
-                                logger.debug("OLMo 임시 설정: Greedy decoding으로 테스트")
+                                logger.debug("OLMo 임시 설정: 반복 방지 파라미터 적용")
                             else:
                                 # 다른 모델들은 기존 파라미터 유지
                                 generation_kwargs = {

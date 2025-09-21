@@ -128,39 +128,102 @@ def test_simple_generation(model, tokenizer, prompt, test_name):
     
     return generated_text
 
+def interactive_chat(model, tokenizer):
+    """대화형 채팅 함수"""
+    # Bad words 필터 (under-trained tokens 차단)
+    bad_words = ["setattr", "ForcedSuppressWarnings", "RI", "kommsetattr", "despre", "empire", "FLICT", "PrivateKey", "TestCase"]
+    bad_words_ids = []
+    for word in bad_words:
+        try:
+            word_ids = tokenizer.encode(word, add_special_tokens=False)
+            if len(word_ids) > 0:
+                bad_words_ids.append(word_ids)
+        except:
+            continue
+    
+    print("\n" + "="*60)
+    print("🤖 OLMo 대화형 테스트 시작!")
+    print("💡 질문을 입력하세요 (종료: 'quit', 'exit', 'q')")
+    print("🔧 디버깅 정보: 각 답변 후 'd' 입력")
+    print("="*60)
+    
+    while True:
+        try:
+            # 사용자 입력 받기
+            user_input = input("\n👤 사용자: ").strip()
+            
+            # 종료 조건
+            if user_input.lower() in ['quit', 'exit', 'q', '종료']:
+                print("👋 대화를 종료합니다!")
+                break
+            
+            if not user_input:
+                print("❓ 질문을 입력해주세요.")
+                continue
+            
+            # 토크나이저 처리
+            inputs = tokenizer(user_input, return_tensors="pt").to(DEVICE)
+            
+            # 생성 파라미터
+            generation_kwargs = {
+                "max_new_tokens": 150,  # 대화용으로 적당한 길이
+                "do_sample": True,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "repetition_penalty": 1.1,
+                "pad_token_id": tokenizer.pad_token_id,
+                "eos_token_id": tokenizer.eos_token_id,
+                "use_cache": True,
+            }
+            
+            if bad_words_ids:
+                generation_kwargs["bad_words_ids"] = bad_words_ids
+            
+            # 생성
+            with torch.inference_mode():
+                outputs = model.generate(**inputs, **generation_kwargs)
+            
+            # 결과 추출
+            input_length = inputs['input_ids'].shape[1]
+            output_only_tokens = outputs[:, input_length:]
+            generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+            
+            # 답변 출력
+            print(f"🤖 OLMo: {generated_text}")
+            
+            # 디버깅 정보 옵션
+            debug_input = input("\n🔧 디버깅 정보를 보시겠습니까? (d/엔터): ").strip().lower()
+            if debug_input in ['d', 'debug', 'ㄷ']:
+                print(f"📊 생성된 텍스트 길이: {len(generated_text)}")
+                print(f"🔢 Raw token IDs: {output_only_tokens[0][:15].tolist()}")
+                
+                print("🔍 개별 토큰 분석 (첫 10개):")
+                for j, token_id in enumerate(output_only_tokens[0][:10].tolist()):
+                    try:
+                        token_text = tokenizer.decode([token_id])
+                        print(f"   Token {j}: ID={token_id} → '{token_text}'")
+                    except Exception as e:
+                        print(f"   Token {j}: ID={token_id} → 디코딩 오류: {e}")
+        
+        except KeyboardInterrupt:
+            print("\n\n👋 Ctrl+C로 대화를 종료합니다!")
+            break
+        except Exception as e:
+            print(f"❌ 오류 발생: {e}")
+            continue
+
 def main():
-    """메인 테스트 함수"""
+    """메인 함수"""
     try:
         # 모델 로드
         model, tokenizer = load_olmo_model()
         
-        # 간단한 테스트들
-        test_cases = [
-            ("Hello", "Simple greeting"),
-            ("What is 2+2?", "Simple math question"),
-            ("The capital of France is", "Simple completion"),
-            ("Once upon a time", "Story beginning"),
-            ("Question: What color is the sky?\nAnswer:", "Simple Q&A format")
-        ]
-        
-        results = {}
-        for prompt, test_name in test_cases:
-            try:
-                result = test_simple_generation(model, tokenizer, prompt, test_name)
-                results[test_name] = result
-            except Exception as e:
-                logger.error(f"Error in {test_name}: {e}")
-                results[test_name] = f"ERROR: {str(e)}"
-        
-        # 결과 요약
-        logger.info("\n" + "="*50)
-        logger.info("TEST RESULTS SUMMARY")
-        logger.info("="*50)
-        for test_name, result in results.items():
-            logger.info(f"{test_name}: {result}")
+        # 대화형 채팅 시작
+        interactive_chat(model, tokenizer)
         
     except Exception as e:
         logger.error(f"Critical error: {e}")
+        print(f"❌ 치명적 오류: {e}")
 
 if __name__ == "__main__":
     main()

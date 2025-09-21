@@ -302,7 +302,10 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     """
     last_generated_text = None  # Store the last generated text for debugging
     
-    for attempt in range(max_retries):
+    # Always try at least once, even if max_retries is 0
+    total_attempts = max(1, max_retries + 1)  # At least 1 attempt
+    
+    for attempt in range(total_attempts):
         try:
             inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
             
@@ -346,23 +349,23 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
                 return generated_text, extracted_answer
             else:
                 # Answer extraction failed - try again if we have retries left
-                if attempt < max_retries - 1:
-                    logger.warning(f"Retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
+                if attempt < total_attempts - 1:
+                    logger.warning(f"Retry {attempt + 1}/{total_attempts}: Failed to extract answer, retrying...")
                     # Small delay before retry
                     time.sleep(0.1 + random.random() * 0.1)
                     continue
                 else:
-                    logger.warning(f"Final attempt failed - could not extract answer after {max_retries} attempts")
+                    logger.warning(f"Final attempt failed - could not extract answer after {total_attempts} attempts")
                     return generated_text, None
                     
         except Exception as e:
-            logger.error(f"Retry {attempt + 1}/{max_retries}: Model inference error: {e}")
-            if attempt < max_retries - 1:
+            logger.error(f"Retry {attempt + 1}/{total_attempts}: Model inference error: {e}")
+            if attempt < total_attempts - 1:
                 time.sleep(0.2 + random.random() * 0.2)
                 continue
             else:
                 # Return error info after all retries exhausted, but preserve last generated text if available
-                error_message = f"ERROR after {max_retries} attempts: {str(e)}"
+                error_message = f"ERROR after {total_attempts} attempts: {str(e)}"
                 if last_generated_text is not None:
                     return f"{error_message}\nLAST_GENERATED_TEXT: {last_generated_text}", None
                 else:

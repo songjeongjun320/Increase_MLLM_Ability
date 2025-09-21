@@ -22,7 +22,7 @@ import matplotlib.font_manager as fm
 import warnings
 import logging
 import os
-import torch
+# import torch  # Commented out to avoid dependency
 from typing import List, Dict, Any
 
 # Suppress warnings and logs

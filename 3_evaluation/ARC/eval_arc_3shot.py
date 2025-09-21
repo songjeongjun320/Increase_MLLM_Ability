@@ -293,6 +293,8 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
     Process a single prompt with retry logic for answer extraction failures
     Only retries when answer extraction fails (not on genuine model errors)
     """
+    last_generated_text = None  # Store the last generated text for debugging
+    
     for attempt in range(max_retries):
         try:
             inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
@@ -328,6 +330,7 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
             input_lengths = inputs['input_ids'].shape[1]
             output_only_tokens = outputs[:, input_lengths:]
             generated_text = tokenizer.decode(output_only_tokens[0], skip_special_tokens=True).strip()
+            last_generated_text = generated_text  # Always store the actual generated text
             
             # Try to extract answer
             extracted_answer = extract_answer_robust(generated_text)
@@ -350,10 +353,19 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
                 time.sleep(0.2 + random.random() * 0.2)
                 continue
             else:
-                # Return error info after all retries exhausted
-                return f"ERROR after {max_retries} attempts: {str(e)}", None
+                # Return error info after all retries exhausted, but preserve last generated text if available
+                error_message = f"ERROR after {max_retries} attempts: {str(e)}"
+                if last_generated_text is not None:
+                    return f"{error_message}\nLAST_GENERATED_TEXT: {last_generated_text}", None
+                else:
+                    return error_message, None
     
-    return f"EXTRACTION_FAILED after {max_retries} attempts", None
+    # If we get here, all retries were exhausted due to extraction failures
+    # Return the last generated text for debugging, not a hardcoded message
+    if last_generated_text is not None:
+        return last_generated_text, None
+    else:
+        return f"NO_GENERATION_AFTER_{max_retries}_ATTEMPTS", None
 
 def extract_answer_robust(model_output: str) -> str:
     """
@@ -760,37 +772,34 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                     logger.info(f"Retry successful for item {batch_start + j}: extracted '{retry_answer}'")
                                 else:
                                     # Even retry failed - add to failure cases
-                                    if not retry_text.startswith("ERROR"):
-                                        logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
-                                        errors_or_skipped += 1
-                                        generated_text_log = f"EXTRACTION_FAILED: {retry_text}"
-                                        failure_cases.append({
-                                            "index": batch_start + j,
-                                            "id": item.get("id", ""),
-                                            "dataset": dataset_name,
-                                            "question": item.get("question", ""),
-                                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                                            "ground_truth": ground_truth,
-                                            "predicted_answer": -1,
-                                            "raw_output": generated_text_log,
-                                            "failure_type": "extraction_failed"
-                                        })
-                                    else:
+                                    # Always preserve the actual generated text for debugging
+                                    errors_or_skipped += 1
+                                    generated_text_log = retry_text  # Use the actual generated text, not hardcoded message
+                                    
+                                    if retry_text.startswith("ERROR"):
                                         # This was a model error, not extraction failure  
                                         logger.error(f"Item {batch_start + j}: Model error: {retry_text}")
-                                        errors_or_skipped += 1
-                                        generated_text_log = retry_text
-                                        failure_cases.append({
-                                            "index": batch_start + j,
-                                            "id": item.get("id", ""),
-                                            "dataset": dataset_name,
-                                            "question": item.get("question", ""),
-                                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
-                                            "ground_truth": ground_truth,
-                                            "predicted_answer": -1,
-                                            "raw_output": generated_text_log,
-                                            "failure_type": "model_error"
-                                        })
+                                        failure_type = "model_error"
+                                    elif retry_text.startswith("NO_GENERATION"):
+                                        # No generation occurred
+                                        logger.error(f"Item {batch_start + j}: No generation: {retry_text}")
+                                        failure_type = "no_generation"
+                                    else:
+                                        # Extraction failed but we have the raw generation for debugging
+                                        logger.warning(f"Item {batch_start + j}: Failed to extract answer after retries")
+                                        failure_type = "extraction_failed"
+                                    
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": -1,
+                                        "raw_output": generated_text_log,  # Always preserve actual output
+                                        "failure_type": failure_type
+                                    })
 
                             current_item_index = batch_start + j # or find a better way to get original index
                             results_details.append({

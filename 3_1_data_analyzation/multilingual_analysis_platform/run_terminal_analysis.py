@@ -1002,13 +1002,27 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 
         print(f"   🔍 Analyzing autoregressive token generation confidence...")
 
+        # Check CUDA availability and set device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"   🖥️ Using device: {device}")
+        if torch.cuda.is_available():
+            print(f"   🚀 CUDA GPU: {torch.cuda.get_device_name(0)}")
+            print(f"   💾 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        
         # Load models and tokenizers
         print(f"   📥 Loading base model: {base_model_path}")
         try:
             base_tokenizer = AutoTokenizer.from_pretrained(base_model_path)
-            base_model = AutoModelForCausalLM.from_pretrained(base_model_path, torch_dtype=torch.float16)
+            base_model = AutoModelForCausalLM.from_pretrained(
+                base_model_path, 
+                torch_dtype=torch.float16,
+                device_map="auto" if torch.cuda.is_available() else None
+            )
+            if not torch.cuda.is_available():
+                base_model = base_model.to(device)
             if base_tokenizer.pad_token is None:
                 base_tokenizer.pad_token = base_tokenizer.eos_token
+            print(f"   ✅ Base model loaded on: {next(base_model.parameters()).device}")
         except Exception as e:
             print(f"   ⚠️ Failed to load base model: {e}")
             return None
@@ -1016,9 +1030,16 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
         print(f"   📥 Loading training model: {training_model_path}")
         try:
             train_tokenizer = AutoTokenizer.from_pretrained(training_model_path)
-            train_model = AutoModelForCausalLM.from_pretrained(training_model_path, torch_dtype=torch.float16)
+            train_model = AutoModelForCausalLM.from_pretrained(
+                training_model_path, 
+                torch_dtype=torch.float16,
+                device_map="auto" if torch.cuda.is_available() else None
+            )
+            if not torch.cuda.is_available():
+                train_model = train_model.to(device)
             if train_tokenizer.pad_token is None:
                 train_tokenizer.pad_token = train_tokenizer.eos_token
+            print(f"   ✅ Training model loaded on: {next(train_model.parameters()).device}")
         except Exception as e:
             print(f"   ⚠️ Failed to load training model: {e}")
             return None

@@ -298,12 +298,31 @@ def process_single_with_retry(model, tokenizer, prompt, max_retries=0):
             inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
             
             with torch.inference_mode():
+                # OLMo 모델 전용 생성 파라미터 (단일 샘플)
+                if "olmo" in config.name.lower():
+                    generation_kwargs = {
+                        "max_new_tokens": 512,
+                        "do_sample": True,           # OLMo 필수: 샘플링 활성화
+                        "temperature": 0.7,          # 적절한 randomness
+                        "top_p": 0.95,              # nucleus sampling
+                        "top_k": 50,                # top-k sampling
+                        "pad_token_id": tokenizer.pad_token_id,
+                        "eos_token_id": tokenizer.eos_token_id,
+                        "use_cache": True,
+                        "repetition_penalty": 1.05   # 반복 방지
+                    }
+                else:
+                    # 다른 모델들은 기존 파라미터 유지
+                    generation_kwargs = {
+                        "max_new_tokens": 512,
+                        "pad_token_id": tokenizer.pad_token_id,
+                        "eos_token_id": tokenizer.eos_token_id,
+                        "do_sample": False,
+                    }
+
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=512,
-                    pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    do_sample=False,
+                    **generation_kwargs
                 )
             
             input_lengths = inputs['input_ids'].shape[1]
@@ -437,6 +456,23 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
+        # OLMo 전용 토크나이저 설정
+        if "olmo" in config.name.lower():
+            # OLMo는 EOS를 PAD로 사용하면 생성이 중단되므로 UNK 토큰 사용
+            if tokenizer.unk_token:
+                tokenizer.pad_token = tokenizer.unk_token
+                logger.info(f"OLMo 모델 감지: pad_token을 unk_token으로 설정 ({tokenizer.unk_token})")
+            else:
+                # UNK 토큰이 없는 경우 전용 패드 토큰 추가
+                tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+                logger.info("OLMo 모델 감지: 전용 [PAD] 토큰 추가")
+
+            # OLMo vocab size 확인
+            if hasattr(tokenizer, 'vocab_size') and tokenizer.vocab_size != 50304:
+                logger.warning(f"OLMo 토크나이저 vocab size 불일치: {tokenizer.vocab_size} != 50304")
+
+            logger.info("OLMo 전용 토크나이저 설정 완료")
+
         # === TOKENIZER VERIFICATION ===
         tokenizer_status = check_tow_tokens_for_eval(
             tokenizer=tokenizer,
@@ -501,20 +537,31 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                                 target_vocab_size = tensor.shape[0]
                                 break
                 
-                if target_vocab_size:
+                # OLMo 모델은 LoRA에서도 임베딩 리사이즈 생략
+                if "olmo" in config.name.lower():
                     current_vocab_size = model.get_input_embeddings().weight.shape[0]
-                    if current_vocab_size != target_vocab_size:
-                        logger.info(f"Resizing model from {current_vocab_size} to {target_vocab_size} for LoRA compatibility")
-                        model.resize_token_embeddings(target_vocab_size)
+                    logger.info(f"OLMo LoRA: 현재 임베딩 크기 {current_vocab_size}, 타겟 크기 {target_vocab_size}")
+                    logger.warning("OLMo LoRA: 임베딩 리사이즈 생략 (모델 무결성 보호)")
                 else:
-                    # fallback: tokenizer 길이로 리사이즈
-                    if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-                        model.resize_token_embeddings(len(tokenizer))
+                    # 다른 모델들은 기존 로직 사용
+                    if target_vocab_size:
+                        current_vocab_size = model.get_input_embeddings().weight.shape[0]
+                        if current_vocab_size != target_vocab_size:
+                            logger.info(f"Resizing model from {current_vocab_size} to {target_vocab_size} for LoRA compatibility")
+                            model.resize_token_embeddings(target_vocab_size)
+                    else:
+                        # fallback: tokenizer 길이로 리사이즈
+                        if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                            model.resize_token_embeddings(len(tokenizer))
                         
             except Exception as e:
                 logger.warning(f"Could not determine LoRA vocab size: {e}. Using tokenizer length.")
-                if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-                    model.resize_token_embeddings(len(tokenizer))
+                # OLMo 모델은 예외 상황에서도 리사이즈 생략
+                if "olmo" in config.name.lower():
+                    logger.warning("OLMo 모델: 예외 상황에서도 임베딩 리사이즈 생략")
+                else:
+                    if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                        model.resize_token_embeddings(len(tokenizer))
             
             try:
                 model = PeftModel.from_pretrained(model, absolute_adapter_path)
@@ -524,9 +571,20 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                 raise e
         else:
             # 베이스 모델인 경우 기존 로직 사용
-            if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
-                logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
-                model.resize_token_embeddings(len(tokenizer))
+            # OLMo 모델은 임베딩 리사이즈 생략 (이미 최적화된 크기)
+            if "olmo" in config.name.lower():
+                current_embed_size = model.get_input_embeddings().weight.shape[0]
+                tokenizer_size = len(tokenizer)
+                logger.info(f"OLMo 모델: 임베딩 크기 {current_embed_size}, 토크나이저 크기 {tokenizer_size}")
+                if current_embed_size != tokenizer_size:
+                    logger.warning(f"OLMo 모델: 임베딩 리사이즈 생략 (모델 무결성 보호)")
+                else:
+                    logger.info("OLMo 모델: 임베딩 크기 일치, 리사이즈 불필요")
+            else:
+                # 다른 모델들은 기존 로직 사용
+                if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
+                    logger.info(f"Resizing model token embeddings from {model.get_input_embeddings().weight.shape[0]} to {len(tokenizer)}")
+                    model.resize_token_embeddings(len(tokenizer))
             logger.info("No LoRA adapter path specified. Using the base model directly.")
 
         model.eval()
@@ -536,6 +594,17 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
         if "gemma" in config.name.lower():
             torch._dynamo.config.disable = True
             logger.info("Disabled torch compilation for Gemma model")
+
+        # OLMo 모델 전용 설정
+        if "olmo" in config.name.lower():
+            torch._dynamo.config.disable = True
+            logger.info("OLMo 모델 감지: torch compilation 비활성화")
+
+            # OLMo 모델의 dtype이 bfloat16인지 확인 (권장사항)
+            if model.dtype != torch.bfloat16:
+                logger.warning(f"OLMo 모델 권장사항: 현재 dtype {model.dtype}, bfloat16 권장")
+
+            logger.info("OLMo 전용 모델 설정 완료")
             
         # --- Evaluate on both datasets ---
         all_results = {}
@@ -601,12 +670,32 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                         inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
                         
                         with torch.inference_mode():
+                            # OLMo 모델 전용 생성 파라미터
+                            if "olmo" in config.name.lower():
+                                generation_kwargs = {
+                                    "max_new_tokens": 512,
+                                    "do_sample": True,           # OLMo 필수: 샘플링 활성화
+                                    "temperature": 0.7,          # 적절한 randomness
+                                    "top_p": 0.95,              # nucleus sampling
+                                    "top_k": 50,                # top-k sampling
+                                    "pad_token_id": tokenizer.pad_token_id,
+                                    "eos_token_id": tokenizer.eos_token_id,
+                                    "use_cache": True,
+                                    "repetition_penalty": 1.05   # 반복 방지
+                                }
+                                logger.debug("OLMo 전용 생성 파라미터 사용")
+                            else:
+                                # 다른 모델들은 기존 파라미터 유지
+                                generation_kwargs = {
+                                    "max_new_tokens": 512,
+                                    "pad_token_id": tokenizer.pad_token_id,
+                                    "eos_token_id": tokenizer.eos_token_id,
+                                    "do_sample": False,
+                                }
+
                             outputs = model.generate(
                                 **inputs,
-                                max_new_tokens=512,
-                                pad_token_id=tokenizer.pad_token_id,
-                                eos_token_id=tokenizer.eos_token_id,
-                                do_sample=False,
+                                **generation_kwargs
                             )
                         
                         generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)

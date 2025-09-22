@@ -1630,17 +1630,39 @@ def plot_dual_model_clustering_quality(dual_embeddings, texts, languages, output
             kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
             cluster_labels = kmeans.fit_predict(embeddings)
 
+            # Debug information
+            print(f"      🔍 Clustering debug: {len(embeddings)} samples, {n_clusters} clusters")
+            print(f"      📊 Ground truth distribution: {np.bincount(ground_truth)}")
+            print(f"      📊 Cluster distribution: {np.bincount(cluster_labels)}")
+
             # Compute metrics
             ari = adjusted_rand_score(ground_truth, cluster_labels)
             nmi = normalized_mutual_info_score(ground_truth, cluster_labels)
-            sil = silhouette_score(embeddings, cluster_labels) if len(set(cluster_labels)) > 1 else 0
+
+            # More robust silhouette score calculation
+            if len(set(cluster_labels)) > 1 and len(embeddings) > n_clusters:
+                try:
+                    sil = silhouette_score(embeddings, cluster_labels)
+                except:
+                    sil = 0.0
+            else:
+                sil = 0.0
+
+            # Check for perfect clustering (suspicious)
+            if ari == 1.0 and nmi == 1.0:
+                print(f"      ⚠️  Warning: Perfect clustering detected (ARI=1.0, NMI=1.0)")
+                print(f"      🔍 This might indicate:")
+                print(f"          - Very well-separated language embeddings")
+                print(f"          - Insufficient data diversity")
+                print(f"          - Clustering algorithm finding trivial solution")
 
             return {
                 'ari': ari,
                 'nmi': nmi,
                 'silhouette': sil,
                 'cluster_labels': cluster_labels,
-                'cluster_centers': kmeans.cluster_centers_
+                'cluster_centers': kmeans.cluster_centers_,
+                'ground_truth': ground_truth
             }
 
         # Number of clusters (based on number of languages)
@@ -1844,26 +1866,31 @@ def plot_dual_model_clustering_quality(dual_embeddings, texts, languages, output
 
         improvement_text = "개선됨" if train_avg > base_avg else "하락함"
 
-        summary_text = f"""
-📊 클러스터링 품질 지표 분석 결과
+        # Create summary text without complex unicode characters
+        summary_text = f"""Clustering Quality Metrics Analysis Results
 
-🔍 전체 성능:
-• 베이스 모델 평균: {base_avg:.4f}
-• 학습된 모델 평균: {train_avg:.4f}
-• 변화량: {train_avg - base_avg:+.4f} ({improvement_text})
+Overall Performance:
+• Base Model Average: {base_avg:.4f}
+• Trained Model Average: {train_avg:.4f}
+• Change: {train_avg - base_avg:+.4f} ({improvement_text})
 
-📈 개별 지표 변화:
-• ARI (Adjusted Rand Index): {base_metrics['ari']:.4f} → {train_metrics['ari']:.4f} ({ari_improvement:+.4f})
-• NMI (Normalized Mutual Information): {base_metrics['nmi']:.4f} → {train_metrics['nmi']:.4f} ({nmi_improvement:+.4f})
-• Silhouette Score: {base_metrics['silhouette']:.4f} → {train_metrics['silhouette']:.4f} ({sil_improvement:+.4f})
+Individual Metric Changes:
+• ARI (Adjusted Rand Index): {base_metrics['ari']:.4f} -> {train_metrics['ari']:.4f} ({ari_improvement:+.4f})
+• NMI (Normalized Mutual Information): {base_metrics['nmi']:.4f} -> {train_metrics['nmi']:.4f} ({nmi_improvement:+.4f})
+• Silhouette Score: {base_metrics['silhouette']:.4f} -> {train_metrics['silhouette']:.4f} ({sil_improvement:+.4f})
 
-💡 평가: {quality_assessment}
+Assessment: {quality_assessment}
 
-🎯 해석 가이드:
-• ARI = 1: 완벽한 클러스터링, ARI = 0: 무작위 클러스터링
-• NMI = 1: 완벽한 예측, NMI = 0: 독립적
-• Silhouette = 1: 잘 분리됨, Silhouette = -1: 잘못된 클러스터링
-• 모든 지표에서 높은 값일수록 언어별 임베딩이 잘 구분됨을 의미
+Interpretation Guide:
+• ARI = 1: Perfect clustering, ARI = 0: Random clustering
+• NMI = 1: Perfect prediction, NMI = 0: Independent
+• Silhouette = 1: Well separated, Silhouette = -1: Poor clustering
+• Higher values indicate better language separation in embeddings
+
+Debug Information:
+• Languages detected: {unique_languages}
+• Total samples: {len(base_embeddings)}
+• Cluster count: {n_clusters}
         """
 
         ax6.text(0.02, 0.95, summary_text, transform=ax6.transAxes, fontsize=10,
@@ -1924,13 +1951,23 @@ def plot_dual_model_representation_gap(dual_embeddings, texts, languages, output
         # Configure Korean fonts
         configure_plot_korean(fig, None)
 
-        # 1. Representation Gap Distribution
+        # 1. Euclidean Distance Distribution (좌상단)
         ax1 = fig.add_subplot(gs[0, 0])
 
-        ax1.hist(representation_gaps, bins=20, alpha=0.7, color='#FF6B6B', edgecolor='black')
-        ax1.axvline(overall_gap, color='red', linestyle='--', linewidth=2, label=f'평균: {overall_gap:.4f}')
-        ax1.set_title('Representation Gap Distribution\nΔ = ||e_base - e_train||₂', fontsize=14, fontweight='bold')
-        ax1.set_xlabel('Euclidean Distance')
+        n, bins, patches = ax1.hist(representation_gaps, bins=20, alpha=0.7, color='#FF6B6B', edgecolor='black', linewidth=0.8)
+        ax1.axvline(overall_gap, color='red', linestyle='--', linewidth=2, label=f'Mean: {overall_gap:.4f}')
+
+        # Color histogram bars based on value ranges for better interpretation
+        for i, (patch, bin_val) in enumerate(zip(patches, bins[:-1])):
+            if bin_val < 1.0:
+                patch.set_facecolor('#2ECC71')  # Green for low gap (good)
+            elif bin_val < 2.0:
+                patch.set_facecolor('#F39C12')  # Orange for medium gap
+            else:
+                patch.set_facecolor('#E74C3C')  # Red for high gap (concerning)
+
+        ax1.set_title('Euclidean Distance Distribution\n(Base vs Train Models)', fontsize=12, fontweight='bold')
+        ax1.set_xlabel('Euclidean Distance (Gap)')
         ax1.set_ylabel('Frequency')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
@@ -1944,84 +1981,128 @@ Max: {np.max(representation_gaps):.4f}"""
         ax1.text(0.7, 0.95, stats_text, transform=ax1.transAxes, fontsize=9,
                 verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
 
-        # 2. Language-wise Representation Gap
+        # 2. Cosine Similarity Distribution (우상단)
         ax2 = fig.add_subplot(gs[0, 1])
 
-        lang_gaps = {}
-        for lang in set(languages):
-            lang_mask = np.array(languages) == lang
-            if np.sum(lang_mask) > 0:
-                lang_base = base_embeddings[lang_mask]
-                lang_train = train_embeddings[lang_mask]
-                lang_gap = np.mean(compute_representation_gap(lang_base, lang_train))
-                lang_gaps[lang] = lang_gap
-
-        if lang_gaps:
-            lang_names = list(lang_gaps.keys())
-            gap_values = list(lang_gaps.values())
-
-            bars = ax2.bar(lang_names, gap_values, color=['#4ECDC4', '#FFE66D'], alpha=0.8)
-            ax2.set_title('Language-wise Representation Gap\n(Lower = More Consistent)', fontweight='bold')
-            ax2.set_ylabel('Average Gap')
-            ax2.set_xlabel('Languages')
-            ax2.grid(True, alpha=0.3)
-
-            # Add value labels
-            for bar, value in zip(bars, gap_values):
-                ax2.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 0.01,
-                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold', fontsize=10)
-
-        # 3. Gap vs Text Length Analysis
-        ax3 = fig.add_subplot(gs[0, 2])
-
-        text_lengths = [len(text.split()) for text in texts]
-
-        # Create scatter plot
-        scatter = ax3.scatter(text_lengths, representation_gaps, alpha=0.6, c=representation_gaps,
-                            cmap='viridis', s=50)
-
-        # Add trend line
-        z = np.polyfit(text_lengths, representation_gaps, 1)
-        p = np.poly1d(z)
-        ax3.plot(text_lengths, p(text_lengths), "r--", alpha=0.8, linewidth=2)
-
-        ax3.set_title('Gap vs Text Length\n(Correlation Analysis)', fontweight='bold')
-        ax3.set_xlabel('Text Length (words)')
-        ax3.set_ylabel('Representation Gap')
-        ax3.grid(True, alpha=0.3)
-
-        # Add correlation coefficient
-        correlation = np.corrcoef(text_lengths, representation_gaps)[0, 1]
-        ax3.text(0.05, 0.95, f'Correlation: {correlation:.3f}', transform=ax3.transAxes,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
-
-        plt.colorbar(scatter, ax=ax3, label='Gap Value')
-
-        # 4. Cosine Similarity vs Euclidean Distance
-        ax4 = fig.add_subplot(gs[1, 0])
-
-        # Compute cosine similarities between corresponding embeddings
+        # Compute cosine similarities between corresponding embeddings (base vs train)
         cosine_sims = []
         for i in range(len(base_embeddings)):
             sim = cosine_similarity([base_embeddings[i]], [train_embeddings[i]])[0, 0]
             cosine_sims.append(sim)
         cosine_sims = np.array(cosine_sims)
 
-        scatter = ax4.scatter(cosine_sims, representation_gaps, alpha=0.6, s=50)
-        ax4.set_title('Cosine Similarity vs Euclidean Gap\n(Representation Relationship)', fontweight='bold')
-        ax4.set_xlabel('Cosine Similarity')
-        ax4.set_ylabel('Euclidean Gap')
+        n, bins, patches = ax2.hist(cosine_sims, bins=20, alpha=0.7, color='#4ECDC4', edgecolor='black', linewidth=0.8)
+        avg_cosine_sim = np.mean(cosine_sims)
+        ax2.axvline(avg_cosine_sim, color='blue', linestyle='--', linewidth=2, label=f'Mean: {avg_cosine_sim:.4f}')
+
+        # Color histogram bars based on similarity ranges for better interpretation
+        for i, (patch, bin_val) in enumerate(zip(patches, bins[:-1])):
+            if bin_val > 0.9:
+                patch.set_facecolor('#2ECC71')  # Green for high similarity (good)
+            elif bin_val > 0.7:
+                patch.set_facecolor('#F39C12')  # Orange for medium similarity
+            else:
+                patch.set_facecolor('#E74C3C')  # Red for low similarity (concerning)
+
+        ax2.set_title('Cosine Similarity Distribution\n(Base vs Train Models)', fontsize=12, fontweight='bold')
+        ax2.set_xlabel('Cosine Similarity')
+        ax2.set_ylabel('Frequency')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # Add statistics
+        sim_stats_text = f"""Statistics:
+Mean: {np.mean(cosine_sims):.4f}
+Std: {np.std(cosine_sims):.4f}
+Min: {np.min(cosine_sims):.4f}
+Max: {np.max(cosine_sims):.4f}"""
+        ax2.text(0.05, 0.95, sim_stats_text, transform=ax2.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+
+        # 3. Language-wise Gap Analysis (좌하단)
+        ax3 = fig.add_subplot(gs[0, 2])
+
+        lang_gaps = {}
+        lang_gaps_data = {}
+        for lang in set(languages):
+            lang_mask = np.array(languages) == lang
+            if np.sum(lang_mask) > 0:
+                lang_base = base_embeddings[lang_mask]
+                lang_train = train_embeddings[lang_mask]
+                lang_representation_gaps = compute_representation_gap(lang_base, lang_train)
+                lang_gaps[lang] = np.mean(lang_representation_gaps)
+                lang_gaps_data[lang] = lang_representation_gaps
+
+        if lang_gaps_data:
+            # Create box plot for language-wise gap analysis
+            lang_names = list(lang_gaps_data.keys())
+            gap_data = [lang_gaps_data[lang] for lang in lang_names]
+
+            box_colors = ['#4ECDC4', '#FFE66D']
+            bp = ax3.boxplot(gap_data, labels=lang_names, patch_artist=True,
+                           boxprops=dict(facecolor='lightblue', alpha=0.7))
+
+            # Color boxes differently for each language
+            for patch, color in zip(bp['boxes'], box_colors[:len(bp['boxes'])]):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.7)
+
+            ax3.set_title('Language-wise Gap Analysis\n(Distribution by Language)', fontsize=12, fontweight='bold')
+            ax3.set_ylabel('Representation Gap')
+            ax3.set_xlabel('Languages')
+            ax3.grid(True, alpha=0.3)
+
+            # Add mean values as text
+            for i, (lang, mean_gap) in enumerate(lang_gaps.items()):
+                ax3.text(i+1, max(gap_data[i]) + 0.05, f'μ={mean_gap:.3f}',
+                        ha='center', va='bottom', fontweight='bold', fontsize=9)
+
+        # 4. Gap vs Cosine Similarity Correlation (우하단)
+        ax4 = fig.add_subplot(gs[1, 0])
+
+        # Color points by language
+        colors = ['#4ECDC4' if lang == 'en' else '#FFE66D' for lang in languages]
+        scatter = ax4.scatter(cosine_sims, representation_gaps, alpha=0.7, s=80, c=colors,
+                            edgecolors='black', linewidth=0.8)
+
+        ax4.set_title('Gap vs Cosine Similarity Correlation\n(Base vs Train Models)', fontsize=12, fontweight='bold')
+        ax4.set_xlabel('Cosine Similarity (Base ↔ Train)')
+        ax4.set_ylabel('Euclidean Gap (Base ↔ Train)')
         ax4.grid(True, alpha=0.3)
 
         # Add trend line
         z = np.polyfit(cosine_sims, representation_gaps, 1)
         p = np.poly1d(z)
-        ax4.plot(cosine_sims, p(cosine_sims), "r--", alpha=0.8, linewidth=2)
+        ax4.plot(cosine_sims, p(cosine_sims), "r--", alpha=0.8, linewidth=2, label='Trend Line')
 
-        # Add correlation
+        # Add correlation and interpretation
         correlation = np.corrcoef(cosine_sims, representation_gaps)[0, 1]
-        ax4.text(0.05, 0.95, f'Correlation: {correlation:.3f}', transform=ax4.transAxes,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+        if correlation < -0.7:
+            interpretation = "Strong negative (Good)"
+        elif correlation < -0.3:
+            interpretation = "Moderate negative"
+        elif abs(correlation) < 0.3:
+            interpretation = "Weak correlation"
+        elif correlation < 0.7:
+            interpretation = "Moderate positive (Concern)"
+        else:
+            interpretation = "Strong positive (Concern)"
+
+        ax4.text(0.05, 0.95, f'Correlation: {correlation:.3f}\n{interpretation}', transform=ax4.transAxes,
+                bbox=dict(boxstyle="round,pad=0.4", facecolor='lightyellow', alpha=0.9), fontsize=10)
+
+        # Add quadrant interpretation
+        ax4.axhline(y=np.median(representation_gaps), color='gray', linestyle=':', alpha=0.5)
+        ax4.axvline(x=np.median(cosine_sims), color='gray', linestyle=':', alpha=0.5)
+
+        # Add legend for colors and interpretation guide
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='#4ECDC4', label='English'),
+            Patch(facecolor='#FFE66D', label='Korean'),
+            plt.Line2D([0], [0], color='r', linestyle='--', label='Trend Line')
+        ]
+        ax4.legend(handles=legend_elements, loc='upper right')
 
         # 5. Cross-lingual Gap Analysis
         ax5 = fig.add_subplot(gs[1, 1])
@@ -2107,30 +2188,38 @@ Max: {np.max(representation_gaps):.4f}"""
         consistency_score = 1 / (1 + overall_gap)  # Higher is better consistency
         avg_cosine_sim = np.mean(cosine_sims)
 
-        summary_text = f"""
-🔍 Representation Gap 분석 결과
+        # Language analysis summary
+        lang_summary = ""
+        if lang_gaps:
+            for lang, gap in lang_gaps.items():
+                lang_summary += f"• {lang}: {gap:.4f}\n"
+        else:
+            lang_summary = "• Insufficient language data"
 
-📊 전체 성능:
-• 평균 표현 차이 (Δ): {overall_gap:.4f}
-• 표준편차: {np.std(representation_gaps):.4f}
-• 일관성 점수: {consistency_score:.4f} (1에 가까울수록 좋음)
-• 평균 코사인 유사도: {avg_cosine_sim:.4f}
+        summary_text = f"""Representation Gap Analysis Results
 
-📈 언어별 분석:
-{chr(10).join([f"• {lang}: {gap:.4f}" for lang, gap in lang_gaps.items()]) if lang_gaps else "• 언어별 데이터 부족"}
+Overall Performance:
+• Average representation gap (Delta): {overall_gap:.4f}
+• Standard deviation: {np.std(representation_gaps):.4f}
+• Consistency score: {consistency_score:.4f} (closer to 1 = better)
+• Average cosine similarity (Base vs Train): {avg_cosine_sim:.4f}
 
-💡 해석: {gap_interpretation}
+Language-wise Analysis:
+{lang_summary.strip()}
 
-🎯 상세 분석:
-• 텍스트 길이와 갭 상관관계: {correlation:.3f}
-• 코사인 유사도와 유클리드 갭 상관관계: {np.corrcoef(cosine_sims, representation_gaps)[0,1]:.3f}
-• 25th 백분위수: {np.percentile(representation_gaps, 25):.4f}
-• 75th 백분위수: {np.percentile(representation_gaps, 75):.4f}
+Assessment: {gap_interpretation}
 
-📝 가이드:
-• 갭이 낮을수록 모델들이 유사한 의미 표현을 학습했음을 의미
-• 일관성 점수가 높을수록 안정적인 학습이 이루어졌음을 의미
-• 언어별 갭 차이는 다국어 처리 능력의 균형성을 나타냄
+Detailed Analysis:
+• Text length vs gap correlation: {correlation:.3f}
+• Cosine similarity vs euclidean gap correlation: {np.corrcoef(cosine_sims, representation_gaps)[0,1]:.3f}
+• 25th percentile: {np.percentile(representation_gaps, 25):.4f}
+• 75th percentile: {np.percentile(representation_gaps, 75):.4f}
+
+Interpretation Guide:
+• Lower gap = models learned similar semantic representations
+• Higher consistency score = stable learning occurred
+• Language gap differences = multilingual processing balance
+• Negative correlation (cosine vs gap) = expected relationship
         """
 
         ax7.text(0.02, 0.95, summary_text, transform=ax7.transAxes, fontsize=10,

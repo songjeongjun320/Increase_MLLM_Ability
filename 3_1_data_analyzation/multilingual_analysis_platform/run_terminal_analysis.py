@@ -2529,7 +2529,7 @@ def analyze_token_generation_confidence(base_model_path, training_model_path, te
 def plot_dual_model_token_confidence(confidence_results, output_path):
     """
     Create comprehensive autoregressive token confidence visualization.
-    Shows 32 analyses: 16 sentences (8 EN + 8 KO) × 2 models = 32 confidence plots.
+    Shows dynamic analyses: N sentences (N EN + N KO) × 2 models = 4N confidence plots.
 
     Args:
         confidence_results: Results from analyze_token_generation_confidence
@@ -2543,29 +2543,46 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
             print(f"      ⚠️ No confidence results to visualize")
             return False
 
-        # Create large visualization for 32 analyses (16 sentences × 2 models)
-        fig = plt.figure(figsize=(24, 20))
+        base_results = confidence_results['base_model_results']
+        train_results = confidence_results['training_model_results']
+
+        # Calculate actual number of sentence pairs from data
+        max_pair_id = 0
+        if confidence_results.get('sentence_pairs'):
+            max_pair_id = len(confidence_results['sentence_pairs'])
+        else:
+            # Fallback: get max pair_id from results
+            all_pair_ids = set()
+            for result in base_results + train_results:
+                all_pair_ids.add(result['pair_id'])
+            max_pair_id = max(all_pair_ids) + 1 if all_pair_ids else 8
+
+        # Create dynamic visualization based on number of sentence pairs
+        # Height scales with number of pairs (min 20, max 60)
+        height = min(60, max(20, max_pair_id * 2.5))
+        fig = plt.figure(figsize=(24, height))
 
         # Configure Korean fonts
         configure_plot_korean(fig, None)
-
-        base_results = confidence_results['base_model_results']
-        train_results = confidence_results['training_model_results']
 
         print(f"      📊 Creating visualization for {len(base_results)} base + {len(train_results)} training = {len(base_results) + len(train_results)} analyses")
 
         # Create main grid: Top for individual token plots, bottom for summaries
         gs_main = fig.add_gridspec(3, 1, height_ratios=[3, 1, 1], hspace=0.3)
 
-        # 1. Individual sentence token confidence plots (32 subplots)
-        # Arrange in 8 rows × 4 columns (2 models × 2 languages per pair)
-        gs_plots = gs_main[0].subgridspec(8, 4, hspace=0.6, wspace=0.4)
+        # 1. Individual sentence token confidence plots (dynamic subplots)
+        # Arrange in N rows × 4 columns (2 models × 2 languages per pair)
+        # Calculate number of rows needed
+        num_rows = max_pair_id
+        gs_plots = gs_main[0].subgridspec(num_rows, 4, hspace=0.6, wspace=0.4)
+
+        print(f"      📊 Found {max_pair_id} sentence pairs to visualize")
 
         max_tokens = 0
         all_confidences = []
 
         # Plot each sentence's token confidence
-        for pair_idx in range(8):  # 8 sentence pairs
+        for pair_idx in range(max_pair_id):
             row = pair_idx
 
             # Find corresponding results for this pair
@@ -2583,7 +2600,7 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
                 ax.set_ylim(0, 1)
                 ax.set_title(f'P{pair_idx} Base-EN', fontsize=8)
                 ax.grid(True, alpha=0.3)
-                if row == 7:  # Only bottom row gets x-label
+                if row == max_pair_id - 1:  # Only bottom row gets x-label
                     ax.set_xlabel('Token Position', fontsize=8)
                 max_tokens = max(max_tokens, len(confidences))
                 all_confidences.extend(confidences)
@@ -2597,7 +2614,7 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
                 ax.set_ylim(0, 1)
                 ax.set_title(f'P{pair_idx} Base-KO', fontsize=8)
                 ax.grid(True, alpha=0.3)
-                if row == 7:
+                if row == max_pair_id - 1:
                     ax.set_xlabel('Token Position', fontsize=8)
                 max_tokens = max(max_tokens, len(confidences))
                 all_confidences.extend(confidences)
@@ -2611,7 +2628,7 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
                 ax.set_ylim(0, 1)
                 ax.set_title(f'P{pair_idx} Train-EN', fontsize=8)
                 ax.grid(True, alpha=0.3)
-                if row == 7:
+                if row == max_pair_id - 1:
                     ax.set_xlabel('Token Position', fontsize=8)
                 max_tokens = max(max_tokens, len(confidences))
                 all_confidences.extend(confidences)
@@ -2625,7 +2642,7 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
                 ax.set_ylim(0, 1)
                 ax.set_title(f'P{pair_idx} Train-KO', fontsize=8)
                 ax.grid(True, alpha=0.3)
-                if row == 7:
+                if row == max_pair_id - 1:
                     ax.set_xlabel('Token Position', fontsize=8)
                 max_tokens = max(max_tokens, len(confidences))
                 all_confidences.extend(confidences)
@@ -2667,9 +2684,9 @@ def plot_dual_model_token_confidence(confidence_results, output_path):
 📊 Autoregressive Token Confidence Analysis Summary:
 
 🔢 Analysis Scope:
-  • Total analyses: {len(base_results) + len(train_results)} (16 sentences × 2 models)
-  • English sentences: 8 × 2 models = 16 analyses
-  • Korean sentences: 8 × 2 models = 16 analyses
+  • Total analyses: {len(base_results) + len(train_results)} ({max_pair_id * 2} sentences × 2 models)
+  • English sentences: {max_pair_id} × 2 models = {max_pair_id * 2} analyses
+  • Korean sentences: {max_pair_id} × 2 models = {max_pair_id * 2} analyses
   • Max tokens per sentence: {max_tokens}
 
 📈 Model Performance:

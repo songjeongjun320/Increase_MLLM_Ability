@@ -983,6 +983,1172 @@ def plot_dual_model_singular_vector_canonical_correlation(dual_embeddings, texts
         print(f"      ⚠️ SVCCA analysis failed: {e}")
         return False
 
+def plot_dual_model_csls_analysis(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize CSLS (Cross-domain Similarity Local Scaling) between base and training models.
+    CSLS improves cross-lingual retrieval by reducing the hubness problem through local scaling.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        def compute_csls(X, Y, k=10):
+            """
+            Compute CSLS (Cross-domain Similarity Local Scaling) between two sets of embeddings.
+
+            Args:
+                X, Y: Input matrices (samples x features)
+                k: Number of nearest neighbors for local scaling
+
+            Returns:
+                CSLS matrix, r_avg_X, r_avg_Y
+            """
+            # Compute cosine similarities
+            from sklearn.metrics.pairwise import cosine_similarity
+            cos_sim = cosine_similarity(X, Y)
+
+            # Compute r_avg for X (average of k-nearest neighbors from Y)
+            r_avg_X = np.zeros(X.shape[0])
+            for i in range(X.shape[0]):
+                # Find k nearest neighbors in Y for each sample in X
+                similarities_to_Y = cos_sim[i, :]
+                top_k_indices = np.argsort(similarities_to_Y)[-k:]
+                r_avg_X[i] = np.mean(similarities_to_Y[top_k_indices])
+
+            # Compute r_avg for Y (average of k-nearest neighbors from X)
+            r_avg_Y = np.zeros(Y.shape[0])
+            for j in range(Y.shape[0]):
+                # Find k nearest neighbors in X for each sample in Y
+                similarities_to_X = cos_sim[:, j]
+                top_k_indices = np.argsort(similarities_to_X)[-k:]
+                r_avg_Y[j] = np.mean(similarities_to_X[top_k_indices])
+
+            # Compute CSLS: 2 * cos(x,y) - r_avg(x) - r_avg(y)
+            csls_matrix = np.zeros_like(cos_sim)
+            for i in range(X.shape[0]):
+                for j in range(Y.shape[0]):
+                    csls_matrix[i, j] = 2 * cos_sim[i, j] - r_avg_X[i] - r_avg_Y[j]
+
+            return csls_matrix, r_avg_X, r_avg_Y, cos_sim
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(18, 14))
+        gs = fig.add_gridspec(3, 3, height_ratios=[2, 1, 1], hspace=0.4, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. Overall CSLS analysis between base and training models
+        overall_csls, r_avg_base, r_avg_train, cos_sim = compute_csls(base_embeddings, train_embeddings, k=min(10, len(base_embeddings)-1))
+        overall_csls_score = np.mean(overall_csls)
+
+        # CSLS interpretation
+        if overall_csls_score > 0.5:
+            interpretation = "High cross-domain similarity with hubness reduction"
+        elif overall_csls_score > 0.0:
+            interpretation = "Moderate cross-domain similarity"
+        elif overall_csls_score > -0.5:
+            interpretation = "Low cross-domain similarity"
+        else:
+            interpretation = "Very low cross-domain similarity"
+
+        ax1 = fig.add_subplot(gs[0, :])
+        im1 = ax1.imshow(overall_csls, cmap='RdBu_r', aspect='auto')
+        ax1.set_title(f'CSLS Matrix: Base vs Training Models\n(Overall Score: {overall_csls_score:.4f} - {interpretation})')
+        ax1.set_xlabel('Training Model Sentences')
+        ax1.set_ylabel('Base Model Sentences')
+        plt.colorbar(im1, ax=ax1, shrink=0.8)
+
+        # Add language annotations
+        en_mask = np.array(languages) == 'en'
+        ko_mask = np.array(languages) == 'ko'
+
+        # Mark language boundaries
+        en_indices = np.where(en_mask)[0]
+        ko_indices = np.where(ko_mask)[0]
+
+        if len(en_indices) > 0 and len(ko_indices) > 0:
+            # Add vertical lines to separate languages in training model
+            ax1.axvline(x=len(en_indices)-0.5, color='white', linestyle='--', alpha=0.7, linewidth=2)
+            # Add horizontal lines to separate languages in base model
+            ax1.axhline(y=len(en_indices)-0.5, color='white', linestyle='--', alpha=0.7, linewidth=2)
+
+        # 2. Language-wise CSLS analysis
+        ax2 = fig.add_subplot(gs[1, 0])
+        lang_csls_scores = {}
+
+        for lang in set(languages):
+            mask = np.array(languages) == lang
+            if np.sum(mask) > 1:
+                lang_base = base_embeddings[mask]
+                lang_train = train_embeddings[mask]
+                lang_csls, _, _, _ = compute_csls(lang_base, lang_train, k=min(5, len(lang_base)-1))
+                lang_csls_scores[lang] = np.mean(lang_csls)
+
+        if lang_csls_scores:
+            lang_names = list(lang_csls_scores.keys())
+            csls_values = list(lang_csls_scores.values())
+            bars = ax2.bar(lang_names, csls_values, color=['#1f77b4', '#ff7f0e'], alpha=0.8)
+            ax2.set_title('CSLS Scores by Language')
+            ax2.set_ylabel('Average CSLS Score')
+            ax2.grid(True, alpha=0.3)
+
+            # Add value labels on bars
+            for bar, value in zip(bars, csls_values):
+                ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold')
+
+        # 3. Cross-lingual CSLS analysis (EN-KO pairs)
+        ax3 = fig.add_subplot(gs[1, 1])
+
+        cross_lingual_csls = {}
+        if np.sum(en_mask) > 0 and np.sum(ko_mask) > 0:
+            # Base model: EN vs KO
+            base_en = base_embeddings[en_mask]
+            base_ko = base_embeddings[ko_mask]
+            base_cross_csls, _, _, _ = compute_csls(base_en, base_ko, k=min(5, min(len(base_en), len(base_ko))-1))
+            cross_lingual_csls['Base Model'] = np.mean(base_cross_csls)
+
+            # Training model: EN vs KO
+            train_en = train_embeddings[en_mask]
+            train_ko = train_embeddings[ko_mask]
+            train_cross_csls, _, _, _ = compute_csls(train_en, train_ko, k=min(5, min(len(train_en), len(train_ko))-1))
+            cross_lingual_csls['Training Model'] = np.mean(train_cross_csls)
+
+        if cross_lingual_csls:
+            model_names = list(cross_lingual_csls.keys())
+            cross_values = list(cross_lingual_csls.values())
+            bars = ax3.bar(model_names, cross_values, color=['lightcoral', 'lightgreen'], alpha=0.8)
+            ax3.set_title('Cross-lingual CSLS\n(English ↔ Korean)')
+            ax3.set_ylabel('Average CSLS Score')
+            ax3.grid(True, alpha=0.3)
+
+            # Add value labels on bars
+            for bar, value in zip(bars, cross_values):
+                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold')
+
+        # 4. Retrieval performance simulation
+        ax4 = fig.add_subplot(gs[1, 2])
+
+        # Calculate retrieval accuracy using CSLS vs regular cosine similarity
+        def calculate_retrieval_accuracy(similarity_matrix, languages):
+            """Calculate retrieval accuracy for translation pairs."""
+            correct_retrievals = 0
+            total_pairs = 0
+
+            for i in range(0, len(languages), 2):
+                if i+1 < len(languages) and languages[i] != languages[i+1]:
+                    # This is a translation pair
+                    source_idx = i
+                    target_idx = i + 1
+
+                    # Get similarities from source to all targets
+                    similarities = similarity_matrix[source_idx, :]
+                    # Find the most similar target
+                    best_match = np.argmax(similarities)
+
+                    if best_match == target_idx:
+                        correct_retrievals += 1
+                    total_pairs += 1
+
+            return correct_retrievals / total_pairs if total_pairs > 0 else 0.0
+
+        cosine_accuracy = calculate_retrieval_accuracy(cos_sim, languages)
+        csls_accuracy = calculate_retrieval_accuracy(overall_csls, languages)
+
+        metrics = ['Cosine Similarity', 'CSLS']
+        accuracies = [cosine_accuracy, csls_accuracy]
+        bars = ax4.bar(metrics, accuracies, color=['skyblue', 'orange'], alpha=0.8)
+        ax4.set_title('Retrieval Accuracy Comparison')
+        ax4.set_ylabel('Accuracy')
+        ax4.set_ylim(0, 1)
+        ax4.grid(True, alpha=0.3)
+
+        # Add value labels
+        for bar, value in zip(bars, accuracies):
+            ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 5. CSLS interpretation and analysis table
+        ax5 = fig.add_subplot(gs[2, :])
+        ax5.axis('off')
+
+        # Create comprehensive analysis table
+        analysis_data = [
+            ['Overall CSLS', f'{overall_csls_score:.6f}', interpretation],
+            ['Cosine Similarity (baseline)', f'{np.mean(cos_sim):.6f}', 'Standard similarity without hubness correction'],
+            ['CSLS Improvement', f'{overall_csls_score - np.mean(cos_sim):.6f}', 'Hubness reduction effect'],
+            ['English CSLS', f'{lang_csls_scores.get("en", 0.0):.6f}', 'Language-specific CSLS score'],
+            ['Korean CSLS', f'{lang_csls_scores.get("ko", 0.0):.6f}', 'Language-specific CSLS score'],
+            ['Retrieval Improvement', f'{csls_accuracy - cosine_accuracy:+.3f}', 'CSLS vs Cosine accuracy gain'],
+            ['Base Cross-lingual', f'{cross_lingual_csls.get("Base Model", 0.0):.6f}', 'EN-KO alignment in base model'],
+            ['Training Cross-lingual', f'{cross_lingual_csls.get("Training Model", 0.0):.6f}', 'EN-KO alignment in training model']
+        ]
+
+        table_headers = ['Metric', 'Value', 'Interpretation']
+        table = ax5.table(cellText=analysis_data, colLabels=table_headers,
+                         cellLoc='center', loc='center', bbox=[0, 0.2, 1, 0.6])
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.8)
+
+        # Style table
+        for i in range(len(table_headers)):
+            table[(0, i)].set_facecolor('#40466e')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        # Color code rows by CSLS value
+        for i in range(1, len(analysis_data) + 1):
+            value_str = analysis_data[i-1][1]
+            try:
+                value = float(value_str.replace('+', ''))
+                if value > 0.3:
+                    color = '#ccffcc'  # Light green
+                elif value > 0.0:
+                    color = '#ffffcc'  # Light yellow
+                else:
+                    color = '#ffcccc'  # Light red
+            except:
+                color = '#f0f0f0'  # Light gray for non-numeric
+
+            for j in range(len(table_headers)):
+                table[(i, j)].set_facecolor(color)
+
+        # Add comprehensive explanation
+        explanation_text = """
+🔍 Cross-domain Similarity Local Scaling (CSLS):
+
+📚 What is CSLS?
+• CSLS addresses the "hubness problem" in high-dimensional similarity computations
+• Formula: CSLS(x,y) = 2⋅cos(x,y) - r_avg(x) - r_avg(y)
+• r_avg(x) = average similarity of x to its k nearest neighbors
+• Reduces bias toward "hub" points that appear similar to many others
+
+📊 Key Benefits:
+• Improved cross-lingual retrieval accuracy
+• Reduced hubness artifacts in embedding spaces
+• Better representation of true semantic similarities
+• More robust similarity measurements
+
+💡 Interpretation Guide:
+• CSLS > 0.5: Excellent cross-domain alignment with hubness reduction
+• CSLS 0.0-0.5: Good alignment, some hubness effects remain
+• CSLS < 0.0: Poor alignment, strong hubness bias detected
+• Improvement over cosine similarity indicates effective hubness correction
+        """
+
+        ax5.text(0.02, 0.95, explanation_text, transform=ax5.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='lightblue', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      🔍 CSLS analysis: Overall score = {overall_csls_score:.6f} ({interpretation})")
+        print(f"      📈 Retrieval improvement: {csls_accuracy - cosine_accuracy:+.3f} ({cosine_accuracy:.3f} → {csls_accuracy:.3f})")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ CSLS analysis failed: {e}")
+        return False
+
+def plot_dual_model_alignment_analysis(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize alignment metrics between base and training models.
+    Includes k-NN Neighbor Consistency and Procrustes Analysis.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        def compute_knn_neighbor_consistency(X, Y, k=10):
+            """
+            Compute k-NN Neighbor Consistency between two embedding spaces.
+
+            Formula: NC@k = (1/N) * Σ(|NN_k(x_i) ∩ NN_k(y_i)| / k)
+
+            Args:
+                X, Y: Source and target embeddings (samples x features)
+                k: Number of nearest neighbors
+
+            Returns:
+                Neighbor consistency score (0-1)
+            """
+            from sklearn.metrics.pairwise import cosine_similarity
+
+            # Compute similarity matrices
+            X_sim = cosine_similarity(X)
+            Y_sim = cosine_similarity(Y)
+
+            total_consistency = 0.0
+            n_samples = X.shape[0]
+
+            for i in range(n_samples):
+                # Find k nearest neighbors in X space (excluding self)
+                x_similarities = X_sim[i, :]
+                x_nn_indices = np.argsort(x_similarities)[::-1][1:k+1]  # Exclude self
+
+                # Find k nearest neighbors in Y space (excluding self)
+                y_similarities = Y_sim[i, :]
+                y_nn_indices = np.argsort(y_similarities)[::-1][1:k+1]  # Exclude self
+
+                # Calculate intersection
+                intersection = len(set(x_nn_indices) & set(y_nn_indices))
+                consistency = intersection / k
+                total_consistency += consistency
+
+            return total_consistency / n_samples
+
+        def compute_procrustes_analysis(X, Y):
+            """
+            Compute Procrustes Analysis to find optimal orthogonal transformation.
+
+            Formula: min ||sXR - Y||_F^2  s.t. R^T R = I
+
+            Args:
+                X, Y: Source and target embeddings (samples x features)
+
+            Returns:
+                Dictionary with transformation results
+            """
+            # Center the matrices
+            X_centered = X - np.mean(X, axis=0)
+            Y_centered = Y - np.mean(Y, axis=0)
+
+            # Compute cross-covariance matrix
+            H = X_centered.T @ Y_centered
+
+            # SVD decomposition
+            U, s, Vt = np.linalg.svd(H)
+
+            # Optimal rotation matrix
+            R = U @ Vt
+
+            # Ensure proper rotation (det(R) = 1)
+            if np.linalg.det(R) < 0:
+                Vt[-1, :] *= -1
+                R = U @ Vt
+
+            # Scale factor
+            scale = np.trace(s) / np.trace(X_centered.T @ X_centered)
+
+            # Transform X to align with Y
+            X_transformed = scale * X_centered @ R
+
+            # Compute alignment error (Frobenius norm)
+            alignment_error = np.linalg.norm(X_transformed - Y_centered, 'fro')
+
+            # Normalized alignment error
+            y_norm = np.linalg.norm(Y_centered, 'fro')
+            normalized_error = alignment_error / y_norm if y_norm > 0 else 0
+
+            return {
+                'rotation_matrix': R,
+                'scale_factor': scale,
+                'alignment_error': alignment_error,
+                'normalized_error': normalized_error,
+                'transformation_quality': 1 - normalized_error,  # Higher is better
+                'X_transformed': X_transformed + np.mean(Y, axis=0)  # Add back Y's mean
+            }
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(20, 16))
+        gs = fig.add_gridspec(4, 3, height_ratios=[2, 1, 1, 1], hspace=0.4, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. k-NN Neighbor Consistency Analysis
+        k_values = [1, 3, 5, 10, 15, 20]
+
+        # Overall consistency between base and training models
+        overall_consistencies = []
+        for k in k_values:
+            if k < len(base_embeddings):
+                consistency = compute_knn_neighbor_consistency(base_embeddings, train_embeddings, k)
+                overall_consistencies.append(consistency)
+            else:
+                overall_consistencies.append(0.0)
+
+        ax1 = fig.add_subplot(gs[0, :2])
+        ax1.plot(k_values[:len(overall_consistencies)], overall_consistencies, 'o-', linewidth=2, markersize=8, label='Base ↔ Training', color='#2E86AB')
+        ax1.set_title('k-NN Neighbor Consistency Analysis\n(Higher = Better Cross-Model Alignment)', fontsize=14)
+        ax1.set_xlabel('k (Number of Nearest Neighbors)')
+        ax1.set_ylabel('Neighbor Consistency')
+        ax1.grid(True, alpha=0.3)
+        ax1.legend()
+
+        # Add value annotations
+        for i, (k, consistency) in enumerate(zip(k_values[:len(overall_consistencies)], overall_consistencies)):
+            ax1.annotate(f'{consistency:.3f}',
+                        (k, consistency),
+                        textcoords="offset points",
+                        xytext=(0,10),
+                        ha='center', fontsize=9)
+
+        # 2. Procrustes Analysis Results
+        procrustes_result = compute_procrustes_analysis(base_embeddings, train_embeddings)
+
+        ax2 = fig.add_subplot(gs[0, 2])
+
+        # Procrustes metrics visualization
+        metrics = ['Transformation\nQuality', 'Scale Factor', 'Rotation\nDeterminant']
+        values = [
+            procrustes_result['transformation_quality'],
+            min(procrustes_result['scale_factor'], 2.0),  # Cap for visualization
+            abs(np.linalg.det(procrustes_result['rotation_matrix']))
+        ]
+
+        bars = ax2.bar(metrics, values, color=['lightgreen', 'skyblue', 'orange'], alpha=0.8)
+        ax2.set_title('Procrustes Analysis Results')
+        ax2.set_ylabel('Score')
+        ax2.set_ylim(0, 1.2)
+        ax2.grid(True, alpha=0.3)
+
+        # Add value labels
+        for bar, value in zip(bars, values):
+            ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=9)
+
+        # 3. Language-wise Neighbor Consistency
+        ax3 = fig.add_subplot(gs[1, 0])
+
+        lang_consistencies = {}
+        k_opt = 10  # Optimal k for language analysis
+
+        for lang in set(languages):
+            mask = np.array(languages) == lang
+            if np.sum(mask) > k_opt:
+                lang_base = base_embeddings[mask]
+                lang_train = train_embeddings[mask]
+                consistency = compute_knn_neighbor_consistency(lang_base, lang_train, k_opt)
+                lang_consistencies[lang] = consistency
+
+        if lang_consistencies:
+            lang_names = list(lang_consistencies.keys())
+            consistency_values = list(lang_consistencies.values())
+            bars = ax3.bar(lang_names, consistency_values, color=['#1f77b4', '#ff7f0e'], alpha=0.8)
+            ax3.set_title(f'Language-wise NC@{k_opt}')
+            ax3.set_ylabel('Neighbor Consistency')
+            ax3.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bar, value in zip(bars, consistency_values):
+                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                        f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 4. Cross-lingual Alignment Quality
+        ax4 = fig.add_subplot(gs[1, 1])
+
+        cross_lingual_alignment = {}
+        en_mask = np.array(languages) == 'en'
+        ko_mask = np.array(languages) == 'ko'
+
+        if np.sum(en_mask) > 0 and np.sum(ko_mask) > 0:
+            # Base model: EN-KO alignment
+            base_en = base_embeddings[en_mask]
+            base_ko = base_embeddings[ko_mask]
+            if len(base_en) > 5 and len(base_ko) > 5:
+                base_cross_consistency = compute_knn_neighbor_consistency(base_en, base_ko, k=min(5, min(len(base_en), len(base_ko))-1))
+                cross_lingual_alignment['Base Model'] = base_cross_consistency
+
+            # Training model: EN-KO alignment
+            train_en = train_embeddings[en_mask]
+            train_ko = train_embeddings[ko_mask]
+            if len(train_en) > 5 and len(train_ko) > 5:
+                train_cross_consistency = compute_knn_neighbor_consistency(train_en, train_ko, k=min(5, min(len(train_en), len(train_ko))-1))
+                cross_lingual_alignment['Training Model'] = train_cross_consistency
+
+        if cross_lingual_alignment:
+            model_names = list(cross_lingual_alignment.keys())
+            alignment_values = list(cross_lingual_alignment.values())
+            bars = ax4.bar(model_names, alignment_values, color=['lightcoral', 'lightgreen'], alpha=0.8)
+            ax4.set_title('Cross-lingual Alignment\n(English ↔ Korean)')
+            ax4.set_ylabel('Neighbor Consistency')
+            ax4.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bar, value in zip(bars, alignment_values):
+                ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                        f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 5. Alignment Error Analysis
+        ax5 = fig.add_subplot(gs[1, 2])
+
+        error_metrics = ['Normalized\nError', 'Alignment\nAccuracy']
+        error_values = [
+            procrustes_result['normalized_error'],
+            procrustes_result['transformation_quality']
+        ]
+        colors = ['lightcoral', 'lightgreen']
+
+        bars = ax5.bar(error_metrics, error_values, color=colors, alpha=0.8)
+        ax5.set_title('Procrustes Alignment Quality')
+        ax5.set_ylabel('Score')
+        ax5.set_ylim(0, 1)
+        ax5.grid(True, alpha=0.3)
+
+        # Add value labels
+        for bar, value in zip(bars, error_values):
+            ax5.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+
+        # 6. Detailed Analysis Table
+        ax6 = fig.add_subplot(gs[2:, :])
+        ax6.axis('off')
+
+        # Interpret overall results
+        best_k_idx = np.argmax(overall_consistencies) if overall_consistencies else 0
+        best_k = k_values[best_k_idx] if best_k_idx < len(k_values) else k_values[0]
+        best_consistency = max(overall_consistencies) if overall_consistencies else 0.0
+
+        # Create comprehensive analysis table
+        analysis_data = [
+            ['Overall Best NC', f'NC@{best_k} = {best_consistency:.6f}', 'Optimal neighbor consistency'],
+            ['Procrustes Quality', f'{procrustes_result["transformation_quality"]:.6f}', 'Orthogonal transformation quality'],
+            ['Scale Factor', f'{procrustes_result["scale_factor"]:.6f}', 'Embedding space scale difference'],
+            ['Alignment Error', f'{procrustes_result["normalized_error"]:.6f}', 'Normalized Frobenius error'],
+            ['English NC@10', f'{lang_consistencies.get("en", 0.0):.6f}', 'Language-specific consistency'],
+            ['Korean NC@10', f'{lang_consistencies.get("ko", 0.0):.6f}', 'Language-specific consistency'],
+            ['Cross-lingual Base', f'{cross_lingual_alignment.get("Base Model", 0.0):.6f}', 'EN-KO alignment in base'],
+            ['Cross-lingual Training', f'{cross_lingual_alignment.get("Training Model", 0.0):.6f}', 'EN-KO alignment in training']
+        ]
+
+        table_headers = ['Metric', 'Value', 'Interpretation']
+        table = ax6.table(cellText=analysis_data, colLabels=table_headers,
+                         cellLoc='center', loc='center', bbox=[0, 0.3, 1, 0.4])
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.8)
+
+        # Style table
+        for i in range(len(table_headers)):
+            table[(0, i)].set_facecolor('#40466e')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        # Color code rows by score value
+        for i in range(1, len(analysis_data) + 1):
+            value_str = analysis_data[i-1][1].split('=')[-1].strip() if '=' in analysis_data[i-1][1] else analysis_data[i-1][1]
+            try:
+                value = float(value_str)
+                if value > 0.7:
+                    color = '#ccffcc'  # Light green
+                elif value > 0.5:
+                    color = '#ffffcc'  # Light yellow
+                else:
+                    color = '#ffcccc'  # Light red
+            except:
+                color = '#f0f0f0'  # Light gray for non-numeric
+
+            for j in range(len(table_headers)):
+                table[(i, j)].set_facecolor(color)
+
+        # Add comprehensive explanation
+        explanation_text = """
+🔗 표현 정렬(Alignment) 평가:
+
+📚 k-NN Neighbor Consistency (NC@k):
+• 공식: NC@k = (1/N) × Σ(|NN_k(x_i) ∩ NN_k(y_i)| / k)
+• 두 임베딩 공간에서 각 점의 k-최근접 이웃이 얼마나 일치하는지 측정
+• 값이 높을수록 두 모델이 유사한 근접성 구조를 학습
+
+📐 Procrustes Analysis:
+• 공식: min ||sXR - Y||_F²  s.t. R^T R = I
+• 최적의 직교 변환을 통해 두 임베딩 공간의 정렬 품질 측정
+• Scale factor, rotation matrix, alignment error 제공
+
+💡 해석 가이드:
+• NC@k > 0.7: 매우 우수한 구조 일치성
+• NC@k 0.5-0.7: 양호한 구조 일치성
+• NC@k < 0.5: 구조적 차이 존재
+• Procrustes Quality > 0.8: 높은 정렬 품질
+        """
+
+        ax6.text(0.02, 0.95, explanation_text, transform=ax6.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='lightcyan', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      🔗 Alignment analysis: Best NC@{best_k} = {best_consistency:.6f}")
+        print(f"      📐 Procrustes quality: {procrustes_result['transformation_quality']:.6f}")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Alignment analysis failed: {e}")
+        return False
+
+def plot_dual_model_clustering_quality(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize clustering quality metrics between base and training models.
+    Includes ARI (Adjusted Rand Index), NMI (Normalized Mutual Information), and Silhouette Score.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        from sklearn.cluster import KMeans
+        from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
+        from sklearn.metrics.pairwise import pairwise_distances
+
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        # Create ground truth labels based on languages
+        unique_languages = list(set(languages))
+        language_to_id = {lang: i for i, lang in enumerate(unique_languages)}
+        ground_truth_labels = [language_to_id[lang] for lang in languages]
+
+        def compute_clustering_metrics(embeddings, ground_truth, n_clusters):
+            """Compute ARI, NMI, and Silhouette Score for given embeddings"""
+            # Perform K-means clustering
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            cluster_labels = kmeans.fit_predict(embeddings)
+
+            # Compute metrics
+            ari = adjusted_rand_score(ground_truth, cluster_labels)
+            nmi = normalized_mutual_info_score(ground_truth, cluster_labels)
+            sil = silhouette_score(embeddings, cluster_labels) if len(set(cluster_labels)) > 1 else 0
+
+            return {
+                'ari': ari,
+                'nmi': nmi,
+                'silhouette': sil,
+                'cluster_labels': cluster_labels,
+                'cluster_centers': kmeans.cluster_centers_
+            }
+
+        # Number of clusters (based on number of languages)
+        n_clusters = len(unique_languages)
+
+        # Compute metrics for both models
+        base_metrics = compute_clustering_metrics(base_embeddings, ground_truth_labels, n_clusters)
+        train_metrics = compute_clustering_metrics(train_embeddings, ground_truth_labels, n_clusters)
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(20, 16))
+        gs = fig.add_gridspec(4, 3, height_ratios=[2, 2, 1, 1], hspace=0.4, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. Clustering Quality Metrics Comparison
+        ax1 = fig.add_subplot(gs[0, 0])
+
+        metrics_names = ['ARI', 'NMI', 'Silhouette']
+        base_values = [base_metrics['ari'], base_metrics['nmi'], base_metrics['silhouette']]
+        train_values = [train_metrics['ari'], train_metrics['nmi'], train_metrics['silhouette']]
+
+        x = np.arange(len(metrics_names))
+        width = 0.35
+
+        bars1 = ax1.bar(x - width/2, base_values, width, label='Base Model', color='#FF6B6B', alpha=0.8)
+        bars2 = ax1.bar(x + width/2, train_values, width, label='Trained Model', color='#4ECDC4', alpha=0.8)
+
+        ax1.set_title('Clustering Quality Metrics\n(Higher = Better)', fontsize=14, fontweight='bold')
+        ax1.set_ylabel('Score')
+        ax1.set_xlabel('Metrics')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(metrics_names)
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        ax1.set_ylim(-0.1, 1.1)
+
+        # Add value labels on bars
+        for bars in [bars1, bars2]:
+            for bar in bars:
+                height = bar.get_height()
+                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                        f'{height:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=9)
+
+        # 2. Detailed Metrics Explanation Table
+        ax2 = fig.add_subplot(gs[0, 1:])
+        ax2.axis('off')
+
+        # Create detailed comparison table
+        table_data = [
+            ['Metric', 'Formula', 'Base Model', 'Trained Model', 'Interpretation'],
+            ['ARI', 'RI−E[RI] / max(RI)−E[RI]', f'{base_metrics["ari"]:.4f}', f'{train_metrics["ari"]:.4f}',
+             '1: Perfect, 0: Random clustering'],
+            ['NMI', '2I(U,V) / [H(U)+H(V)]', f'{base_metrics["nmi"]:.4f}', f'{train_metrics["nmi"]:.4f}',
+             '1: Perfect prediction, 0: Independent'],
+            ['Silhouette', '(b−a) / max(a,b)', f'{base_metrics["silhouette"]:.4f}', f'{train_metrics["silhouette"]:.4f}',
+             '1: Well separated, -1: Poor clustering']
+        ]
+
+        table = ax2.table(cellText=table_data[1:], colLabels=table_data[0],
+                         cellLoc='center', loc='center', bbox=[0, 0, 1, 1])
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 2)
+
+        # Style the table
+        for i in range(len(table_data)):
+            for j in range(len(table_data[0])):
+                cell = table[(i, j)]
+                if i == 0:  # Header
+                    cell.set_facecolor('#D3D3D3')
+                    cell.set_text_props(weight='bold')
+                else:
+                    if j == 2:  # Base model scores
+                        cell.set_facecolor('#FFE4E4')
+                    elif j == 3:  # Trained model scores
+                        cell.set_facecolor('#E4F7F6')
+                    else:
+                        cell.set_facecolor('#F9F9F9')
+
+        # 3. Language-wise Clustering Analysis
+        ax3 = fig.add_subplot(gs[1, 0])
+
+        # Analyze how well each language is clustered
+        lang_clustering_quality = {}
+        for lang in unique_languages:
+            lang_mask = np.array(languages) == lang
+            if np.sum(lang_mask) > 1:
+                # For each language, compute intra-cluster distance vs inter-cluster distance
+                lang_base_emb = base_embeddings[lang_mask]
+                lang_train_emb = train_embeddings[lang_mask]
+
+                # Compute intra-language distance (should be small)
+                base_intra_dist = np.mean(pairwise_distances(lang_base_emb, metric='cosine'))
+                train_intra_dist = np.mean(pairwise_distances(lang_train_emb, metric='cosine'))
+
+                lang_clustering_quality[lang] = {
+                    'base_intra': base_intra_dist,
+                    'train_intra': train_intra_dist
+                }
+
+        if lang_clustering_quality:
+            lang_names = list(lang_clustering_quality.keys())
+            base_intra_values = [lang_clustering_quality[lang]['base_intra'] for lang in lang_names]
+            train_intra_values = [lang_clustering_quality[lang]['train_intra'] for lang in lang_names]
+
+            x = np.arange(len(lang_names))
+            bars1 = ax3.bar(x - width/2, base_intra_values, width, label='Base Model', color='#FF6B6B', alpha=0.8)
+            bars2 = ax3.bar(x + width/2, train_intra_values, width, label='Trained Model', color='#4ECDC4', alpha=0.8)
+
+            ax3.set_title('Intra-Language Distance\n(Lower = Better Clustering)', fontweight='bold')
+            ax3.set_ylabel('Average Cosine Distance')
+            ax3.set_xlabel('Languages')
+            ax3.set_xticks(x)
+            ax3.set_xticklabels(lang_names)
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bars in [bars1, bars2]:
+                for bar in bars:
+                    height = bar.get_height()
+                    ax3.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                            f'{height:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=9)
+
+        # 4. Cluster Center Distances
+        ax4 = fig.add_subplot(gs[1, 1])
+
+        # Compute distances between cluster centers
+        base_centers = base_metrics['cluster_centers']
+        train_centers = train_metrics['cluster_centers']
+
+        base_center_dists = pairwise_distances(base_centers, metric='cosine')
+        train_center_dists = pairwise_distances(train_centers, metric='cosine')
+
+        # Take upper triangle (excluding diagonal)
+        mask = np.triu(np.ones_like(base_center_dists, dtype=bool), k=1)
+        base_inter_cluster_dists = base_center_dists[mask]
+        train_inter_cluster_dists = train_center_dists[mask]
+
+        ax4.hist([base_inter_cluster_dists, train_inter_cluster_dists],
+                bins=10, alpha=0.7, label=['Base Model', 'Trained Model'],
+                color=['#FF6B6B', '#4ECDC4'], edgecolor='black')
+        ax4.set_title('Inter-Cluster Center Distances\n(Higher = Better Separation)', fontweight='bold')
+        ax4.set_xlabel('Cosine Distance')
+        ax4.set_ylabel('Frequency')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+
+        # 5. Cluster Validation with Different K
+        ax5 = fig.add_subplot(gs[1, 2])
+
+        k_range = range(2, min(8, len(base_embeddings)//3))
+        base_silhouettes = []
+        train_silhouettes = []
+
+        for k in k_range:
+            base_kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            train_kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+
+            base_labels = base_kmeans.fit_predict(base_embeddings)
+            train_labels = train_kmeans.fit_predict(train_embeddings)
+
+            base_sil = silhouette_score(base_embeddings, base_labels) if len(set(base_labels)) > 1 else 0
+            train_sil = silhouette_score(train_embeddings, train_labels) if len(set(train_labels)) > 1 else 0
+
+            base_silhouettes.append(base_sil)
+            train_silhouettes.append(train_sil)
+
+        ax5.plot(list(k_range), base_silhouettes, 'o-', label='Base Model', color='#FF6B6B', linewidth=2, markersize=6)
+        ax5.plot(list(k_range), train_silhouettes, 'o-', label='Trained Model', color='#4ECDC4', linewidth=2, markersize=6)
+        ax5.axvline(x=n_clusters, color='red', linestyle='--', alpha=0.7, label=f'Target K={n_clusters}')
+        ax5.set_title('Silhouette Score vs K\n(Optimal Cluster Number)', fontweight='bold')
+        ax5.set_xlabel('Number of Clusters (K)')
+        ax5.set_ylabel('Silhouette Score')
+        ax5.legend()
+        ax5.grid(True, alpha=0.3)
+
+        # 6. Overall Assessment
+        ax6 = fig.add_subplot(gs[2:, :])
+        ax6.axis('off')
+
+        # Calculate improvement metrics
+        ari_improvement = train_metrics['ari'] - base_metrics['ari']
+        nmi_improvement = train_metrics['nmi'] - base_metrics['nmi']
+        sil_improvement = train_metrics['silhouette'] - base_metrics['silhouette']
+
+        # Determine overall clustering quality
+        base_avg = np.mean([base_metrics['ari'], base_metrics['nmi'], base_metrics['silhouette']])
+        train_avg = np.mean([train_metrics['ari'], train_metrics['nmi'], train_metrics['silhouette']])
+
+        if train_avg > 0.7:
+            quality_assessment = "매우 우수한 클러스터링 품질"
+        elif train_avg > 0.5:
+            quality_assessment = "양호한 클러스터링 품질"
+        elif train_avg > 0.3:
+            quality_assessment = "보통 클러스터링 품질"
+        else:
+            quality_assessment = "개선이 필요한 클러스터링"
+
+        improvement_text = "개선됨" if train_avg > base_avg else "하락함"
+
+        summary_text = f"""
+📊 클러스터링 품질 지표 분석 결과
+
+🔍 전체 성능:
+• 베이스 모델 평균: {base_avg:.4f}
+• 학습된 모델 평균: {train_avg:.4f}
+• 변화량: {train_avg - base_avg:+.4f} ({improvement_text})
+
+📈 개별 지표 변화:
+• ARI (Adjusted Rand Index): {base_metrics['ari']:.4f} → {train_metrics['ari']:.4f} ({ari_improvement:+.4f})
+• NMI (Normalized Mutual Information): {base_metrics['nmi']:.4f} → {train_metrics['nmi']:.4f} ({nmi_improvement:+.4f})
+• Silhouette Score: {base_metrics['silhouette']:.4f} → {train_metrics['silhouette']:.4f} ({sil_improvement:+.4f})
+
+💡 평가: {quality_assessment}
+
+🎯 해석 가이드:
+• ARI = 1: 완벽한 클러스터링, ARI = 0: 무작위 클러스터링
+• NMI = 1: 완벽한 예측, NMI = 0: 독립적
+• Silhouette = 1: 잘 분리됨, Silhouette = -1: 잘못된 클러스터링
+• 모든 지표에서 높은 값일수록 언어별 임베딩이 잘 구분됨을 의미
+        """
+
+        ax6.text(0.02, 0.95, summary_text, transform=ax6.transAxes, fontsize=10,
+                verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      📊 Clustering quality: ARI={train_metrics['ari']:.4f}, NMI={train_metrics['nmi']:.4f}, Sil={train_metrics['silhouette']:.4f}")
+        print(f"      📈 Overall quality: {quality_assessment} (평균: {train_avg:.4f})")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Clustering quality analysis failed: {e}")
+        return False
+
+def plot_dual_model_representation_gap(dual_embeddings, texts, languages, output_path):
+    """
+    Analyze and visualize representation gap between base and training models.
+    Measures the difference in semantic representation between corresponding texts.
+
+    Args:
+        dual_embeddings: Dictionary containing embeddings from both models
+        texts: List of input texts
+        languages: List of language codes
+        output_path: Path to save the plot
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+
+        base_embeddings = dual_embeddings['base_embeddings']
+        train_embeddings = dual_embeddings['train_embeddings']
+
+        def compute_representation_gap(base_emb, train_emb):
+            """
+            Compute representation gap: Δ = (1/N) * Σ ||e_en,i - e_ko,i||_2
+            Where e_en,i and e_ko,i are embeddings for same semantic content
+            """
+            # Compute pairwise distances between corresponding embeddings
+            gaps = []
+            for i in range(len(base_emb)):
+                gap = np.linalg.norm(base_emb[i] - train_emb[i])
+                gaps.append(gap)
+            return np.array(gaps)
+
+        # Compute overall representation gap
+        representation_gaps = compute_representation_gap(base_embeddings, train_embeddings)
+        overall_gap = np.mean(representation_gaps)
+
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(20, 16))
+        gs = fig.add_gridspec(4, 3, height_ratios=[2, 2, 1, 1], hspace=0.4, wspace=0.3)
+
+        # Configure Korean fonts
+        configure_plot_korean(fig, None)
+
+        # 1. Representation Gap Distribution
+        ax1 = fig.add_subplot(gs[0, 0])
+
+        ax1.hist(representation_gaps, bins=20, alpha=0.7, color='#FF6B6B', edgecolor='black')
+        ax1.axvline(overall_gap, color='red', linestyle='--', linewidth=2, label=f'평균: {overall_gap:.4f}')
+        ax1.set_title('Representation Gap Distribution\nΔ = ||e_base - e_train||₂', fontsize=14, fontweight='bold')
+        ax1.set_xlabel('Euclidean Distance')
+        ax1.set_ylabel('Frequency')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # Add statistics
+        stats_text = f"""Statistics:
+Mean: {np.mean(representation_gaps):.4f}
+Std: {np.std(representation_gaps):.4f}
+Min: {np.min(representation_gaps):.4f}
+Max: {np.max(representation_gaps):.4f}"""
+        ax1.text(0.7, 0.95, stats_text, transform=ax1.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+
+        # 2. Language-wise Representation Gap
+        ax2 = fig.add_subplot(gs[0, 1])
+
+        lang_gaps = {}
+        for lang in set(languages):
+            lang_mask = np.array(languages) == lang
+            if np.sum(lang_mask) > 0:
+                lang_base = base_embeddings[lang_mask]
+                lang_train = train_embeddings[lang_mask]
+                lang_gap = np.mean(compute_representation_gap(lang_base, lang_train))
+                lang_gaps[lang] = lang_gap
+
+        if lang_gaps:
+            lang_names = list(lang_gaps.keys())
+            gap_values = list(lang_gaps.values())
+
+            bars = ax2.bar(lang_names, gap_values, color=['#4ECDC4', '#FFE66D'], alpha=0.8)
+            ax2.set_title('Language-wise Representation Gap\n(Lower = More Consistent)', fontweight='bold')
+            ax2.set_ylabel('Average Gap')
+            ax2.set_xlabel('Languages')
+            ax2.grid(True, alpha=0.3)
+
+            # Add value labels
+            for bar, value in zip(bars, gap_values):
+                ax2.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 0.01,
+                        f'{value:.4f}', ha='center', va='bottom', fontweight='bold', fontsize=10)
+
+        # 3. Gap vs Text Length Analysis
+        ax3 = fig.add_subplot(gs[0, 2])
+
+        text_lengths = [len(text.split()) for text in texts]
+
+        # Create scatter plot
+        scatter = ax3.scatter(text_lengths, representation_gaps, alpha=0.6, c=representation_gaps,
+                            cmap='viridis', s=50)
+
+        # Add trend line
+        z = np.polyfit(text_lengths, representation_gaps, 1)
+        p = np.poly1d(z)
+        ax3.plot(text_lengths, p(text_lengths), "r--", alpha=0.8, linewidth=2)
+
+        ax3.set_title('Gap vs Text Length\n(Correlation Analysis)', fontweight='bold')
+        ax3.set_xlabel('Text Length (words)')
+        ax3.set_ylabel('Representation Gap')
+        ax3.grid(True, alpha=0.3)
+
+        # Add correlation coefficient
+        correlation = np.corrcoef(text_lengths, representation_gaps)[0, 1]
+        ax3.text(0.05, 0.95, f'Correlation: {correlation:.3f}', transform=ax3.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+
+        plt.colorbar(scatter, ax=ax3, label='Gap Value')
+
+        # 4. Cosine Similarity vs Euclidean Distance
+        ax4 = fig.add_subplot(gs[1, 0])
+
+        # Compute cosine similarities between corresponding embeddings
+        cosine_sims = []
+        for i in range(len(base_embeddings)):
+            sim = cosine_similarity([base_embeddings[i]], [train_embeddings[i]])[0, 0]
+            cosine_sims.append(sim)
+        cosine_sims = np.array(cosine_sims)
+
+        scatter = ax4.scatter(cosine_sims, representation_gaps, alpha=0.6, s=50)
+        ax4.set_title('Cosine Similarity vs Euclidean Gap\n(Representation Relationship)', fontweight='bold')
+        ax4.set_xlabel('Cosine Similarity')
+        ax4.set_ylabel('Euclidean Gap')
+        ax4.grid(True, alpha=0.3)
+
+        # Add trend line
+        z = np.polyfit(cosine_sims, representation_gaps, 1)
+        p = np.poly1d(z)
+        ax4.plot(cosine_sims, p(cosine_sims), "r--", alpha=0.8, linewidth=2)
+
+        # Add correlation
+        correlation = np.corrcoef(cosine_sims, representation_gaps)[0, 1]
+        ax4.text(0.05, 0.95, f'Correlation: {correlation:.3f}', transform=ax4.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+
+        # 5. Cross-lingual Gap Analysis
+        ax5 = fig.add_subplot(gs[1, 1])
+
+        # Find pairs of same meaning in different languages
+        en_mask = np.array(languages) == 'en'
+        ko_mask = np.array(languages) == 'ko'
+
+        if np.any(en_mask) and np.any(ko_mask):
+            en_base = base_embeddings[en_mask]
+            en_train = train_embeddings[en_mask]
+            ko_base = base_embeddings[ko_mask]
+            ko_train = train_embeddings[ko_mask]
+
+            # Compute cross-lingual distances
+            min_len = min(len(en_base), len(ko_base))
+            if min_len > 0:
+                en_ko_base_gaps = []
+                en_ko_train_gaps = []
+
+                for i in range(min_len):
+                    # Distance between English and Korean in base model
+                    base_gap = np.linalg.norm(en_base[i] - ko_base[i])
+                    # Distance between English and Korean in trained model
+                    train_gap = np.linalg.norm(en_train[i] - ko_train[i])
+
+                    en_ko_base_gaps.append(base_gap)
+                    en_ko_train_gaps.append(train_gap)
+
+                x = np.arange(len(en_ko_base_gaps))
+                width = 0.35
+
+                bars1 = ax5.bar(x - width/2, en_ko_base_gaps, width, label='Base Model',
+                               color='#FF6B6B', alpha=0.8)
+                bars2 = ax5.bar(x + width/2, en_ko_train_gaps, width, label='Trained Model',
+                               color='#4ECDC4', alpha=0.8)
+
+                ax5.set_title('Cross-lingual Gap (EN-KO)\n(Lower = Better Alignment)', fontweight='bold')
+                ax5.set_ylabel('Gap Distance')
+                ax5.set_xlabel('Text Pairs')
+                ax5.legend()
+                ax5.grid(True, alpha=0.3)
+
+        # 6. Gap Trends and Patterns
+        ax6 = fig.add_subplot(gs[1, 2])
+
+        # Sort gaps and show trend
+        sorted_indices = np.argsort(representation_gaps)
+        sorted_gaps = representation_gaps[sorted_indices]
+
+        ax6.plot(range(len(sorted_gaps)), sorted_gaps, 'b-', linewidth=2, alpha=0.8)
+        ax6.fill_between(range(len(sorted_gaps)), sorted_gaps, alpha=0.3)
+        ax6.set_title('Sorted Representation Gaps\n(Trend Analysis)', fontweight='bold')
+        ax6.set_xlabel('Sample Index (Sorted)')
+        ax6.set_ylabel('Gap Value')
+        ax6.grid(True, alpha=0.3)
+
+        # Add percentile lines
+        p25 = np.percentile(sorted_gaps, 25)
+        p50 = np.percentile(sorted_gaps, 50)
+        p75 = np.percentile(sorted_gaps, 75)
+
+        ax6.axhline(p25, color='green', linestyle='--', alpha=0.7, label='25th %ile')
+        ax6.axhline(p50, color='orange', linestyle='--', alpha=0.7, label='50th %ile')
+        ax6.axhline(p75, color='red', linestyle='--', alpha=0.7, label='75th %ile')
+        ax6.legend()
+
+        # 7. Overall Analysis Summary
+        ax7 = fig.add_subplot(gs[2:, :])
+        ax7.axis('off')
+
+        # Interpretation
+        if overall_gap < 0.5:
+            gap_interpretation = "매우 낮은 표현 차이 (높은 일관성)"
+        elif overall_gap < 1.0:
+            gap_interpretation = "낮은 표현 차이 (양호한 일관성)"
+        elif overall_gap < 2.0:
+            gap_interpretation = "중간 표현 차이 (보통 일관성)"
+        else:
+            gap_interpretation = "높은 표현 차이 (낮은 일관성)"
+
+        # Calculate additional metrics
+        consistency_score = 1 / (1 + overall_gap)  # Higher is better consistency
+        avg_cosine_sim = np.mean(cosine_sims)
+
+        summary_text = f"""
+🔍 Representation Gap 분석 결과
+
+📊 전체 성능:
+• 평균 표현 차이 (Δ): {overall_gap:.4f}
+• 표준편차: {np.std(representation_gaps):.4f}
+• 일관성 점수: {consistency_score:.4f} (1에 가까울수록 좋음)
+• 평균 코사인 유사도: {avg_cosine_sim:.4f}
+
+📈 언어별 분석:
+{chr(10).join([f"• {lang}: {gap:.4f}" for lang, gap in lang_gaps.items()]) if lang_gaps else "• 언어별 데이터 부족"}
+
+💡 해석: {gap_interpretation}
+
+🎯 상세 분석:
+• 텍스트 길이와 갭 상관관계: {correlation:.3f}
+• 코사인 유사도와 유클리드 갭 상관관계: {np.corrcoef(cosine_sims, representation_gaps)[0,1]:.3f}
+• 25th 백분위수: {np.percentile(representation_gaps, 25):.4f}
+• 75th 백분위수: {np.percentile(representation_gaps, 75):.4f}
+
+📝 가이드:
+• 갭이 낮을수록 모델들이 유사한 의미 표현을 학습했음을 의미
+• 일관성 점수가 높을수록 안정적인 학습이 이루어졌음을 의미
+• 언어별 갭 차이는 다국어 처리 능력의 균형성을 나타냄
+        """
+
+        ax7.text(0.02, 0.95, summary_text, transform=ax7.transAxes, fontsize=10,
+                verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.5", facecolor='lightyellow', alpha=0.9))
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close()
+
+        print(f"      📏 Representation gap: {overall_gap:.4f} ({gap_interpretation})")
+        print(f"      🎯 Consistency score: {consistency_score:.4f}")
+        return True
+
+    except Exception as e:
+        print(f"      ⚠️ Representation gap analysis failed: {e}")
+        return False
+
 def analyze_token_generation_confidence(base_model_path, training_model_path, test_sentences):
     """
     Analyze token-by-token autoregressive generation confidence for both base and training models.
@@ -2079,47 +3245,6 @@ def save_embedding_visualizations(results):
         except Exception as e:
             print(f"      ⚠️ Similarity heatmap failed: {e}")
 
-        # Language distance analysis (simplified)
-        total_plots += 1
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                # Create language distance visualization
-                from sklearn.metrics.pairwise import cosine_similarity
-
-                # Calculate average embeddings per language
-                lang_embeddings = {}
-                for lang in set(languages):
-                    mask = np.array(languages) == lang
-                    if np.any(mask):
-                        lang_embeddings[lang] = embeddings[mask].mean(axis=0)
-
-                # Create distance matrix
-                lang_names = list(lang_embeddings.keys())
-                distance_matrix = np.zeros((len(lang_names), len(lang_names)))
-                for i, lang1 in enumerate(lang_names):
-                    for j, lang2 in enumerate(lang_names):
-                        distance_matrix[i, j] = cosine_similarity(
-                            [lang_embeddings[lang1]], [lang_embeddings[lang2]]
-                        )[0, 0]
-
-                # Plot distance matrix
-                fig, ax = plt.subplots(figsize=(8, 6))
-                im = ax.imshow(distance_matrix, cmap='viridis')
-                ax.set_xticks(range(len(lang_names)))
-                ax.set_yticks(range(len(lang_names)))
-                ax.set_xticklabels(lang_names)
-                ax.set_yticklabels(lang_names)
-                plt.colorbar(im)
-                ax.set_title("Language Distance Matrix")
-
-                plt.savefig(output_dir / "language_distance.png",
-                           dpi=300, bbox_inches='tight',
-                           facecolor='white', edgecolor='none')
-                plt.close()
-                plots_saved += 1
-        except Exception as e:
-            print(f"      ⚠️ Language distance plot failed: {e}")
 
         # 🆕 Dual-model embedding statistics
         total_plots += 1
@@ -2257,6 +3382,46 @@ def save_embedding_visualizations(results):
                 print(f"      ✅ Dual-model SVCCA analysis saved")
         except Exception as e:
             print(f"      ⚠️ SVCCA analysis failed: {e}")
+
+        # 🆕 CSLS (Cross-domain Similarity Local Scaling) analysis
+        total_plots += 1
+        try:
+            success = plot_dual_model_csls_analysis(dual_embeddings, texts, languages, output_dir / "dual_model_csls.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model CSLS analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ CSLS analysis failed: {e}")
+
+        # 🆕 Alignment metrics analysis (k-NN Neighbor Consistency & Procrustes Analysis)
+        total_plots += 1
+        try:
+            success = plot_dual_model_alignment_analysis(dual_embeddings, texts, languages, output_dir / "dual_model_alignment.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model alignment analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ Alignment analysis failed: {e}")
+
+        # 🆕 Clustering quality metrics analysis (ARI, NMI, Silhouette Score)
+        total_plots += 1
+        try:
+            success = plot_dual_model_clustering_quality(dual_embeddings, texts, languages, output_dir / "dual_model_clustering.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model clustering analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ Clustering analysis failed: {e}")
+
+        # 🆕 Representation gap analysis (언어 간 적차)
+        total_plots += 1
+        try:
+            success = plot_dual_model_representation_gap(dual_embeddings, texts, languages, output_dir / "dual_model_representation_gap.png")
+            if success:
+                plots_saved += 1
+                print(f"      ✅ Dual-model representation gap analysis saved")
+        except Exception as e:
+            print(f"      ⚠️ Representation gap analysis failed: {e}")
 
         print(f"   ✅ Saved {plots_saved}/{total_plots} visualizations")
 

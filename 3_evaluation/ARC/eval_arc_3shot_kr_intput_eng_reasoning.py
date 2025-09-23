@@ -1049,7 +1049,7 @@ def main():
         ko_arc_acc = results["Ko-ARC_accuracy_standard"]
         # arc_fails = results["ARC_failure_cases"]
         ko_arc_fails = results["Ko-ARC_failure_cases"]
-        print(f"{model_name:<30} {arc_acc:<15.2f} {arc_fails:<12} {ko_arc_acc:<17.2f} {ko_arc_fails:<15}")
+        # print(f"{model_name:<30} {arc_acc:<15.2f} {arc_fails:<12} {ko_arc_acc:<17.2f} {ko_arc_fails:<15}")
     
     print("="*100)
 

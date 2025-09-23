@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "./GSM8K_8shot_tokenizer_added"  # Output directory
+BASE_OUTPUT_DIR = "./kor_input_eng_reasoning"  # Output directory
 
 # Batch Processing Configuration
 BATCH_SIZE = 16  # A100 optimized batch size (4->16 = 4x speedup)
@@ -160,21 +160,21 @@ class ModelConfig:
     torch_dtype: torch.dtype = field(default=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16)
 
 MODEL_CONFIGS = [
-    # ModelConfig(
-    #     name="llama-3.2-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="qwem-2.5-3b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
-    #     use_quantization=False
-    # ),
-    # ModelConfig(
-    #     name="gemma-3-4b-pt",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-3.2-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="qwem-2.5-3b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/qwem-2.5-3b-pt",
+        use_quantization=False
+    ),
+    ModelConfig(
+        name="gemma-3-4b-pt",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-pt",
+        use_quantization=False
+    ),
     # ModelConfig(
     #     name="olmo-2-0425-1b",
     #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/olmo-2-0425-1b",
@@ -245,26 +245,26 @@ MODEL_CONFIGS = [
     # ),
 
     # 10 Epochs
-    ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="olmo-2-0425-1b-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
 ]
 
 
@@ -428,7 +428,7 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
             with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=384,
+                    max_new_tokens=512,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                     do_sample=False,
@@ -522,10 +522,8 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
     Evaluate single model on GSM8K dataset
     """
     os.makedirs(model_output_dir, exist_ok=True)
-    results_korean_filepath = os.path.join(model_output_dir, f"results_korean_{config.name}.json")
     results_english_filepath = os.path.join(model_output_dir, f"results_english_{config.name}.json")
     log_filepath = os.path.join(model_output_dir, f"eval_{config.name}.log")
-    raw_gen_korean_filepath = os.path.join(model_output_dir, f"raw_generations_korean_{config.name}.json")
     raw_gen_english_filepath = os.path.join(model_output_dir, f"raw_generations_english_{config.name}.json")
 
     # Setup logging for this model
@@ -548,16 +546,13 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
     logger.info(f"--- Starting GSM8K Evaluation for Model: {config.name} ({config.model_id}) ---")
     logger.info(f"Output directory: {model_output_dir}")
-    logger.info(f"Korean results will be saved to: {results_korean_filepath}")
     logger.info(f"English results will be saved to: {results_english_filepath}")
-    logger.info(f"Korean raw generations will be saved to: {raw_gen_korean_filepath}")
     logger.info(f"English raw generations will be saved to: {raw_gen_english_filepath}")
     logger.info(f"Using Device: {DEVICE}, DType: {config.torch_dtype}")
     logger.info(f"Quantization: {'Enabled' if config.use_quantization else 'Disabled'}")
 
     model = None
     tokenizer = None
-    raw_generations_korean_list = []
     raw_generations_english_list = []
 
     try:
@@ -688,11 +683,6 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
 
         # Run Evaluation
-        correct_predictions_korean = 0
-        total_predictions_korean = 0
-        errors_or_skipped_korean = 0
-        results_details_korean = []
-        
         correct_predictions_english = 0
         total_predictions_english = 0
         errors_or_skipped_english = 0
@@ -705,15 +695,13 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         data_batches = create_data_batches(gsm8k_data, BATCH_SIZE)
         logger.info(f"Processing {len(gsm8k_data)} items in {len(data_batches)} batches of size {BATCH_SIZE}")
 
-        # Process each batch for both Korean and English versions
+        # Process each batch with English prompts
         for batch_idx, batch_items in enumerate(tqdm(data_batches, desc=f"Evaluating {config.name} (GSM8K)")):
             logger.info(f"Processing batch {batch_idx + 1}/{len(data_batches)} with {len(batch_items)} items")
             
-            # Prepare Korean and English prompts for the batch
-            korean_prompts = []
+            # Prepare English prompts for the batch
             english_prompts = []
             batch_indices = []
-            korean_questions = []
             english_questions = []
             ground_truths = []
             
@@ -723,119 +711,23 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 ground_truth = item.get("answer", None)
                 if ground_truth is None:
                     logger.warning(f"Item with no ground truth found at index {global_idx}. Skipping.")
-                    errors_or_skipped_korean += 1
                     errors_or_skipped_english += 1
                     continue
 
                 question = item.get("question", "")
-                original = item.get("original", "")
-                
-                # Check if we have both Korean and English versions
-                has_korean = question and original and question != original
-                
+
                 batch_indices.append(global_idx)
                 ground_truths.append(ground_truth)
-                
-                # Prepare Korean prompts
-                if has_korean:
-                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True)
-                    korean_prompts.append(korean_prompt)
-                    korean_questions.append(question)
-                else:
-                    korean_prompts.append(None)
-                    korean_questions.append(None)
-                
-                # Prepare English prompts
-                if original:
-                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
+
+                # Prepare English prompts using question field
+                if question:
+                    english_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
                     english_prompts.append(english_prompt)
-                    english_questions.append(original)
+                    english_questions.append(question)
                 else:
                     english_prompts.append(None)
                     english_questions.append(None)
             
-            # Process Korean batch
-            korean_batch_prompts = [p for p in korean_prompts if p is not None]
-            if korean_batch_prompts:
-                try:
-                    korean_batch_results = process_batch_inference(model, tokenizer, korean_batch_prompts)
-                    korean_result_idx = 0
-                    
-                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
-                        if korean_prompts[i] is not None:
-                            korean_gen_text, korean_answer = korean_batch_results[korean_result_idx]
-                            korean_result_idx += 1
-                            
-                            is_correct_korean = False
-                            exception_info = None
-                            
-                            if korean_answer is not None:
-                                total_predictions_korean += 1
-                                if check_numerical_match(korean_answer, gt):
-                                    correct_predictions_korean += 1
-                                    is_correct_korean = True
-                            else:
-                                errors_or_skipped_korean += 1
-                                if korean_gen_text and not korean_gen_text.startswith("ERROR"):
-                                    korean_gen_text = f"EXTRACTION_FAILED: {korean_gen_text}"
-                            
-                            # Store Korean results
-                            results_details_korean.append({
-                                "index": idx,
-                                "question": question,
-                                "ground_truth": gt,
-                                "model_raw_output": korean_gen_text,
-                                "extracted_answer": korean_answer,
-                                "is_correct": is_correct_korean,
-                                "exception": exception_info,
-                                "prompt_snapshot": korean_prompts[i]
-                            })
-
-                            raw_generations_korean_list.append({
-                                "index": idx,
-                                "language": "Korean",
-                                "question": question,
-                                "original": original,
-                                "ground_truth": gt,
-                                "prompt": korean_prompts[i],
-                                "raw_output": korean_gen_text,
-                                "extracted_answer": korean_answer,
-                                "is_correct": is_correct_korean,
-                                "exception": exception_info
-                            })
-                            
-                except Exception as e:
-                    logger.error(f"Korean batch processing error: {e}")
-                    # Handle batch error for Korean
-                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
-                        if korean_prompts[i] is not None:
-                            errors_or_skipped_korean += 1
-                            exception_info = f"BATCH_ERROR: {e}\n{traceback.format_exc()}"
-                            
-                            results_details_korean.append({
-                                "index": idx,
-                                "question": question,
-                                "ground_truth": gt,
-                                "model_raw_output": f"BATCH_ERROR: {exception_info}",
-                                "extracted_answer": None,
-                                "is_correct": False,
-                                "exception": exception_info,
-                                "prompt_snapshot": korean_prompts[i]
-                            })
-
-                            raw_generations_korean_list.append({
-                                "index": idx,
-                                "language": "Korean",
-                                "question": question,
-                                "original": original,
-                                "ground_truth": gt,
-                                "prompt": korean_prompts[i],
-                                "raw_output": f"BATCH_ERROR: {exception_info}",
-                                "extracted_answer": None,
-                                "is_correct": False,
-                                "exception": exception_info
-                            })
-
             # Process English batch
             english_batch_prompts = [p for p in english_prompts if p is not None]
             if english_batch_prompts:
@@ -843,14 +735,14 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                     english_batch_results = process_batch_inference(model, tokenizer, english_batch_prompts)
                     english_result_idx = 0
                     
-                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
+                    for i, (idx, gt, question) in enumerate(zip(batch_indices, ground_truths, english_questions)):
                         if english_prompts[i] is not None:
                             english_gen_text, english_answer = english_batch_results[english_result_idx]
                             english_result_idx += 1
-                            
+
                             is_correct_english = False
                             exception_info_en = None
-                            
+
                             if english_answer is not None:
                                 total_predictions_english += 1
                                 if check_numerical_match(english_answer, gt):
@@ -860,11 +752,11 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                                 errors_or_skipped_english += 1
                                 if english_gen_text and not english_gen_text.startswith("ERROR"):
                                     english_gen_text = f"EXTRACTION_FAILED: {english_gen_text}"
-                            
+
                             # Store English results
                             results_details_english.append({
                                 "index": idx,
-                                "question": original,
+                                "question": question,
                                 "ground_truth": gt,
                                 "model_raw_output": english_gen_text,
                                 "extracted_answer": english_answer,
@@ -877,7 +769,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                                 "index": idx,
                                 "language": "English",
                                 "question": question,
-                                "original": original,
+                                "original": question,
                                 "ground_truth": gt,
                                 "prompt": english_prompts[i],
                                 "raw_output": english_gen_text,
@@ -889,14 +781,14 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 except Exception as e:
                     logger.error(f"English batch processing error: {e}")
                     # Handle batch error for English
-                    for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
+                    for i, (idx, gt, question) in enumerate(zip(batch_indices, ground_truths, english_questions)):
                         if english_prompts[i] is not None:
                             errors_or_skipped_english += 1
                             exception_info_en = f"BATCH_ERROR: {e}\n{traceback.format_exc()}"
-                            
+
                             results_details_english.append({
                                 "index": idx,
-                                "question": original,
+                                "question": question,
                                 "ground_truth": gt,
                                 "model_raw_output": f"BATCH_ERROR: {exception_info_en}",
                                 "extracted_answer": None,
@@ -909,7 +801,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                                 "index": idx,
                                 "language": "English",
                                 "question": question,
-                                "original": original,
+                                "original": question,
                                 "ground_truth": gt,
                                 "prompt": english_prompts[i],
                                 "raw_output": f"BATCH_ERROR: {exception_info_en}",
@@ -928,10 +820,6 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
         # Final Results
         logger.info(f"Inference loop finished for {config.name}.")
-        
-        # Calculate accuracies for Korean
-        accuracy_standard_korean = (correct_predictions_korean / total_predictions_korean * 100) if total_predictions_korean > 0 else 0
-        accuracy_strict_korean = (correct_predictions_korean / len(gsm8k_data) * 100) if len(gsm8k_data) > 0 else 0
 
         # Calculate accuracies for English
         accuracy_standard_english = (correct_predictions_english / total_predictions_english * 100) if total_predictions_english > 0 else 0
@@ -939,12 +827,6 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
         logger.info(f"--- GSM8K Results for {config.name} ({config.model_id}) ---")
         logger.info(f"Total Questions: {len(gsm8k_data)}")
-        logger.info(f"=== Korean Results ===")
-        logger.info(f"Valid Predictions (Answer Extracted): {total_predictions_korean}")
-        logger.info(f"Correct Predictions: {correct_predictions_korean}")
-        logger.info(f"Errors or Skipped Items: {errors_or_skipped_korean}")
-        logger.info(f"Accuracy Standard (correct / valid_predictions): {accuracy_standard_korean:.2f}%")
-        logger.info(f"Accuracy Strict (correct / total_questions): {accuracy_strict_korean:.2f}%")
         logger.info(f"=== English Results ===")
         logger.info(f"Valid Predictions (Answer Extracted): {total_predictions_english}")
         logger.info(f"Correct Predictions: {correct_predictions_english}")
@@ -957,16 +839,8 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         final_summary = {
             "model_config": config_dict_serializable,
             "dataset_path": DATASET_PATH,
-            "evaluation_type": "GSM8K (HRM8K Korean and English Separate)",
+            "evaluation_type": "GSM8K (English 8-shot)",
             "total_questions": len(gsm8k_data),
-            "korean_results": {
-                "valid_predictions": total_predictions_korean,
-                "correct_predictions": correct_predictions_korean,
-                "errors_or_skipped": errors_or_skipped_korean,
-                "accuracy_standard": accuracy_standard_korean,
-                "accuracy_strict": accuracy_strict_korean,
-                "details": results_details_korean
-            },
             "english_results": {
                 "valid_predictions": total_predictions_english,
                 "correct_predictions": correct_predictions_english,
@@ -977,21 +851,6 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             }
         }
 
-        # Save Korean results
-        try:
-            with open(results_korean_filepath, 'w', encoding='utf-8') as f:
-                korean_results = {
-                    "model_config": config_dict_serializable,
-                    "dataset_path": DATASET_PATH,
-                    "evaluation_type": "GSM8K (HRM8K Korean 8-shot)",
-                    "language": "Korean",
-                    "results": final_summary["korean_results"]
-                }
-                json.dump(korean_results, f, indent=2, ensure_ascii=False)
-            logger.info(f"Korean results saved to {results_korean_filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save Korean results file {results_korean_filepath}: {e}")
-            
         # Save English results
         try:
             with open(results_english_filepath, 'w', encoding='utf-8') as f:
@@ -1007,14 +866,6 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
         except Exception as e:
             logger.error(f"Failed to save English results file {results_english_filepath}: {e}")
 
-        # Save Raw Generations for Korean
-        try:
-            with open(raw_gen_korean_filepath, 'w', encoding='utf-8') as f:
-                json.dump(raw_generations_korean_list, f, indent=2, ensure_ascii=False)
-            logger.info(f"Korean raw generations saved to {raw_gen_korean_filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save Korean raw generations file {raw_gen_korean_filepath}: {e}")
-            
         # Save Raw Generations for English
         try:
             with open(raw_gen_english_filepath, 'w', encoding='utf-8') as f:
@@ -1051,26 +902,10 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
 
 def create_final_summary(all_results: list, base_output_dir: str):
     """Create final summary JSON with all model results"""
-    final_results_korean = []
     final_results_english = []
-    
+
     for result in all_results:
         if result is not None:
-            # Korean results
-            korean_summary = {
-                "model_name": result["model_config"]["name"],
-                "model_id": result["model_config"]["model_id"],
-                "adapter_path": result["model_config"].get("adapter_path", None),
-                "total_questions": result["total_questions"],
-                "correct_predictions": result["korean_results"]["correct_predictions"],
-                "valid_predictions": result["korean_results"]["valid_predictions"],
-                "errors_or_skipped": result["korean_results"]["errors_or_skipped"],
-                "accuracy_standard": result["korean_results"]["accuracy_standard"],
-                "accuracy_strict": result["korean_results"]["accuracy_strict"],
-                "evaluation_date": result.get("evaluation_date", "N/A")
-            }
-            final_results_korean.append(korean_summary)
-            
             # English results
             english_summary = {
                 "model_name": result["model_config"]["name"],
@@ -1085,94 +920,65 @@ def create_final_summary(all_results: list, base_output_dir: str):
                 "evaluation_date": result.get("evaluation_date", "N/A")
             }
             final_results_english.append(english_summary)
-    
+
     # Sort by accuracy (strict) descending
-    final_results_korean.sort(key=lambda x: x["accuracy_strict"], reverse=True)
     final_results_english.sort(key=lambda x: x["accuracy_strict"], reverse=True)
-    
+
     final_summary = {
-        "evaluation_type": "GSM8K (HRM8K Korean and English Separate Evaluation)",
+        "evaluation_type": "GSM8K (English 8-shot Evaluation)",
         "dataset_info": {
-            "name": "GSM8K-test (Korean translated and English original)",
+            "name": "GSM8K-test (English)",
             "path": DATASET_PATH,
-            "total_questions": final_results_korean[0]["total_questions"] if final_results_korean else 0
+            "total_questions": final_results_english[0]["total_questions"] if final_results_english else 0
         },
         "evaluation_summary": {
-            "models_evaluated": len(final_results_korean),
-            "best_model_korean": final_results_korean[0]["model_name"] if final_results_korean else "N/A",
-            "best_accuracy_korean": final_results_korean[0]["accuracy_strict"] if final_results_korean else 0.0,
+            "models_evaluated": len(final_results_english),
             "best_model_english": final_results_english[0]["model_name"] if final_results_english else "N/A",
             "best_accuracy_english": final_results_english[0]["accuracy_strict"] if final_results_english else 0.0
         },
-        "korean_results": final_results_korean,
         "english_results": final_results_english
     }
     
     final_json_path = os.path.join(base_output_dir, "final_gsm8k_results.json")
     try:
         # Enhanced summary with performance analysis
-        if create_enhanced_summary and final_results_korean and final_results_english:
+        if create_enhanced_summary and final_results_english:
             evaluation_info = {
-                "evaluation_type": "GSM8K (HRM8K Korean and English Separate Evaluation)",
+                "evaluation_type": "GSM8K (English 8-shot Evaluation)",
                 "evaluation_date": datetime.now().isoformat(),
                 "dataset_path": DATASET_PATH,
-                "total_models_evaluated": len(final_results_korean)
+                "total_models_evaluated": len(final_results_english)
             }
-            
-            # Analyze Korean results
-            korean_enhanced = create_enhanced_summary(
-                model_results=final_results_korean,
-                evaluation_info=evaluation_info,
-                primary_metric="accuracy_strict",
-                subject_metric=None  # GSM8K doesn't have subject breakdown
-            )
-            
+
             # Analyze English results
             english_enhanced = create_enhanced_summary(
                 model_results=final_results_english,
                 evaluation_info=evaluation_info,
                 primary_metric="accuracy_strict",
-                subject_metric=None
+                subject_metric=None  # GSM8K doesn't have subject breakdown
             )
-            
-            # Combine analyses
+
+            # Create enhanced summary
             enhanced_summary = {
                 "evaluation_info": evaluation_info,
-                "korean_analysis": korean_enhanced,
                 "english_analysis": english_enhanced,
-                "original_summary": final_summary,
-                "language_comparison": {
-                    "korean_avg_score": korean_enhanced["performance_analysis"]["average_score"],
-                    "english_avg_score": english_enhanced["performance_analysis"]["average_score"],
-                    "korean_best_model": korean_enhanced["performance_analysis"]["best_model"],
-                    "english_best_model": english_enhanced["performance_analysis"]["best_model"],
-                    "performance_difference": english_enhanced["performance_analysis"]["average_score"] - korean_enhanced["performance_analysis"]["average_score"]
-                }
+                "original_summary": final_summary
             }
-            
+
             with open(final_json_path, 'w', encoding='utf-8') as f:
                 json.dump(enhanced_summary, f, indent=2, ensure_ascii=False)
-                
+
             # Log key insights
-            logger.info(f"🏆 Best Korean model: {korean_enhanced['performance_analysis']['best_model']} ({korean_enhanced['performance_analysis']['average_score']:.2f}%)")
             logger.info(f"🏆 Best English model: {english_enhanced['performance_analysis']['best_model']} ({english_enhanced['performance_analysis']['average_score']:.2f}%)")
-            logger.info(f"📈 Language performance gap: {abs(enhanced_summary['language_comparison']['performance_difference']):.2f}%p")
-            
+
         else:
             # Fallback to basic summary
             with open(final_json_path, 'w', encoding='utf-8') as f:
                 json.dump(final_summary, f, indent=2, ensure_ascii=False)
-                
+
         logger.info(f"Summary saved to {final_json_path}")
-        
-        # Also create separate CSV files for Korean and English results
-        korean_csv_path = os.path.join(base_output_dir, "gsm8k_results_korean.csv")
-        with open(korean_csv_path, 'w', encoding='utf-8') as f:
-            f.write("Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total\n")
-            for result in final_results_korean:
-                f.write(f"{result['model_name']},{result['accuracy_standard']:.2f},{result['accuracy_strict']:.2f},{result['correct_predictions']},{result['valid_predictions']},{result['total_questions']}\n")
-        logger.info(f"Korean CSV summary saved to {korean_csv_path}")
-        
+
+        # Create CSV file for English results
         english_csv_path = os.path.join(base_output_dir, "gsm8k_results_english.csv")
         with open(english_csv_path, 'w', encoding='utf-8') as f:
             f.write("Model Name,Accuracy Standard (%),Accuracy Strict (%),Correct,Valid,Total\n")

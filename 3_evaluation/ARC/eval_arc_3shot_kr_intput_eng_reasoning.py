@@ -149,7 +149,7 @@ MODEL_CONFIGS = [
 ]
 
 # --- General Configuration ---
-# ARC_DATASET_PATH = "../../2_datasets/ARC/ARC.json"
+ARC_DATASET_PATH = "../../2_datasets/ARC/ARC.json"
 KO_ARC_DATASET_PATH = "../../2_datasets/ARC/Ko-ARC.json"
 BASE_OUTPUT_DIR = "	arc_3shot_09_11_lr_eng_Fewshots"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

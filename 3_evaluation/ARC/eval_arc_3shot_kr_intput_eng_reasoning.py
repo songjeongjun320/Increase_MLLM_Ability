@@ -151,7 +151,7 @@ MODEL_CONFIGS = [
 # --- General Configuration ---
 ARC_DATASET_PATH = "../../2_datasets/ARC/ARC.json"
 KO_ARC_DATASET_PATH = "../../2_datasets/ARC/Ko-ARC.json"
-BASE_OUTPUT_DIR = "	arc_3shot_09_11_lr_eng_Fewshots"
+BASE_OUTPUT_DIR = "arc_3shot_09_11_lr_eng_Fewshots"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "./cache" if not os.path.exists("/scratch/jsong132/.cache/huggingface") else "/scratch/jsong132/.cache/huggingface"
 BATCH_SIZE = 16
@@ -1022,9 +1022,9 @@ def main():
             summary_results[config.name] = {
                 "model_id": config.model_id,
                 "adapter_path": config.adapter_path,
-                "ARC_accuracy_standard": results["ARC"]["accuracy_standard"],
-                "ARC_accuracy_strict": results["ARC"]["accuracy_strict"],
-                "ARC_failure_cases": results["ARC"]["failure_cases_count"],
+                # "ARC_accuracy_standard": results["ARC"]["accuracy_standard"],
+                # "ARC_accuracy_strict": results["ARC"]["accuracy_strict"],
+                # "ARC_failure_cases": results["ARC"]["failure_cases_count"],
                 "Ko-ARC_accuracy_standard": results["Ko-ARC"]["accuracy_standard"],
                 "Ko-ARC_accuracy_strict": results["Ko-ARC"]["accuracy_strict"],
                 "Ko-ARC_failure_cases": results["Ko-ARC"]["failure_cases_count"]
@@ -1045,9 +1045,9 @@ def main():
     print("-"*100)
     
     for model_name, results in summary_results.items():
-        arc_acc = results["ARC_accuracy_standard"]
+        # arc_acc = results["ARC_accuracy_standard"]
         ko_arc_acc = results["Ko-ARC_accuracy_standard"]
-        arc_fails = results["ARC_failure_cases"]
+        # arc_fails = results["ARC_failure_cases"]
         ko_arc_fails = results["Ko-ARC_failure_cases"]
         print(f"{model_name:<30} {arc_acc:<15.2f} {arc_fails:<12} {ko_arc_acc:<17.2f} {ko_arc_fails:<15}")
     

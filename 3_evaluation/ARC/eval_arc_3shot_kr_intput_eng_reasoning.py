@@ -462,19 +462,6 @@ def get_ground_truth(item):
         return answer
     return None
 
-def select_examples(data, test_item, num_examples=5):
-    """
-    Select examples for few-shot prompting, excluding the test item.
-    """
-    examples = []
-    test_id = test_item.get("id", "")
-    
-    for item in data:
-        if item.get("id", "") != test_id and len(examples) < num_examples:
-            examples.append(item)
-    
-    return examples
-
 def save_failure_cases(failure_cases, model_name, output_dir):
     """
     Save failure cases to a separate JSON file for analysis.

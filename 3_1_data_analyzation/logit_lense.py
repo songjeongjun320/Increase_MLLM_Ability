@@ -38,24 +38,31 @@ class LogitLens:
     internal computational process.
     """
 
-    def __init__(self, model_name: str, device: str = "auto"):
+    def __init__(self, model_name_or_path: str, device: str = "auto", is_local_path: bool = False):
         """
         Initialize the LogitLens analyzer.
 
         Args:
-            model_name: Name of the model to analyze (HuggingFace model ID)
+            model_name_or_path: Name of the model (HuggingFace model ID) or local path to model
             device: Device to run the model on ("auto", "cpu", "cuda", etc.)
+            is_local_path: Whether model_name_or_path is a local directory path
         """
-        self.model_name = model_name
+        self.model_name_or_path = model_name_or_path
         self.device = self._get_device(device)
+        self.is_local_path = is_local_path
 
         # Load model and tokenizer
-        print(f"Loading model: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        if is_local_path:
+            print(f"Loading model from local path: {model_name_or_path}")
+        else:
+            print(f"Loading model from HuggingFace Hub: {model_name_or_path}")
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
+            model_name_or_path,
             torch_dtype=torch.float16 if "cuda" in str(self.device) else torch.float32,
-            device_map="auto" if device == "auto" else None
+            device_map="auto" if device == "auto" else None,
+            local_files_only=is_local_path  # Only use local files if it's a local path
         )
 
         if device != "auto":
@@ -707,9 +714,17 @@ def example_usage():
     print("LogitLens Example Usage")
     print("=" * 50)
 
-    # Initialize analyzer (using a smaller model for demo)
-    model_name = "gpt2"  # Change to your preferred model
-    lens = LogitLens(model_name)
+    # Example 1: Using HuggingFace model
+    print("Example 1: Using HuggingFace model")
+    lens = LogitLens("gpt2")  # HuggingFace model ID
+
+    # Example 2: Using local model path
+    print("\nExample 2: Using local model path")
+    # lens = LogitLens("/path/to/your/local/model", is_local_path=True)
+
+    # Example 3: Using project model path
+    print("\nExample 3: Using project model path")
+    # lens = LogitLens("./1_models/your_model_directory", is_local_path=True)
 
     # Example 1: Basic analysis
     prompt = "The capital of France is"

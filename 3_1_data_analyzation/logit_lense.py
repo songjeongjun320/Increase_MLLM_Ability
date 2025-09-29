@@ -567,9 +567,9 @@ class LogitLens:
         predicted_tokens_matrix = []
         probability_matrix = []
 
-        # Reverse layer order so highest layers appear at top
+        # Use normal layer order: L0 at top (input), L28 at bottom (output)
         for layer_idx in range(num_layers):
-            actual_layer_idx = num_layers - 1 - layer_idx  # Reverse the order
+            actual_layer_idx = layer_idx  # Normal order: 0, 1, 2, ..., 28
             layer_tokens = []
             layer_probs = []
 
@@ -600,8 +600,8 @@ class LogitLens:
         ax.set_ylabel('Model Layers', fontsize=12)
         ax.set_title(f'Token-Position Logit Lens Analysis\nPrompt: "{analysis_results["prompt"]}"', fontsize=14, pad=20)
 
-        # Set y-axis (layers) - higher layers at top (L28, L27, ..., L0)
-        layer_labels = [f"L{layer_range[1] - i}" for i in range(num_layers)]
+        # Set y-axis (layers) - L0 at top (input), L28 at bottom (output)
+        layer_labels = [f"L{layer_range[0] + i}" for i in range(num_layers)]
         ax.set_yticks(range(num_layers))
         ax.set_yticklabels(layer_labels)
 
@@ -708,18 +708,33 @@ class LogitLens:
                 top_k_values, top_k_indices = torch.topk(probs, top_k)
                 top_k_tokens = []
                 for idx in top_k_indices:
+                    token_id = idx.item()
                     try:
-                        # Try to decode properly handling special tokens
-                        token = self.tokenizer.decode([idx.item()], skip_special_tokens=False)
-                        # Clean up the token for display
-                        if token.startswith('Ġ'):  # GPT-style space encoding
-                            token = ' ' + token[1:]
-                        elif token.startswith('▁'):  # SentencePiece style
-                            token = ' ' + token[1:]
-                        top_k_tokens.append(token.strip() if token.strip() else f"[{idx.item()}]")
-                    except:
-                        # Fallback to token ID if decoding fails
-                        top_k_tokens.append(f"[{idx.item()}]")
+                        # Use proper decoding with error handling
+                        decoded = self.tokenizer.decode([token_id], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
+                        # If decoded is empty or just whitespace, try convert_ids_to_tokens
+                        if not decoded.strip():
+                            token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
+                            # Handle special tokens properly
+                            if token_str.startswith('▁'):
+                                decoded = token_str[1:]  # Remove SentencePiece prefix
+                            elif token_str.startswith('<') and token_str.endswith('>'):
+                                decoded = token_str  # Keep special tokens as is
+                            else:
+                                decoded = token_str
+
+                        # Ensure we have something to show
+                        display_token = decoded if decoded.strip() else f"[{token_id}]"
+                        top_k_tokens.append(display_token)
+
+                    except Exception as e:
+                        # Complete fallback
+                        try:
+                            token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
+                            top_k_tokens.append(token_str if token_str else f"[{token_id}]")
+                        except:
+                            top_k_tokens.append(f"[{token_id}]")
 
                 layer_predictions_for_position.append({
                     'layer': layer_idx,
@@ -731,19 +746,36 @@ class LogitLens:
 
             position_predictions.append(layer_predictions_for_position)
 
-        # Prepare tokens for visualization with proper decoding
+        # Prepare tokens for visualization with proper Korean decoding
         input_tokens = []
         for token_id in inputs['input_ids'][0]:
+            token_id_val = token_id.item()
             try:
-                token = self.tokenizer.decode([token_id.item()], skip_special_tokens=False)
-                # Clean up special encoding
-                if token.startswith('Ġ'):  # GPT-style space encoding
-                    token = ' ' + token[1:]
-                elif token.startswith('▁'):  # SentencePiece style
-                    token = ' ' + token[1:]
-                input_tokens.append(token.strip() if token.strip() else f"[{token_id.item()}]")
-            except:
-                input_tokens.append(f"[{token_id.item()}]")
+                # Use proper decoding for Korean text
+                decoded = self.tokenizer.decode([token_id_val], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
+                # If decoded is empty, try convert_ids_to_tokens
+                if not decoded.strip():
+                    token_str = self.tokenizer.convert_ids_to_tokens([token_id_val])[0]
+                    # Handle SentencePiece encoding
+                    if token_str.startswith('▁'):
+                        decoded = token_str[1:]  # Remove prefix
+                    elif token_str.startswith('<') and token_str.endswith('>'):
+                        decoded = token_str  # Keep special tokens
+                    else:
+                        decoded = token_str
+
+                # Ensure we have something to display
+                display_token = decoded if decoded.strip() else f"[{token_id_val}]"
+                input_tokens.append(display_token)
+
+            except Exception:
+                # Complete fallback
+                try:
+                    token_str = self.tokenizer.convert_ids_to_tokens([token_id_val])[0]
+                    input_tokens.append(token_str if token_str else f"[{token_id_val}]")
+                except:
+                    input_tokens.append(f"[{token_id_val}]")
 
         return {
             'prompt': prompt,

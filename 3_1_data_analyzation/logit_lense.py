@@ -745,7 +745,7 @@ if __name__ == "__main__":
     # 사용법 예시 - 여기에 모델 경로를 입력하세요!
 
     # 옵션 1: HuggingFace 모델 사용
-    model_path = "gpt2"  # <- 여기에 모델 이름 입력
+    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"  # <- 여기에 모델 이름 입력
 
     # 옵션 2: 로컬 모델 사용 (아래 중 하나를 선택하고 주석 해제)
     # model_path = "./1_models/your_model_folder"  # <- 프로젝트 내 모델 경로
@@ -757,7 +757,7 @@ if __name__ == "__main__":
     lens = LogitLens(model_path)
 
     # 분석할 프롬프트
-    prompt = "The capital of France is"
+    prompt = "광합성 과정의 최종 결과는 당과"
 
     # 분석 실행
     print("Analyzing prompt...")

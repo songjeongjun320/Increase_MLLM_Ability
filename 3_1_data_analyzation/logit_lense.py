@@ -31,6 +31,7 @@ warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
 def setup_fonts():
     """
     Setup fonts for Korean text support in matplotlib.
+    If no Korean fonts found, downloads and uses NanumGothic.
     """
     # Disable font warnings
     import logging
@@ -38,37 +39,71 @@ def setup_fonts():
 
     # Basic matplotlib settings
     plt.rcParams['axes.unicode_minus'] = False
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.rcParams['ps.fonttype'] = 42
 
     # Try to find Korean fonts
-    import platform
     system = platform.system()
 
     korean_fonts = []
 
     if system == 'Windows':
-        korean_fonts = ['Malgun Gothic', 'NanumGothic', 'NanumBarunGothic', 'Gulim', 'Dotum']
+        korean_fonts = ['Malgun Gothic', 'NanumGothic', 'NanumBarunGothic', 'Gulim', 'Dotum', 'Batang']
     elif system == 'Darwin':  # macOS
         korean_fonts = ['AppleGothic', 'Apple SD Gothic Neo', 'NanumGothic']
     else:  # Linux
         korean_fonts = ['NanumGothic', 'NanumBarunGothic', 'UnDotum', 'Noto Sans CJK KR']
 
-    # Get list of available fonts
-    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    # Get list of available fonts - more comprehensive check
+    available_fonts = set()
+    for font in fm.fontManager.ttflist:
+        available_fonts.add(font.name)
+
+    print(f"\n🔍 Searching for Korean fonts on {system}...")
 
     # Find first available Korean font
     selected_font = None
     for font in korean_fonts:
         if font in available_fonts:
             selected_font = font
-            print(f"✓ Using Korean font: {font}")
+            print(f"✓ Found Korean font: {font}")
             break
 
     if selected_font:
         plt.rcParams['font.family'] = selected_font
+        plt.rcParams['font.sans-serif'] = [selected_font]
     else:
-        print("⚠ No Korean font found, using default (Korean may not display)")
-        plt.rcParams['font.family'] = 'sans-serif'
-        plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica', 'sans-serif']
+        print("⚠ No Korean font found in system")
+        print("📥 Downloading NanumGothic font...")
+
+        # Try to download and use NanumGothic
+        try:
+            import urllib.request
+            font_url = "https://github.com/naver/nanumfont/raw/master/TTF/NanumGothic.ttf"
+            font_dir = os.path.expanduser("~/.fonts")
+            os.makedirs(font_dir, exist_ok=True)
+            font_path = os.path.join(font_dir, "NanumGothic.ttf")
+
+            if not os.path.exists(font_path):
+                urllib.request.urlretrieve(font_url, font_path)
+                print(f"✓ Downloaded NanumGothic to {font_path}")
+
+                # Rebuild font cache
+                fm._load_fontmanager(try_read_cache=False)
+                print("✓ Rebuilt font cache")
+
+            # Use the downloaded font
+            from matplotlib.font_manager import FontProperties
+            font_prop = FontProperties(fname=font_path)
+            plt.rcParams['font.family'] = font_prop.get_name()
+            print(f"✓ Using downloaded font: {font_prop.get_name()}")
+
+        except Exception as e:
+            print(f"❌ Failed to download font: {e}")
+            print("⚠ Korean text may not display correctly")
+            print("💡 Solution: Install fonts manually:")
+            print("   Linux: sudo apt-get install fonts-nanum")
+            print("   Or download from: https://hangeul.naver.com/font")
 
     return True
 

@@ -333,12 +333,21 @@ class LogitLens:
             ax.set_title(f'Logit Lens Analysis - Autoregressive Generation\nPrompt: "{prompt_display}"',
                         fontsize=13, pad=20)
 
-            # Y-axis: Layers (inverted so layer 0 is at bottom)
-            ax.set_ylabel('Model Layer (↓ input ... output ↑)', fontsize=11)
-            layer_labels = [f"{i+layer_range[0]}" for i in range(num_layers)]
-            ax.set_yticks(range(num_layers))
-            ax.set_yticklabels(layer_labels, fontsize=9)
-            ax.invert_yaxis()  # Invert so layer 0 is at bottom
+            # Y-axis: Layers (layer 0 at top = input, higher layers at bottom = output)
+            ax.set_ylabel('Model Layer (↑ closer to input        closer to output ↓)', fontsize=11)
+
+            # Show only multiples of 5, plus the last layer
+            tick_positions = []
+            tick_labels = []
+            for i in range(num_layers):
+                layer_num = i + layer_range[0]
+                if layer_num % 5 == 0 or i == num_layers - 1:  # Every 5th layer or last layer
+                    tick_positions.append(i)
+                    tick_labels.append(str(layer_num))
+
+            ax.set_yticks(tick_positions)
+            ax.set_yticklabels(tick_labels, fontsize=9)
+            # Don't invert - default order is layer 0 at top
 
             # X-axis: Generated tokens
             ax.set_xticks(range(num_steps))

@@ -188,7 +188,21 @@ class LogitLens:
             print(f"Model type: {type(self.model).__name__}")
             if hasattr(self.model, 'model'):
                 print(f"Model.model type: {type(self.model.model).__name__}")
-                print(f"Model.model attributes: {dir(self.model.model)[:20]}")
+
+                # Check all attributes for layer-like structures
+                for attr_name in dir(self.model.model):
+                    if not attr_name.startswith('_'):
+                        try:
+                            attr = getattr(self.model.model, attr_name)
+                            if isinstance(attr, torch.nn.ModuleList):
+                                print(f"  Found ModuleList: {attr_name} with {len(attr)} items")
+                            elif hasattr(attr, '__len__') and not isinstance(attr, str):
+                                try:
+                                    print(f"  Found list-like: {attr_name} with length {len(attr)}")
+                                except:
+                                    pass
+                        except:
+                            pass
 
             # Try config first
             if hasattr(self.model, 'config'):
@@ -200,15 +214,23 @@ class LogitLens:
                 elif hasattr(self.model.config, 'num_layers'):
                     self.num_layers = self.model.config.num_layers
                 else:
-                    # Last resort: try to count layers manually
-                    print("Attempting to find layers in model structure...")
+                    # Last resort: try to count layers manually from printed info
+                    print("\nSearching for layers in model structure...")
+                    found = False
                     for attr_name in dir(self.model.model):
-                        attr = getattr(self.model.model, attr_name)
-                        if isinstance(attr, torch.nn.ModuleList):
-                            print(f"Found ModuleList: {attr_name} with {len(attr)} items")
-                            self.num_layers = len(attr)
-                            break
-                    else:
+                        if attr_name.startswith('_'):
+                            continue
+                        try:
+                            attr = getattr(self.model.model, attr_name)
+                            if isinstance(attr, torch.nn.ModuleList):
+                                print(f"✓ Using ModuleList: {attr_name} with {len(attr)} layers")
+                                self.num_layers = len(attr)
+                                found = True
+                                break
+                        except:
+                            pass
+
+                    if not found:
                         raise ValueError("Could not determine number of layers from model config or structure")
             else:
                 raise ValueError("Could not determine model architecture")

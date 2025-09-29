@@ -183,7 +183,16 @@ class LogitLens:
         else:
             # Try to find layers in the model
             print("⚠️ Unknown model architecture, attempting to detect layers...")
+
+            # Debug: print model structure
+            print(f"Model type: {type(self.model).__name__}")
+            if hasattr(self.model, 'model'):
+                print(f"Model.model type: {type(self.model.model).__name__}")
+                print(f"Model.model attributes: {dir(self.model.model)[:20]}")
+
+            # Try config first
             if hasattr(self.model, 'config'):
+                print(f"Config attributes: {[attr for attr in dir(self.model.config) if 'layer' in attr.lower()]}")
                 if hasattr(self.model.config, 'num_hidden_layers'):
                     self.num_layers = self.model.config.num_hidden_layers
                 elif hasattr(self.model.config, 'n_layer'):
@@ -191,7 +200,16 @@ class LogitLens:
                 elif hasattr(self.model.config, 'num_layers'):
                     self.num_layers = self.model.config.num_layers
                 else:
-                    raise ValueError("Could not determine number of layers from model config")
+                    # Last resort: try to count layers manually
+                    print("Attempting to find layers in model structure...")
+                    for attr_name in dir(self.model.model):
+                        attr = getattr(self.model.model, attr_name)
+                        if isinstance(attr, torch.nn.ModuleList):
+                            print(f"Found ModuleList: {attr_name} with {len(attr)} items")
+                            self.num_layers = len(attr)
+                            break
+                    else:
+                        raise ValueError("Could not determine number of layers from model config or structure")
             else:
                 raise ValueError("Could not determine model architecture")
 

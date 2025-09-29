@@ -94,13 +94,22 @@ def setup_fonts():
                 fm._load_fontmanager(try_read_cache=False)
 
                 # Use the font file directly
-                from matplotlib.font_manager import FontProperties
+                from matplotlib.font_manager import FontProperties, fontManager
+
+                # Add font to matplotlib's font manager
+                fontManager.addfont(font_path)
                 font_prop = FontProperties(fname=font_path)
                 font_name = font_prop.get_name()
 
+                # Set font for all text elements
                 plt.rcParams['font.family'] = font_name
                 plt.rcParams['font.sans-serif'] = [font_name]
+
+                # Also store the font path for direct use in plotting
+                plt.rcParams['font.path'] = font_path
+
                 print(f"✓ Using font: {font_name}")
+                print(f"   Font path: {font_path}")
 
             except Exception as e:
                 print(f"❌ Failed to register font: {e}")

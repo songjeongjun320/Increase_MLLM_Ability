@@ -74,55 +74,43 @@ def setup_fonts():
         plt.rcParams['font.sans-serif'] = [selected_font]
     else:
         print("⚠ No Korean font found in system")
-        print("📥 Downloading NanumGothic font...")
 
-        # Try to download and use NanumGothic
-        try:
-            import urllib.request
-            # Try multiple font sources
-            font_urls = [
-                "https://github.com/naver/nanumfont/raw/master/NanumGothic.ttf",
-                "https://cdn.jsdelivr.net/gh/naver/nanumfont@master/NanumGothic.ttf",
-                "https://raw.githubusercontent.com/naver/nanumfont/master/NanumGothic.ttf"
-            ]
+        # Check if font file exists in ~/.fonts
+        font_path = os.path.expanduser("~/.fonts/NanumGothic.ttf")
 
-            font_dir = os.path.expanduser("~/.fonts")
-            os.makedirs(font_dir, exist_ok=True)
-            font_path = os.path.join(font_dir, "NanumGothic.ttf")
+        if os.path.exists(font_path):
+            print(f"✓ Found font file at: {font_path}")
+            print("🔄 Registering font with matplotlib...")
 
-            if not os.path.exists(font_path):
-                downloaded = False
-                for font_url in font_urls:
-                    try:
-                        print(f"   Trying: {font_url}")
-                        urllib.request.urlretrieve(font_url, font_path)
-                        print(f"✓ Downloaded NanumGothic to {font_path}")
-                        downloaded = True
-                        break
-                    except Exception as e:
-                        print(f"   Failed: {e}")
-                        continue
+            try:
+                # Delete matplotlib font cache to force rebuild
+                import shutil
+                cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "matplotlib")
+                if os.path.exists(cache_dir):
+                    shutil.rmtree(cache_dir)
+                    print("✓ Cleared matplotlib cache")
 
-                if not downloaded:
-                    raise Exception("All download sources failed")
-
-                # Rebuild font cache
+                # Reload font manager
                 fm._load_fontmanager(try_read_cache=False)
-                print("✓ Rebuilt font cache")
 
-            # Use the downloaded font
-            from matplotlib.font_manager import FontProperties
-            font_prop = FontProperties(fname=font_path)
-            plt.rcParams['font.family'] = font_prop.get_name()
-            print(f"✓ Using downloaded font: {font_prop.get_name()}")
+                # Use the font file directly
+                from matplotlib.font_manager import FontProperties
+                font_prop = FontProperties(fname=font_path)
+                font_name = font_prop.get_name()
 
-        except Exception as e:
-            print(f"❌ Failed to download font: {e}")
-            print("⚠ Korean text may not display correctly")
-            print("💡 Manual solution:")
+                plt.rcParams['font.family'] = font_name
+                plt.rcParams['font.sans-serif'] = [font_name]
+                print(f"✓ Using font: {font_name}")
+
+            except Exception as e:
+                print(f"❌ Failed to register font: {e}")
+                print("⚠ Korean text may not display correctly")
+        else:
+            print(f"❌ Font file not found at: {font_path}")
+            print("💡 Please download the font:")
             print(f"   mkdir -p ~/.fonts")
             print(f"   cd ~/.fonts")
-            print(f"   wget https://github.com/naver/nanumfont/releases/download/VER2.5/NanumGothic.ttf")
+            print(f"   wget https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf -O NanumGothic.ttf")
             print(f"   Then run the script again.")
 
     return True

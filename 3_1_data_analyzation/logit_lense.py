@@ -506,6 +506,199 @@ class LogitLens:
 
         plt.show()
 
+    def create_token_position_heatmap(self,
+                                    analysis_results: Dict,
+                                    figsize: Tuple[int, int] = (20, 12),
+                                    save_path: Optional[str] = None) -> None:
+        """
+        Create a comprehensive heatmap showing predictions for each token position across layers.
+
+        X-axis top: Input tokens
+        X-axis bottom: Predicted tokens for each position
+        Y-axis: Model layers
+
+        Args:
+            analysis_results: Results from analyze_prompt_all_positions()
+            figsize: Figure size for the plot
+            save_path: Path to save the figure (optional)
+        """
+        if 'position_predictions' not in analysis_results:
+            raise ValueError("This visualization requires results from analyze_prompt_all_positions()")
+
+        position_predictions = analysis_results['position_predictions']
+        input_tokens = analysis_results['input_tokens']
+        layer_range = analysis_results['layer_range']
+
+        num_layers = len(position_predictions[0])  # Number of layers
+        num_positions = len(position_predictions)  # Number of token positions
+
+        # Create figure with subplots
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Prepare data for visualization
+        predicted_tokens_matrix = []
+        probability_matrix = []
+
+        for layer_idx in range(num_layers):
+            layer_tokens = []
+            layer_probs = []
+
+            for pos_idx in range(num_positions):
+                if layer_idx < len(position_predictions[pos_idx]):
+                    pred = position_predictions[pos_idx][layer_idx]
+                    if pred['top_tokens']:
+                        top_token = pred['top_tokens'][0]  # Highest probability token
+                        top_prob = pred['top_probs'][0]
+                    else:
+                        top_token = ""
+                        top_prob = 0.0
+                else:
+                    top_token = ""
+                    top_prob = 0.0
+
+                layer_tokens.append(top_token)
+                layer_probs.append(top_prob)
+
+            predicted_tokens_matrix.append(layer_tokens)
+            probability_matrix.append(layer_probs)
+
+        # Create the heatmap using probabilities
+        prob_array = np.array(probability_matrix)
+        im = ax.imshow(prob_array, aspect='auto', cmap='viridis', origin='lower')
+
+        # Set main labels
+        ax.set_ylabel('Model Layers', fontsize=12)
+        ax.set_title(f'Token-Position Logit Lens Analysis\nPrompt: "{analysis_results["prompt"]}"', fontsize=14, pad=20)
+
+        # Set y-axis (layers)
+        layer_labels = [f"L{layer_range[0] + i}" for i in range(num_layers)]
+        ax.set_yticks(range(num_layers))
+        ax.set_yticklabels(layer_labels)
+
+        # Set x-axis for input tokens (top)
+        ax.set_xticks(range(num_positions))
+        ax.set_xticklabels(input_tokens, rotation=45, ha='right')
+        ax.set_xlabel('Input Token Positions', fontsize=12)
+
+        # Add predicted tokens as text in each cell
+        for i in range(num_layers):
+            for j in range(num_positions):
+                token = predicted_tokens_matrix[i][j]
+                prob = probability_matrix[i][j]
+
+                if token and prob > 0.01:  # Only show tokens with reasonable probability
+                    # Choose text color based on background
+                    text_color = "white" if prob < 0.3 else "black"
+                    ax.text(j, i, f'{token}\n{prob:.2f}',
+                           ha="center", va="center",
+                           color=text_color, fontsize=8, fontweight='bold')
+
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax, label='Prediction Probability')
+
+        # Add input tokens as secondary x-axis on top
+        ax2 = ax.twiny()
+        ax2.set_xlim(ax.get_xlim())
+        ax2.set_xticks(range(num_positions))
+        ax2.set_xticklabels(input_tokens, rotation=45, ha='left')
+        ax2.set_xlabel('Input Tokens', fontsize=12)
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Token position heatmap saved to: {save_path}")
+
+        plt.show()
+
+    def analyze_prompt_all_positions(self,
+                                   prompt: str,
+                                   layer_range: Optional[Tuple[int, int]] = None,
+                                   top_k: int = 5) -> Dict:
+        """
+        Analyze predictions for ALL token positions across layers.
+
+        Args:
+            prompt: Input text to analyze
+            layer_range: Tuple of (start_layer, end_layer) to analyze
+            top_k: Number of top predictions to track per position per layer
+
+        Returns:
+            Dictionary containing analysis results for all positions
+        """
+        print(f"Analyzing all token positions for: '{prompt}'")
+
+        # Tokenize input
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        # Get hidden states from all layers
+        with torch.no_grad():
+            outputs = self.model(**inputs, output_hidden_states=True)
+            hidden_states = outputs.hidden_states
+
+        # Determine layer range
+        if layer_range is None:
+            start_layer, end_layer = 0, self.num_layers
+        else:
+            start_layer, end_layer = layer_range
+
+        seq_len = inputs['input_ids'].shape[1]
+
+        # Extract predictions for each position and each layer
+        position_predictions = []
+
+        for pos_idx in range(seq_len):
+            layer_predictions_for_position = []
+
+            for layer_idx in range(start_layer, min(end_layer + 1, len(hidden_states))):
+                hidden_state = hidden_states[layer_idx]  # (batch_size, seq_len, hidden_size)
+
+                # Get hidden state for this position
+                position_hidden = hidden_state[0, pos_idx, :]  # (hidden_size,)
+
+                # Apply language modeling head
+                if hasattr(self.model, 'lm_head'):
+                    logits = self.model.lm_head(position_hidden.unsqueeze(0))  # (1, vocab_size)
+                elif hasattr(self.model, 'embed_out'):
+                    logits = self.model.embed_out(position_hidden.unsqueeze(0))
+                else:
+                    # Try to find the output layer
+                    for name, module in self.model.named_modules():
+                        if 'lm_head' in name or 'embed_out' in name or 'output' in name:
+                            logits = module(position_hidden.unsqueeze(0))
+                            break
+                    else:
+                        raise ValueError("Could not find language modeling head")
+
+                # Convert to probabilities
+                probs = F.softmax(logits, dim=-1)[0]  # (vocab_size,)
+
+                # Get top-k predictions
+                top_k_values, top_k_indices = torch.topk(probs, top_k)
+                top_k_tokens = [self.tokenizer.decode([idx.item()]) for idx in top_k_indices]
+
+                layer_predictions_for_position.append({
+                    'layer': layer_idx,
+                    'position': pos_idx,
+                    'top_tokens': top_k_tokens,
+                    'top_probs': top_k_values.cpu().numpy(),
+                    'top_indices': top_k_indices.cpu().numpy()
+                })
+
+            position_predictions.append(layer_predictions_for_position)
+
+        # Prepare tokens for visualization
+        input_tokens = self.tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+
+        return {
+            'prompt': prompt,
+            'input_tokens': input_tokens,
+            'position_predictions': position_predictions,
+            'layer_range': (start_layer, min(end_layer, len(hidden_states) - 1)),
+            'input_ids': inputs['input_ids'].cpu()
+        }
+
 
 def example_usage():
     """

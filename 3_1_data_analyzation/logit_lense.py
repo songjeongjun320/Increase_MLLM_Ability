@@ -170,7 +170,31 @@ class LogitLens:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        self.num_layers = len(self.model.transformer.h) if hasattr(self.model, 'transformer') else len(self.model.model.layers)
+        # Detect number of layers based on model architecture
+        if hasattr(self.model, 'transformer') and hasattr(self.model.transformer, 'h'):
+            # GPT-2 style
+            self.num_layers = len(self.model.transformer.h)
+        elif hasattr(self.model, 'model') and hasattr(self.model.model, 'layers'):
+            # Llama style
+            self.num_layers = len(self.model.model.layers)
+        elif hasattr(self.model, 'model') and hasattr(self.model.model, 'blocks'):
+            # Gemma3 style
+            self.num_layers = len(self.model.model.blocks)
+        else:
+            # Try to find layers in the model
+            print("⚠️ Unknown model architecture, attempting to detect layers...")
+            if hasattr(self.model, 'config'):
+                if hasattr(self.model.config, 'num_hidden_layers'):
+                    self.num_layers = self.model.config.num_hidden_layers
+                elif hasattr(self.model.config, 'n_layer'):
+                    self.num_layers = self.model.config.n_layer
+                elif hasattr(self.model.config, 'num_layers'):
+                    self.num_layers = self.model.config.num_layers
+                else:
+                    raise ValueError("Could not determine number of layers from model config")
+            else:
+                raise ValueError("Could not determine model architecture")
+
         print(f"Model loaded with {self.num_layers} layers")
 
     def _get_device(self, device: str) -> torch.device:

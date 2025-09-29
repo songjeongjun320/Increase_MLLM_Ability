@@ -1,13 +1,8 @@
 """
-Logit Lens Analysis for Transformer Language Models - Fixed Version
+Logit Lens Analysis for Transformer Language Models - Simplified Version
 
 This module implements logit lens analysis to visualize how transformer models
 progressively refine their next-token predictions across different layers.
-
-Key improvements:
-- Better Korean font handling for Linux systems
-- Improved visualization matching the desired format
-- Fixed font warnings and rendering issues
 
 Author: Based on research from nostalgebraist (2020) and recent advances
 Date: 2025-09-28
@@ -18,7 +13,7 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-from matplotlib import rcParams
+from matplotlib import font_manager
 import seaborn as sns
 from typing import List, Optional, Dict, Union, Tuple
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -27,160 +22,27 @@ import os
 import platform
 import subprocess
 
+# Suppress font warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
 
-def setup_korean_font():
+
+def setup_fonts():
     """
-    Enhanced Korean font setup for matplotlib with better Linux support.
+    Simple font setup - if Korean fonts fail, just continue with defaults.
     """
-    system = platform.system()
+    # Disable font warnings
+    import logging
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
     
-    # First, try to install fonts if on Linux
-    if system == "Linux":
-        try:
-            # Try to install Korean fonts using system package manager
-            import subprocess
-            
-            # Check if we have sudo privileges (might not in cluster environment)
-            try:
-                # Try to install fonts-noto-cjk if not present
-                subprocess.run(['fc-list', ':lang=ko'], 
-                             capture_output=True, text=True, check=False)
-            except:
-                pass
-                
-            # Get list of available fonts
-            result = subprocess.run(['fc-list', ':lang=ko', 'family'], 
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                korean_system_fonts = result.stdout.strip().split('\n')
-                korean_system_fonts = [f.split(',')[0].strip() for f in korean_system_fonts if f]
-                print(f"Found Korean fonts in system: {korean_system_fonts[:5]}")
-            else:
-                korean_system_fonts = []
-        except Exception as e:
-            print(f"Could not check system fonts: {e}")
-            korean_system_fonts = []
-    else:
-        korean_system_fonts = []
-    
-    # Comprehensive list of Korean fonts to try
-    korean_fonts = []
-    
-    if system == "Linux":
-        # Prioritize system fonts found via fc-list
-        korean_fonts.extend(korean_system_fonts)
-        
-        # Add common Korean fonts on Linux
-        korean_fonts.extend([
-            'Noto Sans CJK KR',
-            'Noto Sans KR', 
-            'NanumGothic',
-            'NanumBarunGothic',
-            'NanumMyeongjo',
-            'UnBatang',
-            'UnDotum',
-            'Baekmuk Gulim',
-            'Baekmuk Dotum',
-            'Malgun Gothic',
-            'D2Coding',
-            'Source Han Sans KR'
-        ])
-    elif system == "Darwin":  # macOS
-        korean_fonts = [
-            'AppleGothic',
-            'Apple SD Gothic Neo',
-            'Noto Sans CJK KR'
-        ]
-    elif system == "Windows":
-        korean_fonts = [
-            'Malgun Gothic',
-            'Gulim',
-            'Dotum',
-            'Batang'
-        ]
-    
-    # Get matplotlib's font list
-    available_fonts = set([f.name for f in fm.fontManager.ttflist])
-    
-    # Try to find and set a Korean font
-    for font_name in korean_fonts:
-        if font_name in available_fonts:
-            plt.rcParams['font.family'] = font_name
-            plt.rcParams['axes.unicode_minus'] = False
-            print(f"✅ Korean font set to: {font_name}")
-            return font_name
-    
-    # Fallback: Use matplotlib's built-in font with Unicode support
-    print("⚠️ No Korean fonts found. Using matplotlib fallback with Unicode support.")
-    
-    # Set up fallback fonts that might have Korean support
-    plt.rcParams['font.family'] = 'sans-serif'
-    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Liberation Sans', 'Arial Unicode MS']
+    # Basic matplotlib settings
     plt.rcParams['axes.unicode_minus'] = False
     
-    # Try to use fontconfig if available (Linux)
-    if system == "Linux":
-        try:
-            # Force matplotlib to use system fonts
-            plt.rcParams['font.family'] = 'sans-serif'
-            plt.rcParams['font.sans-serif'] = ['Noto Sans CJK KR', 'NanumGothic', 'DejaVu Sans']
-            
-            # Clear font cache
-            cache_dir = fm.get_cachedir()
-            if os.path.exists(cache_dir):
-                import shutil
-                try:
-                    shutil.rmtree(cache_dir)
-                    print("Cleared matplotlib font cache")
-                except:
-                    pass
-            
-            # Rebuild font list
-            fm._rebuild()
-            
-        except Exception as e:
-            print(f"Could not configure fontconfig: {e}")
+    # Try to use any available font without specific Korean font requirements
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica', 'sans-serif']
     
-    return "Fallback"
-
-
-def use_ascii_fallback():
-    """
-    Fallback function to convert Korean text to romanized form or placeholders.
-    """
-    def romanize_korean(text):
-        """Simple Korean to English mapping for common words."""
-        korean_map = {
-            '광합성': 'photosyn',
-            '과정': 'process',
-            '의': 'of',
-            '최종': 'final',
-            '결과': 'result',
-            '는': 'is',
-            '당': 'sugar',
-            '과': 'and',
-            '물': 'water',
-            '에서': 'from',
-            '산': 'oxygen',
-            '소': 'oxygen',
-            '분': 'min',
-            '해': 'do',
-            '요': 'need',
-            '주': 'main',
-            '탄': 'carbon'
-        }
-        
-        # Try to map Korean text
-        for kor, eng in korean_map.items():
-            text = text.replace(kor, eng)
-        
-        # If still has Korean characters, use token index
-        if any(ord(char) >= 0xAC00 and ord(char) <= 0xD7A3 for char in text):
-            return f"[{text[:3]}...]"  # Show partial text
-            
-        return text
-    
-    return romanize_korean
+    print("Font setup complete - warnings suppressed")
+    return True
 
 
 class LogitLens:
@@ -188,23 +50,16 @@ class LogitLens:
     Logit Lens analyzer for transformer language models.
     """
 
-    def __init__(self, model_path: str, device: str = "auto", use_ascii_fallback: bool = False):
+    def __init__(self, model_path: str, device: str = "auto"):
         """
         Initialize the LogitLens analyzer.
         
         Args:
             model_path: Path to the model
             device: Device to run the model on
-            use_ascii_fallback: If True, use ASCII characters instead of Korean
         """
-        # Setup Korean font
-        self.font_status = setup_korean_font()
-        self.use_ascii = use_ascii_fallback or (self.font_status == "Fallback")
-        
-        if self.use_ascii:
-            self.text_converter = use_ascii_fallback()
-        else:
-            self.text_converter = lambda x: x
+        # Simple font setup
+        setup_fonts()
         
         self.model_path = model_path
         self.device = self._get_device(device)
@@ -260,25 +115,32 @@ class LogitLens:
         return torch.device(device)
 
     def _decode_token_safe(self, token_id: int) -> str:
-        """Safely decode a token ID to a readable string."""
+        """
+        Safely decode a token ID to a readable string.
+        Returns the actual token text without any translation.
+        """
         try:
+            # Try direct decode
             decoded = self.tokenizer.decode([token_id], skip_special_tokens=True, clean_up_tokenization_spaces=False)
             
             if decoded and decoded.strip():
-                return self.text_converter(decoded.strip())
+                return decoded.strip()
             
+            # Fallback to token string
             token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
             
+            # Handle special token prefixes
             if token_str.startswith('▁'):
-                return self.text_converter(token_str[1:])
+                return token_str[1:]  # Remove SentencePiece space marker
             elif token_str.startswith('##'):
-                return self.text_converter(token_str[2:])
+                return token_str[2:]  # Remove BERT subword marker
             elif token_str.startswith('<') and token_str.endswith('>'):
-                return token_str
+                return token_str  # Keep special tokens as-is
             else:
-                return self.text_converter(token_str)
+                return token_str
                 
         except Exception:
+            # If all else fails, return token ID
             return f"[{token_id}]"
 
     def analyze_prompt_all_positions(self,
@@ -369,9 +231,16 @@ class LogitLens:
     def create_token_position_heatmap(self,
                                     analysis_results: Dict,
                                     figsize: Tuple[int, int] = (20, 12),
-                                    save_path: Optional[str] = None) -> None:
+                                    save_path: Optional[str] = None,
+                                    show_text: bool = True) -> None:
         """
-        Create heatmap with improved layout matching the desired format.
+        Create heatmap visualization matching the desired format.
+        
+        Args:
+            analysis_results: Results from analyze_prompt_all_positions()
+            figsize: Figure size for the plot
+            save_path: Path to save the figure
+            show_text: Whether to show token text in cells
         """
         if 'position_predictions' not in analysis_results:
             raise ValueError("This visualization requires results from analyze_prompt_all_positions()")
@@ -383,145 +252,149 @@ class LogitLens:
         num_layers = len(position_predictions[0])
         num_positions = len(position_predictions)
         
-        # Create figure
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        # Prepare data
-        predicted_tokens_matrix = []
-        probability_matrix = []
-        
-        # Reverse layer order for visualization (early layers at top)
-        for layer_idx in range(num_layers):
-            layer_tokens = []
-            layer_probs = []
+        # Suppress warnings for this plot
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
             
-            for pos_idx in range(num_positions):
-                if layer_idx < len(position_predictions[pos_idx]):
-                    pred = position_predictions[pos_idx][layer_idx]
-                    if pred['top_tokens']:
-                        top_token = pred['top_tokens'][0]
-                        top_prob = pred['top_probs'][0]
+            # Create figure
+            fig, ax = plt.subplots(figsize=figsize)
+            
+            # Prepare data
+            predicted_tokens_matrix = []
+            probability_matrix = []
+            
+            # Collect predictions for each layer
+            for layer_idx in range(num_layers):
+                layer_tokens = []
+                layer_probs = []
+                
+                for pos_idx in range(num_positions):
+                    if layer_idx < len(position_predictions[pos_idx]):
+                        pred = position_predictions[pos_idx][layer_idx]
+                        if pred['top_tokens']:
+                            top_token = pred['top_tokens'][0]
+                            top_prob = pred['top_probs'][0]
+                        else:
+                            top_token = ""
+                            top_prob = 0.0
                     else:
                         top_token = ""
                         top_prob = 0.0
-                else:
-                    top_token = ""
-                    top_prob = 0.0
+                    
+                    layer_tokens.append(top_token)
+                    layer_probs.append(top_prob)
                 
-                layer_tokens.append(top_token)
-                layer_probs.append(top_prob)
+                predicted_tokens_matrix.append(layer_tokens)
+                probability_matrix.append(layer_probs)
             
-            predicted_tokens_matrix.append(layer_tokens)
-            probability_matrix.append(layer_probs)
-        
-        # Create colormap matching your example
-        prob_array = np.array(probability_matrix)
-        
-        # Use a diverging colormap similar to your example
-        cmap = plt.cm.RdBu_r  # Red-Blue reversed (blue for high prob, red for low)
-        im = ax.imshow(prob_array, aspect='auto', cmap=cmap, vmin=0, vmax=1)
-        
-        # Configure axes
-        ax.set_ylabel('Model Layer\n← closer to input', fontsize=12)
-        ax.set_title(f'Logit Lens Analysis\nPrompt: "{self.text_converter(analysis_results["prompt"])}"', 
-                    fontsize=14, pad=40)
-        
-        # Set y-axis (layers)
-        layer_labels = [f"{i+layer_range[0]}" for i in range(num_layers)]
-        ax.set_yticks(range(num_layers))
-        ax.set_yticklabels(layer_labels, fontsize=10)
-        
-        # Set x-axis for positions
-        ax.set_xticks(range(num_positions))
-        ax.set_xticklabels([], rotation=0)  # Hide bottom labels initially
-        
-        # Create output tokens labels (bottom)
-        output_labels = []
-        for pos_idx in range(num_positions):
-            # Get the prediction from the last layer for this position
-            last_layer_pred = position_predictions[pos_idx][-1]
-            if last_layer_pred['top_tokens']:
-                output_labels.append(last_layer_pred['top_tokens'][0])
-            else:
-                output_labels.append("")
-        
-        ax.set_xticklabels(output_labels, rotation=45, ha='right', fontsize=10)
-        ax.set_xlabel('Output Tokens', fontsize=12, labelpad=10)
-        
-        # Add input tokens on top
-        ax2 = ax.twiny()
-        ax2.set_xlim(ax.get_xlim())
-        ax2.set_xticks(range(num_positions))
-        ax2.set_xticklabels(input_tokens, rotation=45, ha='left', fontsize=10)
-        ax2.set_xlabel('Input Tokens', fontsize=12, labelpad=10)
-        
-        # Add text annotations
-        for i in range(num_layers):
-            for j in range(num_positions):
-                token = predicted_tokens_matrix[i][j]
-                prob = probability_matrix[i][j]
-                
-                if token and prob > 0.01:
-                    # Determine text color
-                    text_color = "white" if prob > 0.5 else "black"
-                    
-                    # Add token text
-                    ax.text(j, i, token,
-                           ha="center", va="center",
-                           color=text_color, fontsize=8, fontweight='normal')
-                    
-                    # Add probability below token
-                    if prob > 0.1:  # Only show prob for significant predictions
-                        ax.text(j, i + 0.3, f'{prob:.2f}',
-                               ha="center", va="center",
-                               color=text_color, fontsize=6, alpha=0.7)
-        
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Probability', fontsize=10)
-        
-        # Add arrows to indicate flow
-        ax.annotate('', xy=(0, num_layers), xytext=(0, -0.5),
-                   arrowprops=dict(arrowstyle='→', lw=2, color='gray'),
-                   annotation_clip=False)
-        
-        ax.text(-0.5, num_layers/2, '← closer to input', rotation=90, 
-               va='center', ha='center', fontsize=10, color='gray')
-        ax.text(-0.5, num_layers/2 - 5, '← closer to output →', rotation=90, 
-               va='center', ha='center', fontsize=10, color='gray')
-        
-        # Improve layout
-        plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Token position heatmap saved to: {save_path}")
-        
-        plt.show()
+            # Create the heatmap
+            prob_array = np.array(probability_matrix)
+            
+            # Use a blue-based colormap for better visibility
+            im = ax.imshow(prob_array, aspect='auto', cmap='Blues', vmin=0, vmax=1)
+            
+            # Set title
+            ax.set_title(f'Logit Lens Analysis\nPrompt: "{analysis_results["prompt"]}"', 
+                        fontsize=14, pad=40)
+            
+            # Set y-axis (layers)
+            ax.set_ylabel('Model Layer\n← closer to input        closer to output →', fontsize=12)
+            layer_labels = [f"{i+layer_range[0]}" for i in range(num_layers)]
+            ax.set_yticks(range(num_layers))
+            ax.set_yticklabels(layer_labels, fontsize=10)
+            
+            # Set x-axis for output tokens (bottom)
+            ax.set_xticks(range(num_positions))
+            
+            # Get output tokens from the last layer
+            output_labels = []
+            for pos_idx in range(num_positions):
+                last_layer_pred = position_predictions[pos_idx][-1]
+                if last_layer_pred['top_tokens']:
+                    output_labels.append(last_layer_pred['top_tokens'][0])
+                else:
+                    output_labels.append("")
+            
+            ax.set_xticklabels(output_labels, rotation=45, ha='right', fontsize=10)
+            ax.set_xlabel('Output Tokens (Predictions)', fontsize=12, labelpad=10)
+            
+            # Add input tokens on top
+            ax2 = ax.twiny()
+            ax2.set_xlim(ax.get_xlim())
+            ax2.set_xticks(range(num_positions))
+            ax2.set_xticklabels(input_tokens, rotation=45, ha='left', fontsize=10)
+            ax2.set_xlabel('Input Tokens', fontsize=12, labelpad=10)
+            
+            # Optionally add text annotations in cells
+            if show_text:
+                for i in range(num_layers):
+                    for j in range(num_positions):
+                        token = predicted_tokens_matrix[i][j]
+                        prob = probability_matrix[i][j]
+                        
+                        if token and prob > 0.05:  # Only show significant predictions
+                            # Choose text color based on background
+                            text_color = "white" if prob > 0.5 else "black"
+                            
+                            # Truncate long tokens
+                            display_token = token[:10] + "..." if len(token) > 10 else token
+                            
+                            # Add token text (smaller font for readability)
+                            ax.text(j, i, display_token,
+                                   ha="center", va="center",
+                                   color=text_color, fontsize=7, fontweight='normal')
+            
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax)
+            cbar.set_label('Probability', fontsize=10)
+            
+            # Grid for better readability
+            ax.set_xticks(np.arange(num_positions) - 0.5, minor=True)
+            ax.set_yticks(np.arange(num_layers) - 0.5, minor=True)
+            ax.grid(which="minor", color="gray", linestyle='-', linewidth=0.2)
+            ax.tick_params(which="minor", size=0)
+            
+            plt.tight_layout()
+            
+            if save_path:
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"Token position heatmap saved to: {save_path}")
+            
+            plt.show()
 
 
-if __name__ == "__main__":
-    # Model path
+def main():
+    """
+    Main function to run logit lens analysis.
+    """
+    # Configuration
     model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
+    
+    # You can change the prompt here to anything you want
+    # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
+    prompt = "광합성 과정의 최종 결과는 당과"
+    # prompt = "The capital of France is"  # English example
+    # prompt = "인공지능의 미래는"  # Another Korean example
     
     print(f"Using model: {model_path}")
     
-    # Initialize LogitLens with ASCII fallback if Korean fonts fail
-    lens = LogitLens(model_path, use_ascii_fallback=False)
-    
-    # If Korean fonts are not working, try with ASCII fallback
-    if lens.font_status == "Fallback":
-        print("\n⚠️ Korean fonts not available. Using ASCII fallback mode...")
-        lens = LogitLens(model_path, use_ascii_fallback=True)
+    # Initialize LogitLens
+    lens = LogitLens(model_path)
     
     # Analyze prompt
-    prompt = "광합성 과정의 최종 결과는 당과"
-    
-    print("Analyzing prompt...")
+    print(f"\nAnalyzing prompt: '{prompt}'")
     results = lens.analyze_prompt_all_positions(prompt)
     
     # Create visualization
     print("Creating visualization...")
-    lens.create_token_position_heatmap(results, save_path="logit_lens_result.png")
+    lens.create_token_position_heatmap(
+        results, 
+        save_path="logit_lens_result.png",
+        show_text=True  # Set to False if you don't want text in cells
+    )
     
-    print("완료! logit_lens_result.png 파일을 확인하세요.")
+    print("\n✅ Complete! Check logit_lens_result.png")
+
+
+if __name__ == "__main__":
+    main()

@@ -567,13 +567,15 @@ class LogitLens:
         predicted_tokens_matrix = []
         probability_matrix = []
 
+        # Reverse layer order so highest layers appear at top
         for layer_idx in range(num_layers):
+            actual_layer_idx = num_layers - 1 - layer_idx  # Reverse the order
             layer_tokens = []
             layer_probs = []
 
             for pos_idx in range(num_positions):
-                if layer_idx < len(position_predictions[pos_idx]):
-                    pred = position_predictions[pos_idx][layer_idx]
+                if actual_layer_idx < len(position_predictions[pos_idx]):
+                    pred = position_predictions[pos_idx][actual_layer_idx]
                     if pred['top_tokens']:
                         top_token = pred['top_tokens'][0]  # Highest probability token
                         top_prob = pred['top_probs'][0]
@@ -590,16 +592,16 @@ class LogitLens:
             predicted_tokens_matrix.append(layer_tokens)
             probability_matrix.append(layer_probs)
 
-        # Create the heatmap using probabilities
+        # Create the heatmap using probabilities (origin='upper' so top layers are at top)
         prob_array = np.array(probability_matrix)
-        im = ax.imshow(prob_array, aspect='auto', cmap='viridis', origin='lower')
+        im = ax.imshow(prob_array, aspect='auto', cmap='viridis', origin='upper')
 
         # Set main labels
         ax.set_ylabel('Model Layers', fontsize=12)
         ax.set_title(f'Token-Position Logit Lens Analysis\nPrompt: "{analysis_results["prompt"]}"', fontsize=14, pad=20)
 
-        # Set y-axis (layers)
-        layer_labels = [f"L{layer_range[0] + i}" for i in range(num_layers)]
+        # Set y-axis (layers) - higher layers at top (L28, L27, ..., L0)
+        layer_labels = [f"L{layer_range[1] - i}" for i in range(num_layers)]
         ax.set_yticks(range(num_layers))
         ax.set_yticklabels(layer_labels)
 
@@ -704,7 +706,20 @@ class LogitLens:
 
                 # Get top-k predictions
                 top_k_values, top_k_indices = torch.topk(probs, top_k)
-                top_k_tokens = [self.tokenizer.decode([idx.item()]) for idx in top_k_indices]
+                top_k_tokens = []
+                for idx in top_k_indices:
+                    try:
+                        # Try to decode properly handling special tokens
+                        token = self.tokenizer.decode([idx.item()], skip_special_tokens=False)
+                        # Clean up the token for display
+                        if token.startswith('Ġ'):  # GPT-style space encoding
+                            token = ' ' + token[1:]
+                        elif token.startswith('▁'):  # SentencePiece style
+                            token = ' ' + token[1:]
+                        top_k_tokens.append(token.strip() if token.strip() else f"[{idx.item()}]")
+                    except:
+                        # Fallback to token ID if decoding fails
+                        top_k_tokens.append(f"[{idx.item()}]")
 
                 layer_predictions_for_position.append({
                     'layer': layer_idx,
@@ -716,8 +731,19 @@ class LogitLens:
 
             position_predictions.append(layer_predictions_for_position)
 
-        # Prepare tokens for visualization
-        input_tokens = self.tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+        # Prepare tokens for visualization with proper decoding
+        input_tokens = []
+        for token_id in inputs['input_ids'][0]:
+            try:
+                token = self.tokenizer.decode([token_id.item()], skip_special_tokens=False)
+                # Clean up special encoding
+                if token.startswith('Ġ'):  # GPT-style space encoding
+                    token = ' ' + token[1:]
+                elif token.startswith('▁'):  # SentencePiece style
+                    token = ' ' + token[1:]
+                input_tokens.append(token.strip() if token.strip() else f"[{token_id.item()}]")
+            except:
+                input_tokens.append(f"[{token_id.item()}]")
 
         return {
             'prompt': prompt,

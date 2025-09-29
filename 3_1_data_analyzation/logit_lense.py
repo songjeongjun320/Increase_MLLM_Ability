@@ -371,10 +371,10 @@ class LogitLens:
                             display_token = token[:8] + "..." if len(token) > 8 else token
 
                             # Add token text with transparency based on probability
-                            alpha = max(0.3, min(1.0, prob * 2))  # Scale visibility
+                            alpha = max(0.5, min(1.0, prob * 2))  # Increased minimum alpha from 0.3 to 0.5
                             ax.text(step_idx, layer_idx, display_token,
                                    ha="center", va="center",
-                                   color=text_color, fontsize=7, alpha=alpha)
+                                   color=text_color, fontsize=9, fontweight='bold', alpha=alpha)  # Increased from 7 to 9, added bold
 
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)
@@ -411,7 +411,7 @@ def main():
 
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
-    prompt = "La bateau naviguait en doceur sur"
+    prompt = "기상학자가 특정 지역에서 토네이도가"
     # prompt = "The capital of France is"  # English example
     # prompt = "인공지능의 미래는"  # Another Korean example
 

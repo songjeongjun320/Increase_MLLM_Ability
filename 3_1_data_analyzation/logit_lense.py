@@ -333,11 +333,12 @@ class LogitLens:
             ax.set_title(f'Logit Lens Analysis - Autoregressive Generation\nPrompt: "{prompt_display}"',
                         fontsize=13, pad=20)
 
-            # Y-axis: Layers
-            ax.set_ylabel('Model Layer (← input ... output →)', fontsize=11)
+            # Y-axis: Layers (inverted so layer 0 is at bottom)
+            ax.set_ylabel('Model Layer (↓ input ... output ↑)', fontsize=11)
             layer_labels = [f"{i+layer_range[0]}" for i in range(num_layers)]
             ax.set_yticks(range(num_layers))
             ax.set_yticklabels(layer_labels, fontsize=9)
+            ax.invert_yaxis()  # Invert so layer 0 is at bottom
 
             # X-axis: Generated tokens
             ax.set_xticks(range(num_steps))
@@ -351,17 +352,20 @@ class LogitLens:
                         token = predicted_tokens_matrix[layer_idx][step_idx]
                         prob = probability_matrix[layer_idx][step_idx]
 
-                        if token and prob > 0.05:
+                        # Lower threshold to show more predictions
+                        # Early layers have lower confidence, so we show them anyway
+                        if token and prob > 0.01:  # Changed from 0.05 to 0.01
                             # Choose text color based on background
                             text_color = "white" if prob > 0.5 else "black"
 
                             # Truncate long tokens
                             display_token = token[:8] + "..." if len(token) > 8 else token
 
-                            # Add token text
+                            # Add token text with transparency based on probability
+                            alpha = max(0.3, min(1.0, prob * 2))  # Scale visibility
                             ax.text(step_idx, layer_idx, display_token,
                                    ha="center", va="center",
-                                   color=text_color, fontsize=7)
+                                   color=text_color, fontsize=7, alpha=alpha)
 
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)

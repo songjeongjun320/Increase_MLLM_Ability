@@ -79,14 +79,32 @@ def setup_fonts():
         # Try to download and use NanumGothic
         try:
             import urllib.request
-            font_url = "https://github.com/naver/nanumfont/raw/master/TTF/NanumGothic.ttf"
+            # Try multiple font sources
+            font_urls = [
+                "https://github.com/naver/nanumfont/raw/master/NanumGothic.ttf",
+                "https://cdn.jsdelivr.net/gh/naver/nanumfont@master/NanumGothic.ttf",
+                "https://raw.githubusercontent.com/naver/nanumfont/master/NanumGothic.ttf"
+            ]
+
             font_dir = os.path.expanduser("~/.fonts")
             os.makedirs(font_dir, exist_ok=True)
             font_path = os.path.join(font_dir, "NanumGothic.ttf")
 
             if not os.path.exists(font_path):
-                urllib.request.urlretrieve(font_url, font_path)
-                print(f"✓ Downloaded NanumGothic to {font_path}")
+                downloaded = False
+                for font_url in font_urls:
+                    try:
+                        print(f"   Trying: {font_url}")
+                        urllib.request.urlretrieve(font_url, font_path)
+                        print(f"✓ Downloaded NanumGothic to {font_path}")
+                        downloaded = True
+                        break
+                    except Exception as e:
+                        print(f"   Failed: {e}")
+                        continue
+
+                if not downloaded:
+                    raise Exception("All download sources failed")
 
                 # Rebuild font cache
                 fm._load_fontmanager(try_read_cache=False)
@@ -101,9 +119,11 @@ def setup_fonts():
         except Exception as e:
             print(f"❌ Failed to download font: {e}")
             print("⚠ Korean text may not display correctly")
-            print("💡 Solution: Install fonts manually:")
-            print("   Linux: sudo apt-get install fonts-nanum")
-            print("   Or download from: https://hangeul.naver.com/font")
+            print("💡 Manual solution:")
+            print(f"   mkdir -p ~/.fonts")
+            print(f"   cd ~/.fonts")
+            print(f"   wget https://github.com/naver/nanumfont/releases/download/VER2.5/NanumGothic.ttf")
+            print(f"   Then run the script again.")
 
     return True
 

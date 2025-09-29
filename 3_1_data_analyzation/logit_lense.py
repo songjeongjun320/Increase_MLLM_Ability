@@ -206,13 +206,21 @@ class LogitLens:
 
             # Try config first
             if hasattr(self.model, 'config'):
-                print(f"Config attributes: {[attr for attr in dir(self.model.config) if 'layer' in attr.lower()]}")
+                # Print ALL config attributes to debug
+                config_attrs = {k: v for k, v in vars(self.model.config).items() if not k.startswith('_')}
+                print(f"\nAll config attributes:")
+                for key, value in list(config_attrs.items())[:20]:  # First 20
+                    if isinstance(value, (int, str, bool, float)):
+                        print(f"  {key}: {value}")
+
                 if hasattr(self.model.config, 'num_hidden_layers'):
                     self.num_layers = self.model.config.num_hidden_layers
                 elif hasattr(self.model.config, 'n_layer'):
                     self.num_layers = self.model.config.n_layer
                 elif hasattr(self.model.config, 'num_layers'):
                     self.num_layers = self.model.config.num_layers
+                elif hasattr(self.model.config, 'n_layers'):
+                    self.num_layers = self.model.config.n_layers
                 else:
                     # Last resort: try to count layers manually from printed info
                     print("\nSearching for layers in model structure...")

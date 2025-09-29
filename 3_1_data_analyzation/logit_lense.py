@@ -17,6 +17,8 @@ Key Features:
 
 Author: Based on research from nostalgebraist (2020) and recent advances
 Date: 2025-09-28
+
+module load cuda-12.6.1-gcc-12.1.0
 """
 
 import torch
@@ -80,9 +82,26 @@ class LogitLens:
         print(f"Model loaded with {self.num_layers} layers")
 
     def _get_device(self, device: str) -> torch.device:
-        """Get appropriate device for computation."""
+        """Get appropriate device for computation with A100 optimization."""
         if device == "auto":
-            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if torch.cuda.is_available():
+                gpu_name = torch.cuda.get_device_name(0)
+                print(f"🚀 GPU detected: {gpu_name}")
+                print(f"⚡ CUDA version: {torch.version.cuda}")
+                print(f"💾 GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
+                # A100 specific optimizations
+                if "A100" in gpu_name:
+                    print("🔥 A100 detected! Enabling optimizations...")
+                    # Enable mixed precision and tensor core optimizations
+                    torch.backends.cuda.matmul.allow_tf32 = True
+                    torch.backends.cudnn.allow_tf32 = True
+                    torch.backends.cudnn.benchmark = True
+
+                return torch.device("cuda")
+            else:
+                print("⚠️  CUDA not available, using CPU")
+                return torch.device("cpu")
         return torch.device(device)
 
     def analyze_prompt(self,

@@ -398,7 +398,7 @@ def main():
 
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
-    prompt = "광합성 과정의 최종 결과는 당과"
+    prompt = "La bateau naviguait en doceur sur"
     # prompt = "The capital of France is"  # English example
     # prompt = "인공지능의 미래는"  # Another Korean example
 

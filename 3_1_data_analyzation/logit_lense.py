@@ -174,12 +174,12 @@ class LogitLens:
             layer_predictions.append({
                 'layer': layer_idx,
                 'top_k_tokens': top_k_tokens,
-                'top_k_probs': top_k_values.cpu().numpy(),
-                'top_k_indices': top_k_indices.cpu().numpy()
+                'top_k_probs': top_k_values.detach().cpu().numpy(),
+                'top_k_indices': top_k_indices.detach().cpu().numpy()
             })
 
-            layer_probabilities.append(probs.cpu())
-            layer_entropies.append(entropy.cpu())
+            layer_probabilities.append(probs.detach().cpu())
+            layer_entropies.append(entropy.detach().cpu())
 
         # Prepare tokens for visualization
         input_tokens = self.tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
@@ -191,7 +191,7 @@ class LogitLens:
             'layer_probabilities': layer_probabilities,
             'layer_entropies': layer_entropies,
             'layer_range': (start_layer, min(end_layer, len(hidden_states) - 1)),
-            'input_ids': inputs['input_ids'].cpu()
+            'input_ids': inputs['input_ids'].detach().cpu()
         }
 
     def visualize_predictions(self,
@@ -710,8 +710,8 @@ class LogitLens:
                     'layer': layer_idx,
                     'position': pos_idx,
                     'top_tokens': top_k_tokens,
-                    'top_probs': top_k_values.cpu().numpy(),
-                    'top_indices': top_k_indices.cpu().numpy()
+                    'top_probs': top_k_values.detach().cpu().numpy(),
+                    'top_indices': top_k_indices.detach().cpu().numpy()
                 })
 
             position_predictions.append(layer_predictions_for_position)
@@ -724,7 +724,7 @@ class LogitLens:
             'input_tokens': input_tokens,
             'position_predictions': position_predictions,
             'layer_range': (start_layer, min(end_layer, len(hidden_states) - 1)),
-            'input_ids': inputs['input_ids'].cpu()
+            'input_ids': inputs['input_ids'].detach().cpu()
         }
 
 

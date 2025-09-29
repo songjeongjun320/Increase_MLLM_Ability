@@ -6,6 +6,8 @@ progressively refine their next-token predictions across different layers.
 
 Author: Based on research from nostalgebraist (2020) and recent advances
 Date: 2025-09-28
+
+module load cuda-12.6.1-gcc-12.1.0
 """
 
 import torch
@@ -371,10 +373,10 @@ class LogitLens:
                             display_token = token[:8] + "..." if len(token) > 8 else token
 
                             # Add token text with transparency based on probability
-                            alpha = max(0.5, min(1.0, prob * 2))  # Increased minimum alpha from 0.3 to 0.5
+                            alpha = max(0.3, min(1.0, prob * 2))  # Scale visibility
                             ax.text(step_idx, layer_idx, display_token,
                                    ha="center", va="center",
-                                   color=text_color, fontsize=9, fontweight='bold', alpha=alpha)  # Increased from 7 to 9, added bold
+                                   color=text_color, fontsize=7, alpha=alpha)
 
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)
@@ -407,11 +409,11 @@ def main():
     Main function to run logit lens analysis.
     """
     # Configuration
-    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama3.1_8B_Instruct"
+    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/deepseek-r1-distill-qwen-7b"
 
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
-    prompt = "기상학자가 특정 지역에서 토네이도가"
+    prompt = "La bateau naviguait en doceur sur"
     # prompt = "The capital of France is"  # English example
     # prompt = "인공지능의 미래는"  # Another Korean example
 

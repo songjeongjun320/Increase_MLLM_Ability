@@ -143,58 +143,70 @@ class LogitLens:
             # If all else fails, return token ID
             return f"[{token_id}]"
 
-    def analyze_prompt_all_positions(self,
-                                   prompt: str,
-                                   layer_range: Optional[Tuple[int, int]] = None,
-                                   top_k: int = 5) -> Dict:
+    def analyze_prompt_generation(self,
+                                 prompt: str,
+                                 max_new_tokens: int = 10,
+                                 layer_range: Optional[Tuple[int, int]] = None,
+                                 top_k: int = 5) -> Dict:
         """
-        Analyze predictions for ALL token positions across layers.
+        Analyze autoregressive generation: prompt → generated tokens.
+        Shows how each layer predicts the NEXT tokens during generation.
         """
-        print(f"Analyzing all token positions for: '{prompt}'")
-        
-        # Tokenize input
-        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True)
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        # Get hidden states from all layers
-        with torch.no_grad():
-            outputs = self.model(**inputs, output_hidden_states=True)
-            hidden_states = outputs.hidden_states
-        
+        print(f"Analyzing generation for prompt: '{prompt}'")
+        print(f"Generating {max_new_tokens} tokens...")
+
         # Determine layer range
         if layer_range is None:
             start_layer, end_layer = 0, self.num_layers
         else:
             start_layer, end_layer = layer_range
-        
-        seq_len = inputs['input_ids'].shape[1]
-        
-        # Extract predictions for each position and each layer
-        position_predictions = []
-        
-        for pos_idx in range(seq_len):
-            layer_predictions_for_position = []
-            
+
+        # Tokenize initial prompt
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True)
+        input_ids = inputs['input_ids'].to(self.device)
+
+        # Store input tokens for display
+        input_tokens = []
+        for token_id in input_ids[0]:
+            display_token = self._decode_token_safe(token_id.item())
+            input_tokens.append(display_token)
+
+        # Storage for generation analysis
+        generated_tokens = []
+        layer_predictions_per_step = []  # [step][layer] = predictions
+
+        # Autoregressive generation
+        current_ids = input_ids
+
+        for step in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.model(current_ids, output_hidden_states=True)
+                hidden_states = outputs.hidden_states
+
+            # Get predictions from each layer for the LAST position (next token)
+            last_pos = current_ids.shape[1] - 1
+            layer_preds_this_step = []
+
             for layer_idx in range(start_layer, min(end_layer + 1, len(hidden_states))):
                 hidden_state = hidden_states[layer_idx]
-                position_hidden = hidden_state[0, pos_idx, :]
-                
+                last_hidden = hidden_state[0, last_pos, :]
+
                 # Apply language modeling head
                 if hasattr(self.model, 'lm_head'):
-                    logits = self.model.lm_head(position_hidden.unsqueeze(0))
+                    logits = self.model.lm_head(last_hidden.unsqueeze(0))
                 elif hasattr(self.model, 'embed_out'):
-                    logits = self.model.embed_out(position_hidden.unsqueeze(0))
+                    logits = self.model.embed_out(last_hidden.unsqueeze(0))
                 else:
                     for name, module in self.model.named_modules():
                         if 'lm_head' in name or 'embed_out' in name or 'output' in name:
-                            logits = module(position_hidden.unsqueeze(0))
+                            logits = module(last_hidden.unsqueeze(0))
                             break
                     else:
                         raise ValueError("Could not find language modeling head")
-                
+
                 # Convert to probabilities
                 probs = F.softmax(logits, dim=-1)[0]
-                
+
                 # Get top-k predictions
                 top_k_values, top_k_indices = torch.topk(probs, top_k)
                 top_k_tokens = []
@@ -202,164 +214,178 @@ class LogitLens:
                     token_id = idx.item()
                     display_token = self._decode_token_safe(token_id)
                     top_k_tokens.append(display_token)
-                
-                layer_predictions_for_position.append({
+
+                layer_preds_this_step.append({
                     'layer': layer_idx,
-                    'position': pos_idx,
+                    'step': step,
                     'top_tokens': top_k_tokens,
                     'top_probs': top_k_values.detach().cpu().numpy(),
                     'top_indices': top_k_indices.detach().cpu().numpy()
                 })
-            
-            position_predictions.append(layer_predictions_for_position)
-        
-        # Prepare tokens for visualization
-        input_tokens = []
-        for token_id in inputs['input_ids'][0]:
-            token_id_val = token_id.item()
-            display_token = self._decode_token_safe(token_id_val)
-            input_tokens.append(display_token)
-        
+
+            layer_predictions_per_step.append(layer_preds_this_step)
+
+            # Get the actual next token from the final layer (greedy decoding)
+            next_token_logits = outputs.logits[0, -1, :]
+            next_token_id = torch.argmax(next_token_logits).unsqueeze(0).unsqueeze(0)
+
+            # Decode and store
+            next_token_text = self._decode_token_safe(next_token_id.item())
+            generated_tokens.append(next_token_text)
+
+            # Append to sequence for next iteration
+            current_ids = torch.cat([current_ids, next_token_id], dim=1)
+
+            # Stop if EOS token
+            if next_token_id.item() == self.tokenizer.eos_token_id:
+                print(f"EOS token generated at step {step}")
+                break
+
+        print(f"Generated tokens: {' '.join(generated_tokens)}")
+
         return {
             'prompt': prompt,
             'input_tokens': input_tokens,
-            'position_predictions': position_predictions,
+            'generated_tokens': generated_tokens,
+            'layer_predictions_per_step': layer_predictions_per_step,
             'layer_range': (start_layer, min(end_layer, len(hidden_states) - 1)),
-            'input_ids': inputs['input_ids'].detach().cpu()
+            'num_layers': end_layer - start_layer + 1
         }
 
-    def create_token_position_heatmap(self,
-                                    analysis_results: Dict,
-                                    figsize: Tuple[int, int] = (20, 12),
-                                    save_path: Optional[str] = None,
-                                    show_text: bool = True) -> None:
+    def create_generation_heatmap(self,
+                                analysis_results: Dict,
+                                figsize: Tuple[int, int] = (16, 10),
+                                save_path: Optional[str] = None,
+                                show_text: bool = True) -> None:
         """
-        Create heatmap visualization matching the desired format.
-        
+        Create heatmap showing how each layer predicts generated tokens.
+
+        X-axis: Generated tokens (autoregressive sequence)
+        Y-axis: Model layers (0 to num_layers)
+        Color: Probability of top prediction at each step
+
         Args:
-            analysis_results: Results from analyze_prompt_all_positions()
+            analysis_results: Results from analyze_prompt_generation()
             figsize: Figure size for the plot
             save_path: Path to save the figure
             show_text: Whether to show token text in cells
         """
-        if 'position_predictions' not in analysis_results:
-            raise ValueError("This visualization requires results from analyze_prompt_all_positions()")
-        
-        position_predictions = analysis_results['position_predictions']
+        if 'layer_predictions_per_step' not in analysis_results:
+            raise ValueError("This visualization requires results from analyze_prompt_generation()")
+
+        layer_predictions_per_step = analysis_results['layer_predictions_per_step']
+        generated_tokens = analysis_results['generated_tokens']
         input_tokens = analysis_results['input_tokens']
         layer_range = analysis_results['layer_range']
-        
-        num_layers = len(position_predictions[0])
-        num_positions = len(position_predictions)
-        
+        num_layers = analysis_results['num_layers']
+
+        num_steps = len(generated_tokens)
+
+        if num_steps == 0:
+            print("No tokens were generated!")
+            return
+
         # Suppress warnings for this plot
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            
+
             # Create figure
             fig, ax = plt.subplots(figsize=figsize)
-            
-            # Prepare data
+
+            # Prepare data: [layer][step] = (token, prob)
             predicted_tokens_matrix = []
             probability_matrix = []
-            
-            # Collect predictions for each layer
-            for layer_idx in range(num_layers):
-                layer_tokens = []
-                layer_probs = []
-                
-                for pos_idx in range(num_positions):
-                    if layer_idx < len(position_predictions[pos_idx]):
-                        pred = position_predictions[pos_idx][layer_idx]
-                        if pred['top_tokens']:
-                            top_token = pred['top_tokens'][0]
-                            top_prob = pred['top_probs'][0]
+
+            for layer_offset in range(num_layers):
+                layer_tokens_across_steps = []
+                layer_probs_across_steps = []
+
+                for step_idx in range(num_steps):
+                    if step_idx < len(layer_predictions_per_step):
+                        layer_preds = layer_predictions_per_step[step_idx]
+                        if layer_offset < len(layer_preds):
+                            pred = layer_preds[layer_offset]
+                            top_token = pred['top_tokens'][0] if pred['top_tokens'] else ""
+                            top_prob = pred['top_probs'][0] if len(pred['top_probs']) > 0 else 0.0
                         else:
                             top_token = ""
                             top_prob = 0.0
                     else:
                         top_token = ""
                         top_prob = 0.0
-                    
-                    layer_tokens.append(top_token)
-                    layer_probs.append(top_prob)
-                
-                predicted_tokens_matrix.append(layer_tokens)
-                probability_matrix.append(layer_probs)
-            
+
+                    layer_tokens_across_steps.append(top_token)
+                    layer_probs_across_steps.append(top_prob)
+
+                predicted_tokens_matrix.append(layer_tokens_across_steps)
+                probability_matrix.append(layer_probs_across_steps)
+
             # Create the heatmap
             prob_array = np.array(probability_matrix)
-            
-            # Use a blue-based colormap for better visibility
+
+            # Use Blues colormap
             im = ax.imshow(prob_array, aspect='auto', cmap='Blues', vmin=0, vmax=1)
-            
-            # Set title
-            ax.set_title(f'Logit Lens Analysis\nPrompt: "{analysis_results["prompt"]}"', 
-                        fontsize=14, pad=40)
-            
-            # Set y-axis (layers)
-            ax.set_ylabel('Model Layer\n← closer to input        closer to output →', fontsize=12)
+
+            # Set title with prompt
+            prompt_display = analysis_results['prompt']
+            if len(prompt_display) > 60:
+                prompt_display = prompt_display[:60] + "..."
+            ax.set_title(f'Logit Lens Analysis - Autoregressive Generation\nPrompt: "{prompt_display}"',
+                        fontsize=13, pad=20)
+
+            # Y-axis: Layers
+            ax.set_ylabel('Model Layer (← input ... output →)', fontsize=11)
             layer_labels = [f"{i+layer_range[0]}" for i in range(num_layers)]
             ax.set_yticks(range(num_layers))
-            ax.set_yticklabels(layer_labels, fontsize=10)
-            
-            # Set x-axis for output tokens (bottom)
-            ax.set_xticks(range(num_positions))
-            
-            # Get output tokens from the last layer
-            output_labels = []
-            for pos_idx in range(num_positions):
-                last_layer_pred = position_predictions[pos_idx][-1]
-                if last_layer_pred['top_tokens']:
-                    output_labels.append(last_layer_pred['top_tokens'][0])
-                else:
-                    output_labels.append("")
-            
-            ax.set_xticklabels(output_labels, rotation=45, ha='right', fontsize=10)
-            ax.set_xlabel('Output Tokens (Predictions)', fontsize=12, labelpad=10)
-            
-            # Add input tokens on top
-            ax2 = ax.twiny()
-            ax2.set_xlim(ax.get_xlim())
-            ax2.set_xticks(range(num_positions))
-            ax2.set_xticklabels(input_tokens, rotation=45, ha='left', fontsize=10)
-            ax2.set_xlabel('Input Tokens', fontsize=12, labelpad=10)
-            
-            # Optionally add text annotations in cells
+            ax.set_yticklabels(layer_labels, fontsize=9)
+
+            # X-axis: Generated tokens
+            ax.set_xticks(range(num_steps))
+            ax.set_xticklabels(generated_tokens, rotation=45, ha='right', fontsize=9)
+            ax.set_xlabel('Generated Tokens (Next Token Predictions)', fontsize=11)
+
+            # Add text annotations in cells
             if show_text:
-                for i in range(num_layers):
-                    for j in range(num_positions):
-                        token = predicted_tokens_matrix[i][j]
-                        prob = probability_matrix[i][j]
-                        
-                        if token and prob > 0.05:  # Only show significant predictions
+                for layer_idx in range(num_layers):
+                    for step_idx in range(num_steps):
+                        token = predicted_tokens_matrix[layer_idx][step_idx]
+                        prob = probability_matrix[layer_idx][step_idx]
+
+                        if token and prob > 0.05:
                             # Choose text color based on background
                             text_color = "white" if prob > 0.5 else "black"
-                            
+
                             # Truncate long tokens
-                            display_token = token[:10] + "..." if len(token) > 10 else token
-                            
-                            # Add token text (smaller font for readability)
-                            ax.text(j, i, display_token,
+                            display_token = token[:8] + "..." if len(token) > 8 else token
+
+                            # Add token text
+                            ax.text(step_idx, layer_idx, display_token,
                                    ha="center", va="center",
-                                   color=text_color, fontsize=7, fontweight='normal')
-            
+                                   color=text_color, fontsize=7)
+
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)
-            cbar.set_label('Probability', fontsize=10)
-            
+            cbar.set_label('Top Prediction Probability', fontsize=10)
+
             # Grid for better readability
-            ax.set_xticks(np.arange(num_positions) - 0.5, minor=True)
+            ax.set_xticks(np.arange(num_steps) - 0.5, minor=True)
             ax.set_yticks(np.arange(num_layers) - 0.5, minor=True)
-            ax.grid(which="minor", color="gray", linestyle='-', linewidth=0.2)
+            ax.grid(which="minor", color="gray", linestyle='-', linewidth=0.3)
             ax.tick_params(which="minor", size=0)
-            
-            plt.tight_layout()
-            
+
+            # Add input prompt info
+            input_text = " ".join(input_tokens)
+            if len(input_text) > 80:
+                input_text = input_text[:80] + "..."
+            fig.text(0.5, 0.02, f"Input: {input_text}",
+                    ha='center', fontsize=9, style='italic', color='gray')
+
+            plt.tight_layout(rect=[0, 0.03, 1, 1])
+
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"Token position heatmap saved to: {save_path}")
-            
+                print(f"Generation heatmap saved to: {save_path}")
+
             plt.show()
 
 
@@ -369,31 +395,39 @@ def main():
     """
     # Configuration
     model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/llama-3.2-3b-pt"
-    
+
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
     prompt = "광합성 과정의 최종 결과는 당과"
     # prompt = "The capital of France is"  # English example
     # prompt = "인공지능의 미래는"  # Another Korean example
-    
+
+    # Number of tokens to generate
+    max_new_tokens = 10
+
     print(f"Using model: {model_path}")
-    
+    print(f"Prompt: '{prompt}'")
+    print(f"Generating {max_new_tokens} tokens...\n")
+
     # Initialize LogitLens
     lens = LogitLens(model_path)
-    
-    # Analyze prompt
-    print(f"\nAnalyzing prompt: '{prompt}'")
-    results = lens.analyze_prompt_all_positions(prompt)
-    
+
+    # Analyze generation (autoregressive)
+    results = lens.analyze_prompt_generation(
+        prompt=prompt,
+        max_new_tokens=max_new_tokens
+    )
+
     # Create visualization
-    print("Creating visualization...")
-    lens.create_token_position_heatmap(
-        results, 
-        save_path="logit_lens_result.png",
+    print("\nCreating visualization...")
+    lens.create_generation_heatmap(
+        results,
+        save_path="logit_lens_generation.png",
         show_text=True  # Set to False if you don't want text in cells
     )
-    
-    print("\n✅ Complete! Check logit_lens_result.png")
+
+    print("\n✅ Complete! Check logit_lens_generation.png")
+    print(f"Full generated sequence: {prompt} {' '.join(results['generated_tokens'])}")
 
 
 if __name__ == "__main__":

@@ -742,5 +742,29 @@ def example_usage():
 
 
 if __name__ == "__main__":
-    # Run example if script is executed directly
-    example_usage()
+    # 사용법 예시 - 여기에 모델 경로를 입력하세요!
+
+    # 옵션 1: HuggingFace 모델 사용
+    model_path = "gpt2"  # <- 여기에 모델 이름 입력
+
+    # 옵션 2: 로컬 모델 사용 (아래 중 하나를 선택하고 주석 해제)
+    # model_path = "./1_models/your_model_folder"  # <- 프로젝트 내 모델 경로
+    # model_path = "C:/Users/songj/path/to/your/model"  # <- 절대 경로
+
+    print(f"Using model: {model_path}")
+
+    # LogitLens 초기화
+    lens = LogitLens(model_path)
+
+    # 분석할 프롬프트
+    prompt = "The capital of France is"
+
+    # 분석 실행
+    print("Analyzing prompt...")
+    results = lens.analyze_prompt_all_positions(prompt)
+
+    # 시각화 생성 및 저장
+    print("Creating visualization...")
+    lens.create_token_position_heatmap(results, save_path="logit_lens_result.png")
+
+    print("완료! logit_lens_result.png 파일을 확인하세요.")

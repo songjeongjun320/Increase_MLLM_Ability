@@ -437,13 +437,13 @@ def main():
     Main function to run logit lens analysis.
     """
     # Configuration
-    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/deepseek-r1-distill-qwen-7b"
+    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
 
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
-    prompt = "La bateau naviguait en doceur sur"
+    # prompt = "La bateau naviguait en doceur sur"
     # prompt = "The capital of France is"  # English example
-    # prompt = "인공지능의 미래는"  # Another Korean example
+    prompt = "배는 바다위를 순조롭게 항해"  # Another Korean example
 
     # Number of tokens to generate
     max_new_tokens = 10

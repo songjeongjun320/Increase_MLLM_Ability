@@ -25,10 +25,108 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import seaborn as sns
 from typing import List, Optional, Dict, Union, Tuple
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import warnings
+import os
+import platform
+
+
+def setup_korean_font():
+    """
+    Setup Korean font for matplotlib to properly display Korean characters.
+    """
+    system = platform.system()
+    korean_fonts = []
+
+    if system == "Linux":
+        # Common Korean fonts on Linux systems - expanded list
+        korean_fonts = [
+            'Noto Sans CJK KR',
+            'Noto Sans KR',
+            'Noto CJK KR',
+            'Source Han Sans KR',
+            'NanumGothic',
+            'NanumBarunGothic',
+            'NanumMyeongjo',
+            'D2Coding',
+            'Ubuntu',
+            'Liberation Sans',
+            'DejaVu Sans',
+            'Malgun Gothic',
+            'AppleGothic',
+            'Arial Unicode MS',
+            'Droid Sans Fallback'
+        ]
+    elif system == "Darwin":  # macOS
+        korean_fonts = [
+            'AppleGothic',
+            'Apple SD Gothic Neo',
+            'Noto Sans CJK KR',
+            'Arial Unicode MS'
+        ]
+    elif system == "Windows":
+        korean_fonts = [
+            'Malgun Gothic',
+            'Arial Unicode MS',
+            'Noto Sans CJK KR',
+            'Gulim',
+            'Dotum'
+        ]
+
+    # Try to find and set a Korean font
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+
+    for font_name in korean_fonts:
+        if font_name in available_fonts:
+            plt.rcParams['font.family'] = font_name
+            plt.rcParams['axes.unicode_minus'] = False
+            print(f"✅ Korean font set to: {font_name}")
+            return font_name
+
+    # Fallback: try to use any CJK font
+    cjk_fonts = [f for f in available_fonts if any(keyword in f.lower() for keyword in ['cjk', 'korean', 'nanum', 'malgun', 'gothic'])]
+    if cjk_fonts:
+        font_name = cjk_fonts[0]
+        plt.rcParams['font.family'] = font_name
+        plt.rcParams['axes.unicode_minus'] = False
+        print(f"✅ CJK font set to: {font_name}")
+        return font_name
+
+    # Last resort: set comprehensive font fallback
+    plt.rcParams['axes.unicode_minus'] = False
+
+    # Set comprehensive font fallback list
+    fallback_fonts = [
+        'DejaVu Sans',
+        'Liberation Sans',
+        'Arial Unicode MS',
+        'Lucida Grande',
+        'Verdana',
+        'Geneva',
+        'Arial',
+        'Helvetica',
+        'sans-serif'
+    ]
+
+    plt.rcParams['font.sans-serif'] = fallback_fonts
+    plt.rcParams['font.family'] = 'sans-serif'
+
+    # Force matplotlib to rebuild font cache if available
+    try:
+        # Clear font cache to ensure new settings take effect
+        if hasattr(fm, '_rebuild'):
+            fm._rebuild()
+        elif hasattr(fm.fontManager, '_rebuild'):
+            fm.fontManager._rebuild()
+        print("⚠️ Using comprehensive Unicode font fallback")
+        return "Unicode fallback"
+    except Exception as e:
+        print(f"⚠️ Font cache rebuild failed: {e}")
+        print("⚠️ Using basic Unicode font fallback")
+        return "Basic fallback"
 
 
 class LogitLens:
@@ -48,6 +146,9 @@ class LogitLens:
             model_path: Path to the model (can be HuggingFace model ID or local directory path)
             device: Device to run the model on ("auto", "cpu", "cuda", etc.)
         """
+        # Setup Korean font first
+        setup_korean_font()
+
         self.model_path = model_path
         self.device = self._get_device(device)
 
@@ -80,6 +181,41 @@ class LogitLens:
 
         self.num_layers = len(self.model.transformer.h) if hasattr(self.model, 'transformer') else len(self.model.model.layers)
         print(f"Model loaded with {self.num_layers} layers")
+
+    def _decode_token_safe(self, token_id: int) -> str:
+        """
+        Safely decode a token ID to a readable string with Korean support.
+
+        Args:
+            token_id: Token ID to decode
+
+        Returns:
+            Decoded token string
+        """
+        try:
+            # Primary method: use tokenizer.decode
+            decoded = self.tokenizer.decode([token_id], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
+            # If we got a result and it's not just whitespace
+            if decoded and decoded.strip():
+                return decoded.strip()
+
+            # If primary method failed, try convert_ids_to_tokens
+            token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
+
+            # Handle SentencePiece prefixes
+            if token_str.startswith('▁'):
+                return token_str[1:]  # Remove SentencePiece space marker
+            elif token_str.startswith('##'):
+                return token_str[2:]  # Remove BERT subword marker
+            elif token_str.startswith('<') and token_str.endswith('>'):
+                return token_str  # Keep special tokens as-is
+            else:
+                return token_str
+
+        except Exception:
+            # Final fallback: show token ID
+            return f"[{token_id}]"
 
     def _get_device(self, device: str) -> torch.device:
         """Get appropriate device for computation with A100 optimization."""
@@ -709,32 +845,8 @@ class LogitLens:
                 top_k_tokens = []
                 for idx in top_k_indices:
                     token_id = idx.item()
-                    try:
-                        # Use proper decoding with error handling
-                        decoded = self.tokenizer.decode([token_id], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
-                        # If decoded is empty or just whitespace, try convert_ids_to_tokens
-                        if not decoded.strip():
-                            token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
-                            # Handle special tokens properly
-                            if token_str.startswith('▁'):
-                                decoded = token_str[1:]  # Remove SentencePiece prefix
-                            elif token_str.startswith('<') and token_str.endswith('>'):
-                                decoded = token_str  # Keep special tokens as is
-                            else:
-                                decoded = token_str
-
-                        # Ensure we have something to show
-                        display_token = decoded if decoded.strip() else f"[{token_id}]"
-                        top_k_tokens.append(display_token)
-
-                    except Exception as e:
-                        # Complete fallback
-                        try:
-                            token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
-                            top_k_tokens.append(token_str if token_str else f"[{token_id}]")
-                        except:
-                            top_k_tokens.append(f"[{token_id}]")
+                    display_token = self._decode_token_safe(token_id)
+                    top_k_tokens.append(display_token)
 
                 layer_predictions_for_position.append({
                     'layer': layer_idx,
@@ -750,32 +862,8 @@ class LogitLens:
         input_tokens = []
         for token_id in inputs['input_ids'][0]:
             token_id_val = token_id.item()
-            try:
-                # Use proper decoding for Korean text
-                decoded = self.tokenizer.decode([token_id_val], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
-                # If decoded is empty, try convert_ids_to_tokens
-                if not decoded.strip():
-                    token_str = self.tokenizer.convert_ids_to_tokens([token_id_val])[0]
-                    # Handle SentencePiece encoding
-                    if token_str.startswith('▁'):
-                        decoded = token_str[1:]  # Remove prefix
-                    elif token_str.startswith('<') and token_str.endswith('>'):
-                        decoded = token_str  # Keep special tokens
-                    else:
-                        decoded = token_str
-
-                # Ensure we have something to display
-                display_token = decoded if decoded.strip() else f"[{token_id_val}]"
-                input_tokens.append(display_token)
-
-            except Exception:
-                # Complete fallback
-                try:
-                    token_str = self.tokenizer.convert_ids_to_tokens([token_id_val])[0]
-                    input_tokens.append(token_str if token_str else f"[{token_id_val}]")
-                except:
-                    input_tokens.append(f"[{token_id_val}]")
+            display_token = self._decode_token_safe(token_id_val)
+            input_tokens.append(display_token)
 
         return {
             'prompt': prompt,

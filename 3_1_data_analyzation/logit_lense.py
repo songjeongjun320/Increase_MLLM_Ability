@@ -30,20 +30,46 @@ warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
 
 def setup_fonts():
     """
-    Simple font setup - if Korean fonts fail, just continue with defaults.
+    Setup fonts for Korean text support in matplotlib.
     """
     # Disable font warnings
     import logging
     logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
-    
+
     # Basic matplotlib settings
     plt.rcParams['axes.unicode_minus'] = False
-    
-    # Try to use any available font without specific Korean font requirements
-    plt.rcParams['font.family'] = 'sans-serif'
-    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica', 'sans-serif']
-    
-    print("Font setup complete - warnings suppressed")
+
+    # Try to find Korean fonts
+    import platform
+    system = platform.system()
+
+    korean_fonts = []
+
+    if system == 'Windows':
+        korean_fonts = ['Malgun Gothic', 'NanumGothic', 'NanumBarunGothic', 'Gulim', 'Dotum']
+    elif system == 'Darwin':  # macOS
+        korean_fonts = ['AppleGothic', 'Apple SD Gothic Neo', 'NanumGothic']
+    else:  # Linux
+        korean_fonts = ['NanumGothic', 'NanumBarunGothic', 'UnDotum', 'Noto Sans CJK KR']
+
+    # Get list of available fonts
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+
+    # Find first available Korean font
+    selected_font = None
+    for font in korean_fonts:
+        if font in available_fonts:
+            selected_font = font
+            print(f"✓ Using Korean font: {font}")
+            break
+
+    if selected_font:
+        plt.rcParams['font.family'] = selected_font
+    else:
+        print("⚠ No Korean font found, using default (Korean may not display)")
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica', 'sans-serif']
+
     return True
 
 
@@ -398,7 +424,9 @@ class LogitLens:
             plt.tight_layout(rect=[0, 0.03, 1, 1])
 
             if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                # Save with font embedding to preserve Korean characters
+                plt.savefig(save_path, dpi=300, bbox_inches='tight',
+                           pil_kwargs={'quality': 95})
                 print(f"Generation heatmap saved to: {save_path}")
 
             plt.show()

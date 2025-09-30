@@ -522,9 +522,8 @@ class LogitLens:
                         token = predicted_tokens_matrix[layer_idx][step_idx]
                         prob = probability_matrix[layer_idx][step_idx]
 
-                        # Show predictions even with very low probability
-                        # Early layers have VERY low confidence (< 0.001)
-                        if token and prob > 0.0001:  # Very low threshold to show early layer predictions
+                        # Always show the top prediction, regardless of probability
+                        if token:
                             # Choose text color based on background
                             text_color = "white" if prob > 0.5 else "black"
 
@@ -532,11 +531,15 @@ class LogitLens:
                             display_token = token[:8] + "..." if len(token) > 8 else token
 
                             # Add token text with transparency based on probability
-                            # Scale alpha to make very low probs still visible
-                            alpha = max(0.4, min(1.0, prob * 100))  # Scale up low probabilities
+                            # Scale alpha: even very low probs (0.001) will be visible
+                            alpha = max(0.3, min(1.0, prob * 50))  # Scale to make low probs visible
+
+                            # Smaller font for very low probability predictions
+                            fontsize = 9 if prob > 0.01 else 7
+
                             ax.text(step_idx, layer_idx, display_token,
                                    ha="center", va="center",
-                                   color=text_color, fontsize=9, fontweight='bold', alpha=alpha)
+                                   color=text_color, fontsize=fontsize, fontweight='bold', alpha=alpha)
 
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)

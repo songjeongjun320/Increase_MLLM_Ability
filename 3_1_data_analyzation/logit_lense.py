@@ -206,20 +206,17 @@ class LogitLens:
 
             # Try config first
             if hasattr(self.model, 'config'):
-                # Print ALL config attributes to debug
-                print(f"\nSearching config for layer information...")
-                for key in sorted(dir(self.model.config)):
-                    if not key.startswith('_'):
-                        try:
-                            value = getattr(self.model.config, key)
-                            if isinstance(value, (int, str, bool, float)):
-                                # Print all numeric values - one might be num layers
-                                if isinstance(value, int) and 10 < value < 100:
-                                    print(f"  {key}: {value} ⭐")  # Likely candidates
-                                elif 'layer' in key.lower() or 'depth' in key.lower() or 'block' in key.lower():
+                # Print ALL config attributes to debug (only for Gemma)
+                if 'gemma' in type(self.model).__name__.lower():
+                    print(f"\nSearching ALL integer config values...")
+                    for key in sorted(dir(self.model.config)):
+                        if not key.startswith('_'):
+                            try:
+                                value = getattr(self.model.config, key)
+                                if isinstance(value, int):
                                     print(f"  {key}: {value}")
-                        except:
-                            pass
+                            except:
+                                pass
 
                 if hasattr(self.model.config, 'num_hidden_layers'):
                     self.num_layers = self.model.config.num_hidden_layers

@@ -570,7 +570,8 @@ def main():
     Main function to run logit lens analysis.
     """
     # Configuration
-    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
+    model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct"
+    # model_path = "/scratch/jsong132/Increase_MLLM_Ability/Base_Models/google_gemma-3-4b-it"
 
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다

@@ -226,6 +226,10 @@ class LogitLens:
                     self.num_layers = self.model.config.num_layers
                 elif hasattr(self.model.config, 'n_layers'):
                     self.num_layers = self.model.config.n_layers
+                elif hasattr(self.model.config, 'text_config') and hasattr(self.model.config.text_config, 'num_hidden_layers'):
+                    # Gemma3 has text_config.num_hidden_layers
+                    self.num_layers = self.model.config.text_config.num_hidden_layers
+                    print(f"✓ Found layers in text_config: {self.num_layers}")
                 else:
                     # Last resort: try to count layers manually from printed info
                     print("\nSearching for layers in model structure...")

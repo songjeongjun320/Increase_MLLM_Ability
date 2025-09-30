@@ -396,7 +396,20 @@ class LogitLens:
             layer_predictions_per_step.append(layer_preds_this_step)
 
             # Get the actual next token from the final layer (greedy decoding)
-            next_token_logits = outputs.logits[0, -1, :]
+            next_token_logits = outputs.logits[0, -1, :].clone()
+
+            # For Gemma: suppress special tokens to force actual text generation
+            if 'gemma' in self.model.config.model_type.lower():
+                special_token_ids = [
+                    self.tokenizer.pad_token_id,
+                    self.tokenizer.eos_token_id,
+                    self.tokenizer.bos_token_id,
+                ]
+                # Set very low logits for special tokens
+                for token_id in special_token_ids:
+                    if token_id is not None:
+                        next_token_logits[token_id] = -float('inf')
+
             next_token_id = torch.argmax(next_token_logits).unsqueeze(0).unsqueeze(0)
 
             # Decode and store
@@ -406,10 +419,11 @@ class LogitLens:
             # Append to sequence for next iteration
             current_ids = torch.cat([current_ids, next_token_id], dim=1)
 
-            # Stop if EOS token
+            # Stop if EOS token (but only for non-Gemma or after generating some tokens)
             if next_token_id.item() == self.tokenizer.eos_token_id:
-                print(f"EOS token generated at step {step}")
-                break
+                if not ('gemma' in self.model.config.model_type.lower()) or len(generated_tokens) > 3:
+                    print(f"EOS token generated at step {step}")
+                    break
 
         print(f"Generated tokens: {' '.join(generated_tokens)}")
 

@@ -207,11 +207,19 @@ class LogitLens:
             # Try config first
             if hasattr(self.model, 'config'):
                 # Print ALL config attributes to debug
-                config_attrs = {k: v for k, v in vars(self.model.config).items() if not k.startswith('_')}
-                print(f"\nAll config attributes:")
-                for key, value in list(config_attrs.items())[:20]:  # First 20
-                    if isinstance(value, (int, str, bool, float)):
-                        print(f"  {key}: {value}")
+                print(f"\nSearching config for layer information...")
+                for key in sorted(dir(self.model.config)):
+                    if not key.startswith('_'):
+                        try:
+                            value = getattr(self.model.config, key)
+                            if isinstance(value, (int, str, bool, float)):
+                                # Print all numeric values - one might be num layers
+                                if isinstance(value, int) and 10 < value < 100:
+                                    print(f"  {key}: {value} ⭐")  # Likely candidates
+                                elif 'layer' in key.lower() or 'depth' in key.lower() or 'block' in key.lower():
+                                    print(f"  {key}: {value}")
+                        except:
+                            pass
 
                 if hasattr(self.model.config, 'num_hidden_layers'):
                     self.num_layers = self.model.config.num_hidden_layers

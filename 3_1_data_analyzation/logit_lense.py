@@ -322,14 +322,9 @@ class LogitLens:
         else:
             start_layer, end_layer = layer_range
 
-        # Apply chat template for instruction-tuned models like Gemma
-        if hasattr(self.tokenizer, 'apply_chat_template') and 'gemma' in self.model.config.model_type.lower():
-            # Gemma format
-            messages = [{"role": "user", "content": prompt}]
-            formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            print(f"Using Gemma chat template: {formatted_prompt[:100]}...")
-        else:
-            formatted_prompt = prompt
+        # For Gemma: don't use chat template for continuation tasks
+        # Just use the raw prompt for text generation
+        formatted_prompt = prompt
 
         # Tokenize initial prompt
         inputs = self.tokenizer(formatted_prompt, return_tensors="pt", padding=False)  # Don't pad
@@ -603,8 +598,8 @@ def main():
     # You can change the prompt here to anything you want
     # 여기서 프롬프트를 원하는 대로 바꿀 수 있습니다
     # prompt = "La bateau naviguait en doceur sur"
-    # prompt = "The capital of France is"  # English example
-    prompt = "배는 바다위를 순조롭게 항해"  # Another Korean example
+    prompt = "The capital of France is"  # English example for Gemma
+    # prompt = "배는 바다위를 순조롭게 항해"  # Korean works well with Llama
 
     # Number of tokens to generate
     max_new_tokens = 10

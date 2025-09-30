@@ -322,8 +322,17 @@ class LogitLens:
         else:
             start_layer, end_layer = layer_range
 
+        # Apply chat template for instruction-tuned models like Gemma
+        if hasattr(self.tokenizer, 'apply_chat_template') and 'gemma' in self.model.config.model_type.lower():
+            # Gemma format
+            messages = [{"role": "user", "content": prompt}]
+            formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            print(f"Using Gemma chat template: {formatted_prompt[:100]}...")
+        else:
+            formatted_prompt = prompt
+
         # Tokenize initial prompt
-        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True)
+        inputs = self.tokenizer(formatted_prompt, return_tensors="pt", padding=False)  # Don't pad
         input_ids = inputs['input_ids'].to(self.device)
 
         # Store input tokens for display

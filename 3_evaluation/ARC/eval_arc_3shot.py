@@ -147,11 +147,11 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
-    # ModelConfig(
-    #     name="llama-2-7b-pretrained",
-    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-    #     use_quantization=False
-    # ),
+    ModelConfig(
+        name="llama-2-7b-pretrained",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b_pretrained",
+        use_quantization=False
+    ),
     ModelConfig(
         name="qwem-2.5-7b-it",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",

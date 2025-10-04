@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "./GSM8K_8shot_tokenizer_added"  # Output directory
+BASE_OUTPUT_DIR = "./ming_zhikun_tow_bow_results"
 
 # Batch Processing Configuration
 BATCH_SIZE = 16  # A100 optimized batch size (4->16 = 4x speedup)
@@ -245,24 +245,45 @@ MODEL_CONFIGS = [
     # ),
 
     # 10 Epochs
+    # ModelConfig(
+    #     name="llama-3.2-3b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-3b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="gemma-3-4b-pt-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="olmo-2-0425-1b-tow-09_11_10epoch-merged",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+    #     use_quantization=False
+    # ),
+
+    # ModelConfig(
+    #     name="llama-2-7b-pretrained",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
     ModelConfig(
-        name="llama-3.2-3b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/llama-3.2-3b-pt-tow-09_11_allenai-merged",
+        name="qwem-2.5-7b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-3b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/qwem-2.5-3b-pt-tow-09_11_allenai-merged",
+        name="tow-llama2-7b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/tow-llama2-7b_downloaded",
         use_quantization=False
     ),
     ModelConfig(
-        name="gemma-3-4b-pt-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/gemma-3-4b-pt-tow-09_11_allenai-merged",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="olmo-2-0425-1b-tow-09_11_10epoch-merged",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/5_training/finetune_org/merged_models/olmo-2-0425-1b-tow-09_11_allenai-merged",
+        name="bow-qwen2.5-7b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/bow-qwen2.5-7b-i_downloaded",
         use_quantization=False
     ),
 ]

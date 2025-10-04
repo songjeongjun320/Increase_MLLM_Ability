@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # --- 설정 ---
 repo_id = "meta-llama/Llama-2-7b"
-model_folder_name = "Llama-2-7b_downloaded"
+model_folder_name = "../Base_Models/Llama-2-7b_pretrained"
 
 # 모델을 저장할 로컬 디렉토리 경로
 local_target_dir = os.path.join(os.getcwd(), model_folder_name)

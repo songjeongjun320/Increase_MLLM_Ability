@@ -7,11 +7,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # --- 설정 ---
-repo_id = "meta-llama/Llama-2-7b"
-model_folder_name = "../Base_Models/Llama-2-7b_pretrained"
+repo_id = "meta-llama/Llama-2-7b-hf"
+model_folder_name = "../Base_Models/Llama-2-7b-hf_pretrained"
 
 # 모델을 저장할 로컬 디렉토리 경로
 local_target_dir = os.path.join(os.getcwd(), model_folder_name)
+
+# Base_Models 폴더가 없으면 생성
+base_models_dir = os.path.join(os.path.dirname(os.getcwd()), "Base_Models")
+os.makedirs(base_models_dir, exist_ok=True)
 
 # --- 스냅샷 다운로드 함수 (권장) ---
 def download_model_snapshot(
@@ -47,7 +51,7 @@ if __name__ == "__main__":
     logger.warning("=" * 50)
     logger.warning("")
     logger.warning("⚠️  중요: meta-llama 모델은 라이센스 동의가 필요합니다!")
-    logger.warning("1. https://huggingface.co/meta-llama/Llama-2-7b 방문")
+    logger.warning("1. https://huggingface.co/meta-llama/Llama-2-7b-hf 방문")
     logger.warning("2. 라이센스 동의 후 Access Token 발급")
     logger.warning("3. 'huggingface-cli login' 명령어로 로그인")
     logger.warning("=" * 50)

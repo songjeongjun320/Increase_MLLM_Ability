@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CACHE_DIR = "../cache"  # Cache directory for models
 DATASET_PATH = "../../2_datasets/HRM8K_TEXT/GSM8K-test.json"
-BASE_OUTPUT_DIR = "./ming_zhikun_tow_bow_results"
+BASE_OUTPUT_DIR = "./10_16_instruction_tuned_models"
 
 # Batch Processing Configuration
 BATCH_SIZE = 16  # A100 optimized batch size (4->16 = 4x speedup)
@@ -266,24 +266,45 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
+    # ModelConfig(
+    #     name="llama-2-7b-pretrained",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b-hf_pretrained",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-7b-it",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="tow-llama2-7b",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/tow-llama2-7b_downloaded",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="bow-qwen2.5-7b-it",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/bow-qwen2.5-7b-i_downloaded",
+    #     use_quantization=False
+    # ),
+
     ModelConfig(
-        name="llama-2-7b-pretrained",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b-hf_pretrained",
+        name="jamba-reasoning-3b",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/AI21-Jamba-Reasoning-3B",
         use_quantization=False
     ),
     ModelConfig(
-        name="qwem-2.5-7b-it",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+        name="gemma3-4b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/gemma-3-4b-it",
         use_quantization=False
     ),
     ModelConfig(
-        name="tow-llama2-7b",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/tow-llama2-7b_downloaded",
+        name="llama3.2-3b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-3.2-3B-Instruct",
         use_quantization=False
     ),
     ModelConfig(
-        name="bow-qwen2.5-7b-it",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/bow-qwen2.5-7b-i_downloaded",
+        name="qwen2.5-3b-it",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-3B-Instruct",
         use_quantization=False
     ),
 ]

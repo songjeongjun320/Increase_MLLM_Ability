@@ -268,7 +268,7 @@ MODEL_CONFIGS = [
 
     ModelConfig(
         name="llama-2-7b-pretrained",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b_pretrained",
+        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b-hf_pretrained",
         use_quantization=False
     ),
     ModelConfig(

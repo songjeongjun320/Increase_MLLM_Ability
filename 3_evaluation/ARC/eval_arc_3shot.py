@@ -147,21 +147,21 @@ MODEL_CONFIGS = [
     #     use_quantization=False
     # ),
 
-    ModelConfig(
-        name="llama-2-7b-pretrained",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b_pretrained",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="qwem-2.5-7b-it",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
-        use_quantization=False
-    ),
-    ModelConfig(
-        name="tow-llama2-7b",
-        model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/tow-llama2-7b_downloaded",
-        use_quantization=False
-    ),
+    # ModelConfig(
+    #     name="llama-2-7b-pretrained",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Llama-2-7b-hf_pretrained",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="qwem-2.5-7b-it",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/Base_Models/Qwen2.5-7B-Instruct",
+    #     use_quantization=False
+    # ),
+    # ModelConfig(
+    #     name="tow-llama2-7b",
+    #     model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/tow-llama2-7b_downloaded",
+    #     use_quantization=False
+    # ),
     ModelConfig(
         name="bow-qwen2.5-7b-it",
         model_id="/scratch/jsong132/Increase_MLLM_Ability/1_models/bow-qwen2.5-7b-i_downloaded",

@@ -332,11 +332,12 @@ def load_gsm8k_data(filepath):
         logger.error(f"Error loading data: {e}")
         return None
 
-def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
+def create_gsm8k_prompt(text, few_shot_examples, is_korean=False, use_chat_template=False):
     """
     (개선된 최종 버전)
     딕셔너리 리스트 형태의 few-shot 예제를 사용하여
     GSM8K 8-shot CoT 평가 프롬프트를 동적으로 생성합니다.
+    Jamba 모델의 경우 chat template 형식을 사용합니다.
     """
     prompt_parts = []
 
@@ -370,6 +371,10 @@ def create_gsm8k_prompt(text, few_shot_examples, is_korean=False):
 
 Question: {text}
 Response: Let's think step by step."""
+    
+    # Chat template 사용 시 messages 형태로 반환
+    if use_chat_template:
+        return [{"role": "user", "content": final_prompt}]
     
     return final_prompt
 
@@ -510,6 +515,60 @@ def process_batch_inference(model, tokenizer, prompts_batch, max_retries=3):
     
     return results
 
+def process_jamba_single_gsm8k(model, tokenizer, messages, max_retries=5):
+    """
+    Process a single prompt for Jamba model using chat template for GSM8K
+    """
+    for attempt in range(max_retries):
+        try:
+            # Apply chat template for Jamba
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            ).to(DEVICE)
+            
+            with torch.inference_mode():
+                # Jamba-specific generation parameters for GSM8K
+                generation_kwargs = {
+                    "max_new_tokens": 384,
+                    "temperature": 0.6,
+                    "do_sample": True,
+                    "pad_token_id": tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+                    "eos_token_id": tokenizer.eos_token_id,
+                }
+                
+                outputs = model.generate(**inputs, **generation_kwargs)
+            
+            # Extract only the generated part
+            input_length = inputs["input_ids"].shape[-1]
+            generated_text = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+            
+            # Try to extract answer
+            extracted_answer = extract_numerical_answer(generated_text)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+            else:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Jamba GSM8K retry {attempt + 1}/{max_retries}: Failed to extract answer, retrying...")
+                    time.sleep(0.1 + random.random() * 0.1)
+                    continue
+                else:
+                    logger.warning(f"Jamba GSM8K final attempt failed - could not extract answer after {max_retries} attempts")
+                    return generated_text, None
+                    
+        except Exception as e:
+            logger.error(f"Jamba GSM8K retry {attempt + 1}/{max_retries}: Model inference error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                continue
+            else:
+                return f"JAMBA_GSM8K_ERROR after {max_retries} attempts: {str(e)}", None
+    
+    return f"JAMBA_GSM8K_EXTRACTION_FAILED after {max_retries} attempts", None
+
 def process_single_with_retry(model, tokenizer, prompt, max_retries=5):
     """
     Process a single prompt with retry logic for answer extraction failures
@@ -642,13 +701,30 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 bnb_4bit_use_double_quant=True,
             )
 
+        # Jamba 모델을 위한 특별한 로딩 파라미터
+        model_kwargs = {
+            "torch_dtype": config.torch_dtype,
+            "quantization_config": quantization_config_bnb,
+            "trust_remote_code": True,
+            "cache_dir": CACHE_DIR
+        }
+        
+        # Jamba 모델의 경우 특별한 설정 적용
+        if "jamba" in config.name.lower():
+            logger.info("Jamba 모델 감지: 특별한 로딩 파라미터 적용")
+            model_kwargs["device_map"] = "auto"  # Jamba는 auto device mapping 권장
+            # Jamba는 attn_implementation을 flash_attention_2로 설정하는 것이 권장됨
+            try:
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+                logger.info("Jamba: flash_attention_2 적용")
+            except Exception as e:
+                logger.warning(f"Jamba: flash_attention_2 적용 실패, 기본값 사용: {e}")
+        else:
+            model_kwargs["device_map"] = "auto" if torch.cuda.is_available() else None
+
         model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
-            torch_dtype=config.torch_dtype,
-            quantization_config=quantization_config_bnb,
-            device_map="auto" if torch.cuda.is_available() else None,  # ✅
-            trust_remote_code=True,
-            cache_dir=CACHE_DIR
+            **model_kwargs
         )
         model.generation_config.pad_token_id = tokenizer.pad_token_id
 
@@ -778,9 +854,12 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 batch_indices.append(global_idx)
                 ground_truths.append(ground_truth)
                 
+                # Jamba 모델 확인
+                is_jamba_model = "jamba" in config.name.lower()
+                
                 # Prepare Korean prompts
                 if has_korean:
-                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True)
+                    korean_prompt = create_gsm8k_prompt(question, GSM8K_8SHOT_KOR_COT_EXAMPLES, is_korean=True, use_chat_template=is_jamba_model)
                     korean_prompts.append(korean_prompt)
                     korean_questions.append(question)
                 else:
@@ -789,7 +868,7 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
                 
                 # Prepare English prompts
                 if original:
-                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False)
+                    english_prompt = create_gsm8k_prompt(original, GSM8K_8SHOT_COT_EXAMPLES, is_korean=False, use_chat_template=is_jamba_model)
                     english_prompts.append(english_prompt)
                     english_questions.append(original)
                 else:
@@ -800,7 +879,14 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             korean_batch_prompts = [p for p in korean_prompts if p is not None]
             if korean_batch_prompts:
                 try:
-                    korean_batch_results = process_batch_inference(model, tokenizer, korean_batch_prompts)
+                    # Jamba 모델의 경우 개별 처리
+                    if is_jamba_model:
+                        korean_batch_results = []
+                        for prompt_msg in korean_batch_prompts:
+                            gen_text, extracted_ans = process_jamba_single_gsm8k(model, tokenizer, prompt_msg)
+                            korean_batch_results.append((gen_text, extracted_ans))
+                    else:
+                        korean_batch_results = process_batch_inference(model, tokenizer, korean_batch_prompts)
                     korean_result_idx = 0
                     
                     for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):
@@ -882,7 +968,14 @@ def evaluate_single_model(config: ModelConfig, gsm8k_data: list, model_output_di
             english_batch_prompts = [p for p in english_prompts if p is not None]
             if english_batch_prompts:
                 try:
-                    english_batch_results = process_batch_inference(model, tokenizer, english_batch_prompts)
+                    # Jamba 모델의 경우 개별 처리
+                    if is_jamba_model:
+                        english_batch_results = []
+                        for prompt_msg in english_batch_prompts:
+                            gen_text, extracted_ans = process_jamba_single_gsm8k(model, tokenizer, prompt_msg)
+                            english_batch_results.append((gen_text, extracted_ans))
+                    else:
+                        english_batch_results = process_batch_inference(model, tokenizer, english_batch_prompts)
                     english_result_idx = 0
                     
                     for i, (idx, gt, question, original) in enumerate(zip(batch_indices, ground_truths, korean_questions, english_questions)):

@@ -280,12 +280,13 @@ KO_ARC_5SHOT_EXAMPLES = [
 ]
 
 # --- Helper Functions for 3-shot ARC Evaluation ---
-def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False, bos_token=""):
+def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False, bos_token="", use_chat_template=False):
     """
     (최종 개선 버전)
     딕셔셔너리 리스트 형태의 고품질 3-shot 예제를 사용하여
     ARC / Ko-ARC 평가 프롬프트를 동적으로 생성합니다.
     OLMo 모델의 경우 BOS 토큰을 시작에 추가합니다.
+    Jamba 모델의 경우 chat template 형식을 사용합니다.
     """
     if dataset_type == "arc":
         prompt_parts = ["The following are multiple choice questions about science and reasoning. You MUST choose one of the option A~D.\n"]
@@ -331,6 +332,10 @@ def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False,
     
     final_prompt = "\n".join(prompt_parts)
     
+    # Chat template 사용 시 messages 형태로 반환
+    if use_chat_template:
+        return [{"role": "user", "content": final_prompt}]
+    
     # OLMo 모델의 경우 BOS 토큰을 시작에 추가 (문제 발생 시 비활성화)
     if add_bos_token and bos_token:
         # 임시로 BOS 토큰 추가를 비활성화하여 테스트
@@ -340,6 +345,71 @@ def create_3shot_prompt(item, examples, dataset_type="arc", add_bos_token=False,
     
     return final_prompt
 
+
+def process_jamba_single(model, tokenizer, messages, config, max_retries=0):
+    """
+    Process a single prompt for Jamba model using chat template
+    """
+    last_generated_text = None
+    total_attempts = max_retries + 1
+    
+    for attempt in range(total_attempts):
+        try:
+            # Apply chat template for Jamba
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            ).to(DEVICE)
+            
+            with torch.inference_mode():
+                # Jamba-specific generation parameters
+                generation_kwargs = {
+                    "max_new_tokens": 512,
+                    "temperature": 0.6,
+                    "do_sample": True,
+                    "pad_token_id": tokenizer.pad_token_id,
+                    "eos_token_id": tokenizer.eos_token_id,
+                }
+                
+                outputs = model.generate(**inputs, **generation_kwargs)
+            
+            # Extract only the generated part
+            input_length = inputs["input_ids"].shape[-1]
+            generated_text = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+            last_generated_text = generated_text
+            
+            # Try to extract answer
+            extracted_answer = extract_answer_robust(generated_text)
+            if extracted_answer is not None:
+                return generated_text, extracted_answer
+            else:
+                if attempt < total_attempts - 1:
+                    logger.warning(f"Jamba retry {attempt + 1}/{total_attempts}: Failed to extract answer, retrying...")
+                    time.sleep(0.1 + random.random() * 0.1)
+                    continue
+                else:
+                    logger.warning(f"Jamba final attempt failed - could not extract answer after {total_attempts} attempts")
+                    return generated_text, None
+                    
+        except Exception as e:
+            logger.error(f"Jamba retry {attempt + 1}/{total_attempts}: Model inference error: {e}")
+            if attempt < total_attempts - 1:
+                time.sleep(0.2 + random.random() * 0.2)
+                continue
+            else:
+                error_message = f"JAMBA_ERROR after {total_attempts} attempts: {str(e)}"
+                if last_generated_text is not None:
+                    return f"{error_message}\nLAST_GENERATED_TEXT: {last_generated_text}", None
+                else:
+                    return error_message, None
+    
+    if last_generated_text is not None:
+        return last_generated_text, None
+    else:
+        return f"NO_JAMBA_GENERATION_AFTER_{max_retries}_ATTEMPTS", None
 
 def process_single_with_retry(model, tokenizer, prompt, config, max_retries=0):
     """
@@ -624,13 +694,30 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                 bnb_4bit_use_double_quant=True,
             )
 
+        # Jamba 모델을 위한 특별한 로딩 파라미터
+        model_kwargs = {
+            "torch_dtype": config.torch_dtype,
+            "quantization_config": quantization_config_bnb,
+            "trust_remote_code": True,
+            "cache_dir": CACHE_DIR
+        }
+        
+        # Jamba 모델의 경우 특별한 설정 적용
+        if "jamba" in config.name.lower():
+            logger.info("Jamba 모델 감지: 특별한 로딩 파라미터 적용")
+            model_kwargs["device_map"] = "auto"  # Jamba는 auto device mapping 권장
+            # Jamba는 attn_implementation을 flash_attention_2로 설정하는 것이 권장됨
+            try:
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+                logger.info("Jamba: flash_attention_2 적용")
+            except Exception as e:
+                logger.warning(f"Jamba: flash_attention_2 적용 실패, 기본값 사용: {e}")
+        else:
+            model_kwargs["device_map"] = DEVICE
+
         model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
-            torch_dtype=config.torch_dtype,
-            quantization_config=quantization_config_bnb,
-            device_map=DEVICE,
-            trust_remote_code=True,
-            cache_dir=CACHE_DIR
+            **model_kwargs
         )
 
         if config.adapter_path:
@@ -813,15 +900,100 @@ def evaluate_single_model(config: ModelConfig, arc_data: list, ko_arc_data: list
                             # Log skipped item if needed
                             continue
 
-                        prompt = create_3shot_prompt(item, examples_to_use, dataset_type, 
-                                                    add_bos_token=add_bos_for_olmo, 
-                                                    bos_token=tokenizer.bos_token if add_bos_for_olmo else "")
+                        # Jamba 모델의 경우 chat template 사용
+                        is_jamba_model = "jamba" in config.name.lower()
+                        if is_jamba_model:
+                            prompt = create_3shot_prompt(item, examples_to_use, dataset_type, 
+                                                        use_chat_template=True)
+                        else:
+                            prompt = create_3shot_prompt(item, examples_to_use, dataset_type, 
+                                                        add_bos_token=add_bos_for_olmo, 
+                                                        bos_token=tokenizer.bos_token if add_bos_for_olmo else "")
                         prompts.append(prompt)
                         ground_truths.append(ground_truth)
                         valid_items_in_batch.append(item)
 
                     if not prompts:
                         continue
+
+                    # Jamba 모델의 경우 개별 처리 (chat template 때문에)
+                    if is_jamba_model:
+                        for j, (item, ground_truth, prompt_messages) in enumerate(zip(valid_items_in_batch, ground_truths, prompts)):
+                            try:
+                                generated_text_log, model_answer_log = process_jamba_single(
+                                    model, tokenizer, prompt_messages, config, max_retries=0
+                                )
+                                is_correct_log = False
+
+                                if model_answer_log:
+                                    total_predictions += 1
+                                    if model_answer_log == ground_truth:
+                                        correct_predictions += 1
+                                        is_correct_log = True
+                                    else:
+                                        # This is a wrong answer - add to failure cases
+                                        failure_cases.append({
+                                            "index": batch_start + j,
+                                            "id": item.get("id", ""),
+                                            "dataset": dataset_name,
+                                            "question": item.get("question", ""),
+                                            "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                            "ground_truth": ground_truth,
+                                            "predicted_answer": model_answer_log,
+                                            "raw_output": generated_text_log,
+                                            "failure_type": "incorrect_answer"
+                                        })
+                                else:
+                                    errors_or_skipped += 1
+                                    generated_text_log = f"JAMBA_EXTRACTION_FAILED: {generated_text_log}"
+                                    failure_cases.append({
+                                        "index": batch_start + j,
+                                        "id": item.get("id", ""),
+                                        "dataset": dataset_name,
+                                        "question": item.get("question", ""),
+                                        "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                        "ground_truth": ground_truth,
+                                        "predicted_answer": -1,
+                                        "raw_output": generated_text_log,
+                                        "failure_type": "jamba_extraction_failed"
+                                    })
+                                    model_answer_log = None
+                                    is_correct_log = False
+
+                                current_item_index = batch_start + j
+                                results_details.append({
+                                    "index": current_item_index, 
+                                    "id": item.get("id", ""),
+                                    "ground_truth": ground_truth, 
+                                    "model_raw_output": generated_text_log,
+                                    "predicted_answer": model_answer_log, 
+                                    "is_correct": is_correct_log
+                                })
+                                
+                                raw_generations_list.append({
+                                    "dataset": dataset_name,
+                                    "index": current_item_index, 
+                                    "id": item.get("id", ""),
+                                    "ground_truth": ground_truth,
+                                    "raw_output": generated_text_log, 
+                                    "extracted_answer": model_answer_log
+                                })
+
+                            except Exception as e:
+                                logger.error(f"Jamba individual processing error for item {batch_start + j}: {e}")
+                                errors_or_skipped += 1
+                                failure_cases.append({
+                                    "index": batch_start + j,
+                                    "id": item.get("id", ""),
+                                    "dataset": dataset_name,
+                                    "question": item.get("question", ""),
+                                    "options": {k: v for k, v in item.items() if k in ['A', 'B', 'C', 'D']},
+                                    "ground_truth": ground_truth,
+                                    "predicted_answer": -1,
+                                    "raw_output": f"JAMBA_ERROR: {str(e)}",
+                                    "failure_type": "jamba_inference_error"
+                                })
+                        continue  # Skip the batch processing below for Jamba
 
                     try:
                         inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(DEVICE)
